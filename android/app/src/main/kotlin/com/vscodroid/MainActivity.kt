@@ -454,7 +454,10 @@ class MainActivity : AppCompatActivity() {
      * default rather than pinning the WebView to a dead path.
      */
     private fun folderFromUrl(url: String?): String? =
-        url?.let { Uri.parse(it).getQueryParameter("folder") }?.takeIf { File(it).isDirectory }
+        // A WebView that has not navigated yet reports an opaque URL
+        // (about:blank); getQueryParameter throws on non-hierarchical URIs.
+        url?.let { Uri.parse(it) }?.takeIf { it.isHierarchical }
+            ?.getQueryParameter("folder")?.takeIf { File(it).isDirectory }
 
     /**
      * Initializes the WebView bridge, security manager, and clients.
