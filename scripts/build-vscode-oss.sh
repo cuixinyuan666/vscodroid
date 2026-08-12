@@ -168,12 +168,19 @@ fi
 # patch therefore leaves a fingerprint that has to survive minification, and the
 # packaged output is searched for it.
 if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
-    if grep -q 'platform==="android"' "$OUT/out/server-main.js"; then
-        echo "  ok      0001 platform patch reached server-main.js"
-    else
-        echo "  FAIL    0001 platform patch is not in the built server-main.js"
-        fail=1
-    fi
+    # patch | bundle it must reach | fingerprint that survives minification
+    while IFS='|' read -r id bundle pattern; do
+        [ -z "$id" ] && continue
+        if [ -f "$OUT/$bundle" ] && grep -q "$pattern" "$OUT/$bundle"; then
+            echo "  ok      $id reached $(basename "$bundle")"
+        else
+            echo "  FAIL    $id did not reach $bundle"
+            fail=1
+        fi
+    done <<'FINGERPRINTS'
+0001 platform|out/server-main.js|platform==="android"
+0002 userDataPath|out/vs/platform/terminal/node/ptyHostMain.js|case"android"
+FINGERPRINTS
 fi
 
 if [ -d "$BRANDING" ]; then
