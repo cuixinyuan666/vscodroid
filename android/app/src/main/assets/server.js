@@ -107,6 +107,13 @@ if (!fs.existsSync(rehEntryPoint)) {
         '--port', String(PORT),
         '--without-connection-token',
         '--accept-server-license-terms',
+        // Workspace Trust is forced on for any remote window regardless of the
+        // security.workspace.trust.enabled setting, which leaves every folder in
+        // Restricted Mode and blocks most extensions from activating. The server
+        // has a supported switch for it — webClientServer sends the web client
+        // enableWorkspaceTrust: !args['disable-workspace-trust'] — so this needs
+        // no patching of the workbench.
+        '--disable-workspace-trust',
         '--log', LOG_LEVEL
     ];
 
