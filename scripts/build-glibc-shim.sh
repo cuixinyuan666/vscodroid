@@ -40,7 +40,7 @@ API=33
 # The names a glibc-linked binary carries in DT_NEEDED. Bionic folded all of
 # these into libc, so every stub has the same (empty) body.
 STUBS=(libc.so.6 libdl.so.2 libpthread.so.0 libm.so.6 librt.so.1 libutil.so.1
-       libgcc_s.so.1 libresolv.so.2 libcrypt.so.1)
+       libgcc_s.so.1 libresolv.so.2 libcrypt.so.1 ld-linux-aarch64.so.1)
 
 echo "=== glibc compatibility shim ==="
 
@@ -87,7 +87,7 @@ if [ "$#" -gt 0 ]; then
     python3 "$SCRIPT_DIR/gen-glibc-forwarders.py" "$@" --out "$GEN_DIR"
 else
     echo "  no addons given, so the stubs will carry names but no symbols"
-    echo "  pass the objects that need to load, e.g. prebuilds/linux-arm64/*.node"
+    echo "  pass objects directly, or --scan a directory to search"
 fi
 
 echo ""

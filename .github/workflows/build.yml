@@ -67,7 +67,7 @@ jobs:
             android/app/src/main/assets/extensions/
             android/app/src/main/jniLibs/arm64-v8a/
             server/vscode-reh/
-          key: assets-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-claude-code.sh', 'scripts/build-native-addons.sh') }}
+          key: assets-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-claude-code.sh', 'scripts/build-native-addons.sh', 'scripts/build-glibc-shim.sh', 'scripts/glibc-shim.c', 'scripts/gen-glibc-forwarders.py') }}
           restore-keys: |
             assets-
 
@@ -130,6 +130,22 @@ jobs:
       # as a release asset. The old one ran but segfaulted inside the Claude Code
       # CLI's subcommands, and there was no way to debug a build we could not
       # reproduce. Its version also decides which VS Code releases are reachable.
+      # After the server tree is in place and after download-termux-tools.sh,
+      # which wipes assets/usr/lib before repopulating it -- the stubs live there
+      # and would not survive being built first.
+      #
+      # Scans for addons that were built against glibc and generates stub
+      # libraries so Bionic's loader will accept them. Objects needing libstdc++
+      # are reported and skipped: Android ships libc++, and the two are not two
+      # spellings of the same library.
+      - name: Build the glibc compatibility shim
+        if: steps.cache-assets.outputs.cache-hit != 'true'
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+        run: |
+          bash scripts/build-glibc-shim.sh \
+            --scan android/app/src/main/assets/vscode-reh \
+            --scan android/app/src/main/assets/extensions
       - name: Fetch Node runtime
         if: steps.cache-assets.outputs.cache-hit != 'true'
         run: bash scripts/download-node.sh

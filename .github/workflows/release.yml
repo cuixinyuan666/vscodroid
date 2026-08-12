@@ -158,6 +158,21 @@ jobs:
       # as a release asset. The old one ran but segfaulted inside the Claude Code
       # CLI's subcommands, and there was no way to debug a build we could not
       # reproduce. Its version also decides which VS Code releases are reachable.
+      # After the server tree is in place and after download-termux-tools.sh,
+      # which wipes assets/usr/lib before repopulating it -- the stubs live there
+      # and would not survive being built first.
+      #
+      # Scans for addons that were built against glibc and generates stub
+      # libraries so Bionic's loader will accept them. Objects needing libstdc++
+      # are reported and skipped: Android ships libc++, and the two are not two
+      # spellings of the same library.
+      - name: Build the glibc compatibility shim
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+        run: |
+          bash scripts/build-glibc-shim.sh \
+            --scan android/app/src/main/assets/vscode-reh \
+            --scan android/app/src/main/assets/extensions
       - name: Fetch Node runtime
         run: bash scripts/download-node.sh
 

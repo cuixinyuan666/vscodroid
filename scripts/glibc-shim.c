@@ -480,3 +480,22 @@ __attribute__((noreturn)) void __shim_untranslated(const char *name) {
                         "and has no translating wrapper yet", name);
     abort();
 }
+
+/*
+ * A stack-protector canary for objects that import one. Bionic keeps its own
+ * private to libc, so this is a separate value; that is harmless, because the
+ * check compares the prologue's copy against this same variable. It only has to
+ * be non-zero and not derivable from the file.
+ */
+unsigned long __shim_stack_guard(void) {
+    static unsigned long value;
+    if (!value) {
+        FILE *f = fopen("/dev/urandom", "rb");
+        if (f) {
+            if (fread(&value, sizeof(value), 1, f) != 1) value = 0;
+            fclose(f);
+        }
+        if (!value) value = 0xff0a000000000000UL;  /* glibc's own fallback shape */
+    }
+    return value;
+}

@@ -65,6 +65,22 @@ WEAK_OPTIONAL = {
     "__gmon_start__", "__cxa_finalize", "__cxa_atexit",
 }
 
+# An object needing one of these cannot be helped by forwarding, and saying so
+# is more useful than emitting stubs that abort later.
+#
+# libstdc++ is GNU's C++ standard library; Android ships LLVM's libc++. They are
+# not two spellings of the same thing -- the mangled names differ
+# (std::__cxx11:: against std::__1::), so there is nothing to forward to, and the
+# object layouts differ too, so even name-matching entries would corrupt. Making
+# these load means shipping a real libstdc++ for aarch64 Android, which is a
+# different and much larger undertaking.
+UNSUPPORTED_LIBS = {"libstdc++.so.6"}
+
+# The glibc loader appears in DT_NEEDED of objects built against it. Bionic's
+# linker is already the one running, so a stub carrying the name is enough to
+# satisfy the entry.
+LOADER_SONAME = "ld-linux-aarch64.so.1"
+
 SHT_DYNSYM, SHT_GNU_VERNEED, SHT_GNU_VERSYM = 11, 0x6FFFFFFE, 0x6FFFFFFF
 STT_FUNC, STT_OBJECT = 2, 1
 
@@ -137,6 +153,10 @@ DATA_SYMBOLS = {
     "stderr": ("FILE *", "stderr"),
     "stdin": ("FILE *", "stdin"),
     "environ": ("char **", "environ"),
+    # The stack-protector canary. Bionic keeps its own private, so this is a
+    # separate value -- which is fine, because the addon only ever compares it
+    # against itself. It has to be non-zero and not guessable from the binary.
+    "__stack_chk_guard": ("unsigned long ", "__shim_stack_guard()"),
     "__environ": ("char **", "environ"),
     "_environ": ("char **", "environ"),
 }
@@ -284,6 +304,7 @@ def generate(inputs, out_dir: pathlib.Path):
             " * it would bind to its own unfilled trampoline. */",
             "extern void *__shim_resolve(const char *name);",
             "extern void __shim_untranslated(const char *name);",
+            "extern unsigned long __shim_stack_guard(void);",
             "",
             "/* Reached when Bionic has no symbol of that name, so the pointer stayed",
             " * null. Branching to it would be a jump to address zero -- a SIGSEGV",
@@ -391,18 +412,70 @@ def generate(inputs, out_dir: pathlib.Path):
     return 0
 
 
+def needs_glibc(path: pathlib.Path) -> bool:
+    """True when this object asks for a library only glibc provides.
+
+    Read from DT_NEEDED rather than from the file name, because a .node built
+    for Bionic and one built for glibc are both just .node.
+    """
+    try:
+        elf = Elf(path)
+    except (ValueError, IndexError, struct.error):
+        return False
+    return any(so and so.endswith((".so.6", ".so.2", ".so.1", ".so.0"))
+               for so, _, _, _ in elf.imports())
+
+
+def scan(roots):
+    """Native objects under these paths that would fail to load as-is.
+
+    Returns (shimmable, blocked): the second list is objects that need a library
+    forwarding cannot stand in for, reported so nobody reads silence as success.
+    """
+    shimmable, blocked = [], []
+    for root in roots:
+        for path in sorted(root.rglob("*.node")) if root.is_dir() else [root]:
+            if not path.is_file() or not needs_glibc(path):
+                continue
+            try:
+                libs = {so for so, _, _, _ in Elf(path).imports() if so}
+            except (ValueError, IndexError, struct.error):
+                continue
+            hard = libs & UNSUPPORTED_LIBS
+            if hard:
+                blocked.append((path, sorted(hard)))
+            else:
+                shimmable.append(path)
+    return shimmable, blocked
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("inputs", nargs="+", type=pathlib.Path)
+    ap.add_argument("inputs", nargs="*", type=pathlib.Path)
     ap.add_argument("--out", type=pathlib.Path, required=True)
+    ap.add_argument("--scan", type=pathlib.Path, action="append", default=[],
+                    help="directory to search for glibc-built .node files")
     args = ap.parse_args()
 
-    missing = [p for p in args.inputs if not p.is_file()]
+    inputs = list(args.inputs)
+    if args.scan:
+        discovered, blocked = scan(args.scan)
+        for path in discovered:
+            print(f"  will forward for: {path.name}")
+        for path, libs in blocked:
+            print(f"  CANNOT help    : {path.name} needs {', '.join(libs)}")
+        if not discovered and not blocked:
+            print("  no glibc-built addons found; nothing needs forwarding")
+        inputs += discovered
+
+    missing = [p for p in inputs if not p.is_file()]
     if missing:
         print("  ERROR: no such file: " + ", ".join(str(p) for p in missing),
               file=sys.stderr)
         return 1
-    return generate(args.inputs, args.out)
+    if not inputs:
+        return 0
+    return generate(inputs, args.out)
 
 
 if __name__ == "__main__":
