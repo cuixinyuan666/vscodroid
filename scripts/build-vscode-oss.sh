@@ -11,13 +11,15 @@ set -euo pipefail
 #   docker volume create vscodroid-codeoss
 #   docker run --rm -v vscodroid-codeoss:/work \
 #       -v "$PWD/scripts/build-vscode-oss.sh:/build.sh:ro" \
-#       -v "$PWD/branding:/branding:ro" \
+#       -v "$PWD/branding:/branding" \
+#       -v "$PWD/patches:/patches:ro" \
 #       vscodroid-codeoss-build:20.18.0 bash /build.sh
 #
-# Branding is applied to the source before gulp runs, so the values are baked in
-# wherever the build inlines them rather than only where a later regex reaches.
-# The Android adaptations are still patched on afterwards; keeping those separate
-# is what makes a build failure distinguishable from a patch failure.
+# Patches and branding are both applied to the source before gulp runs, so their
+# effects are baked in wherever the build inlines them rather than only where a
+# later regex reaches. Each stage prints what it did and fails the build if it
+# could not, so a broken build is attributable to a stage rather than discovered
+# on a device.
 
 VSCODE_VERSION="${VSCODE_VERSION:-1.96.4}"
 ARCH="${ARCH:-arm64}"
@@ -51,6 +53,25 @@ cd "$SRC"
 echo "  HEAD    : $(git rev-parse --short HEAD)"
 echo "  .nvmrc  : $(cat .nvmrc)"
 [ "v$(cat .nvmrc)" = "$(node --version)" ] || echo "  WARNING: node does not match .nvmrc"
+
+step "Patches"
+# The Android adaptations, as real diffs against readable source. git apply exits
+# non-zero when the context has shifted, and set -e turns that into a failed
+# build — which is the whole reason these are moving here from regexes against
+# minified output, where a stale pattern printed SKIP and exited 0.
+#
+# Applied to a clean tree every time: the checkout is reset first, so a rerun
+# does not fail on already-applied hunks and cannot accumulate half-states.
+PATCHES="${PATCHES:-/patches}"
+if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
+    git -C "$SRC" checkout -- src/ 2>/dev/null || true
+    for patch in "$PATCHES"/*.patch; do
+        git -C "$SRC" apply --verbose "$patch" 2>&1 | sed 's/^/  /'
+        echo "  applied $(basename "$patch")"
+    done
+else
+    echo "  no patches at $PATCHES — building unadapted"
+fi
 
 step "Branding"
 # Skippable so the stage can be run bare when isolating a build problem.
@@ -140,6 +161,19 @@ if [ -e "$OUT/node_modules/vsda" ]; then
     fail=1
 else
     echo "  ok      no vsda"
+fi
+
+# Applying a patch to the source proves nothing about the package: the file may
+# not be in this target's graph, or the build may inline an older copy. Each
+# patch therefore leaves a fingerprint that has to survive minification, and the
+# packaged output is searched for it.
+if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
+    if grep -q 'platform==="android"' "$OUT/out/server-main.js"; then
+        echo "  ok      0001 platform patch reached server-main.js"
+    else
+        echo "  FAIL    0001 platform patch is not in the built server-main.js"
+        fail=1
+    fi
 fi
 
 if [ -d "$BRANDING" ]; then
