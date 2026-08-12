@@ -452,9 +452,19 @@ class MainActivity : AppCompatActivity() {
      * stays truthful. A folder that has since disappeared — a cleared SAF
      * mirror, unmounted storage — is dropped so the caller falls back to the
      * default rather than pinning the WebView to a dead path.
+     *
+     * The hierarchical check is load-bearing, not defensive. Before the workbench
+     * is loaded the WebView still holds the `data:` placeholder from
+     * [setupWebView], and `getQueryParameter` throws
+     * `UnsupportedOperationException` on an opaque URI. This runs on the main
+     * thread from `onServiceConnected`, so on every cold start the app died at the
+     * moment the server came up.
      */
     private fun folderFromUrl(url: String?): String? =
-        url?.let { Uri.parse(it).getQueryParameter("folder") }?.takeIf { File(it).isDirectory }
+        url?.let { Uri.parse(it) }
+            ?.takeIf { it.isHierarchical }
+            ?.getQueryParameter("folder")
+            ?.takeIf { File(it).isDirectory }
 
     /**
      * Initializes the WebView bridge, security manager, and clients.
