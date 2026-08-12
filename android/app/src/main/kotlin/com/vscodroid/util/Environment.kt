@@ -42,9 +42,15 @@ object Environment {
         val platformFixPath = "$filesDir/server/platform-fix.js"
         val nodeOptions = "--require=$platformFixPath"
 
+        // The Termux tmux searches "$TMUX_TMPDIR:/data/data/com.termux/files/usr/var/run"
+        // for its socket. That second path belongs to Termux's sandbox, not ours, so
+        // without the variable every session dies with "no suitable socket path".
+        val tmpDir = "$cacheDir/tmp"
+
         val base = mapOf(
             "HOME" to homeDir,
-            "TMPDIR" to "$cacheDir/tmp",
+            "TMPDIR" to tmpDir,
+            "TMUX_TMPDIR" to tmpDir,
             "PATH" to path,
             "LD_LIBRARY_PATH" to "$nativeLibDir:$filesDir/usr/lib",
             "NODE_PATH" to "$filesDir/server/vscode-reh/node_modules",
@@ -115,6 +121,19 @@ object Environment {
 
     fun getBashPath(context: Context): String =
         "${context.applicationInfo.nativeLibraryDir}/libbash.so"
+
+    /**
+     * The shell to name in the terminal profile — the maintained symlink, never
+     * the `nativeLibraryDir` binary it points at.
+     *
+     * VS Code decides whether it can inject shell integration by switching on the
+     * *basename* of the profile's executable. `libbash.so` matches no case and the
+     * injection is skipped in silence; `bash` matches. The indirection pays twice,
+     * because `setupToolSymlinks()` re-points this link on every launch, so the
+     * profile no longer goes stale when a reinstall moves `nativeLibraryDir`.
+     */
+    fun getTerminalShellPath(context: Context): String =
+        "${context.filesDir}/usr/bin/bash"
 
     fun getGitPath(context: Context): String =
         "${context.applicationInfo.nativeLibraryDir}/libgit.so"

@@ -58,6 +58,7 @@ class SplashActivity : AppCompatActivity() {
             setup.setupRipgrepVscodeSymlink()
             setup.createNpmWrappers()
             setup.ensureToolchainEnvSourcing()
+            setup.ensurePromptFix()
             setup.updateSettingsNativeLibPaths()
         } catch (e: Exception) {
             Logger.e(tag, "Launch-time setup refresh failed", e)

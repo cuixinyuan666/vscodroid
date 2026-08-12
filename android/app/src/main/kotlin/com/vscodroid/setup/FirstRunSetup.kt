@@ -50,11 +50,10 @@ class FirstRunSetup(private val context: Context) {
             reportProgress("Creating directories...", 2)
             createDirectories()
 
+            // The reh-web download carries the web client inside this same tree,
+            // so this one extraction is both the server and the workbench.
             reportProgress("Extracting server files...", 5)
             extractAssetDir("vscode-reh", "server/vscode-reh")
-
-            reportProgress("Extracting web client...", 40)
-            extractAssetDir("vscode-web", "server/vscode-web")
 
             reportProgress("Extracting server bootstrap...", 60)
             extractAssetFile("server.js", "server/server.js")
@@ -332,8 +331,9 @@ class FirstRunSetup(private val context: Context) {
     /**
      * Ensures npm/npx shell functions exist in .bashrc and creates .npmrc.
      *
-     * Android mounts /data noexec, so shell script wrappers in usr/bin/ fail with
-     * "bad interpreter: Permission denied". Instead, npm/npx are defined as bash
+     * SELinux denies app_data_file:file execute_no_trans for targetSdk >= 29, so a
+     * script with a shebang under filesDir fails with "bad interpreter: Permission
+     * denied" no matter how it is chmod'ed. Instead, npm/npx are defined as bash
      * functions that invoke node with the cli entry point.
      *
      * Safe to call on every launch — only appends if functions are missing.
@@ -401,6 +401,42 @@ class FirstRunSetup(private val context: Context) {
         }
     }
 
+    /**
+     * Replaces the prompt written by earlier releases, which printed straight out
+     * of PROMPT_COMMAND and left PS1 empty.
+     *
+     * That shape dates from when the terminal was a pipe. On the real PTY node-pty
+     * gives us it costs the user two visible things: readline cannot measure a
+     * prompt it never emitted, so Ctrl+L and any wrapped line redraw over it, and
+     * VS Code's shell integration wraps `$PS1` — an empty string — so its command
+     * decorations have nothing to attach to.
+     *
+     * Safe to call on every launch: the old shape stops matching once replaced,
+     * and a .bashrc whose prompt the user has rewritten no longer contains the
+     * anchors, so it is left alone.
+     */
+    fun ensurePromptFix() {
+        val bashrc = File(context.filesDir, "home/.bashrc")
+        if (!bashrc.exists()) return
+
+        val content = bashrc.readText()
+        val fnStart = content.indexOf(PROMPT_ANCHOR_START)
+        if (fnStart < 0) return
+        val end = content.indexOf(PROMPT_ANCHOR_END, fnStart)
+        if (end < 0) return
+
+        // Swallow the old explanatory comment too, so the file is not left
+        // describing a mechanism it no longer uses.
+        val commentStart = content.indexOf(LEGACY_PROMPT_COMMENT)
+        val start = if (commentStart in 0 until fnStart) commentStart else fnStart
+
+        val updated = content.substring(0, start) +
+            PROMPT_BLOCK +
+            content.substring(end + PROMPT_ANCHOR_END.length)
+        bashrc.writeText(updated)
+        Logger.i(tag, "Replaced the legacy empty-PS1 prompt in .bashrc")
+    }
+
     private fun isSymlink(file: File): Boolean = try {
         Os.lstat(file.absolutePath)
         file.canonicalPath != file.absolutePath
@@ -408,7 +444,7 @@ class FirstRunSetup(private val context: Context) {
 
     private fun npmBashFunctions(): String = """
 
-# npm/npx — shell functions (Android noexec prevents script wrappers)
+# npm/npx — shell functions (SELinux blocks exec of scripts under filesDir)
 # VSCODROID_PLATFORM_FIX=1: override process.platform to "linux" for npm only
 # (child processes like Rollup/esbuild see real "android" platform)
 # --prefer-offline: use local cache first, saves time on slow mobile connections
@@ -429,7 +465,7 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
 
         val updated = refreshManagedPaths(
             settingsFile.readText(),
-            Environment.getBashPath(context),
+            Environment.getTerminalShellPath(context),
             Environment.getGitPath(context),
         ) ?: return
 
@@ -479,25 +515,7 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
         val safMirrorsDir = Environment.getSafMirrorsDir(context)
         val bashrc = File(context.filesDir, "home/.bashrc")
         if (!bashrc.exists()) {
-            bashrc.writeText("""
-                # VSCodroid bash configuration
-                # Prompt via PROMPT_COMMAND (readline can't show PS1 on pipe stdin)
-                __vscodroid_prompt() {
-                    local dir="${'$'}PWD"
-                    dir="${'$'}{dir/#${'$'}HOME/~}"
-                    [[ "${'$'}dir" == /* ]] && dir="${'$'}{dir/#${'$'}PROJECTS_DIR/projects}"
-                    # Abbreviate SAF mirror paths: /data/.../saf-mirrors/<hash>/... → [folder]/...
-                    if [[ "${'$'}dir" == *saf-mirrors/* ]]; then
-                        dir="${'$'}{dir#*saf-mirrors/}"
-                        dir="${'$'}{dir#*/}"  # strip hash dir
-                        [ -z "${'$'}dir" ] && dir="[saf]"
-                        dir="[saf]/${'$'}dir"
-                    fi
-                    printf '\033[32m%s\033[0m ${'$'} ' "${'$'}dir"
-                }
-                PROMPT_COMMAND=__vscodroid_prompt
-                PS1=''
-
+            bashrc.writeText("# VSCodroid bash configuration\n" + PROMPT_BLOCK + "\n\n" + """
                 export PROJECTS_DIR='$projectsDir'
                 export SAF_MIRRORS_DIR='$safMirrorsDir'
                 alias ls='ls --color=auto'
@@ -550,6 +568,11 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
         settingsDir.mkdirs()
         val settingsFile = File(settingsDir, "settings.json")
         if (!settingsFile.exists()) {
+            // The terminal profile carries no args on purpose. VS Code only injects
+            // shell integration when the profile's args are empty or a known login
+            // form, and bash started on a real PTY with no args is interactive
+            // anyway — it still reads .bashrc, so "-i" bought nothing and cost the
+            // command decorations, cwd tracking, and exit codes.
             settingsFile.writeText("""
                 {
                     "workbench.startupEditor": "none",
@@ -562,13 +585,13 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
                     "terminal.integrated.defaultProfile.linux": "bash",
                     "terminal.integrated.profiles.linux": {
                         "bash": {
-                            "path": "$nativeLibDir/libbash.so",
-                            "args": ["-i"],
+                            "path": "${Environment.getTerminalShellPath(context)}",
+                            "args": [],
                             "icon": "terminal-bash"
                         }
                     },
                     "git.path": "$nativeLibDir/libgit.so",
-                    "terminal.integrated.shellIntegration.enabled": false,
+                    "terminal.integrated.shellIntegration.enabled": true,
                     "telemetry.telemetryLevel": "off",
                     "telemetry.enableTelemetry": false,
                     "update.mode": "none",
@@ -754,6 +777,43 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
 }
 
 /**
+ * The prompt block written into `.bashrc`, shared by the first-run write and by
+ * [FirstRunSetup.ensurePromptFix], which replaces the legacy empty-PS1 prompt.
+ */
+private val PROMPT_BLOCK = """
+    # PROMPT_COMMAND computes the directory, PS1 renders it. The \[ \] markers tell
+    # readline which bytes take no width; without them Ctrl+L and any wrapped line
+    # redraw over the prompt. An earlier build printed the prompt straight out of
+    # PROMPT_COMMAND with an empty PS1, dating from when the terminal was a pipe
+    # rather than a PTY — readline could not measure that at all, and VS Code's
+    # shell integration ended up wrapping an empty string.
+    __vscodroid_prompt() {
+        local dir="${'$'}PWD"
+        dir="${'$'}{dir/#${'$'}HOME/~}"
+        [[ "${'$'}dir" == /* ]] && dir="${'$'}{dir/#${'$'}PROJECTS_DIR/projects}"
+        # Abbreviate SAF mirror paths: /data/.../saf-mirrors/<hash>/... → [saf]/...
+        # At the mirror root there is nothing after the hash, so stripping has to be
+        # conditional — stripping unconditionally leaves the hash itself standing,
+        # which is the one thing this abbreviation exists to hide.
+        if [[ "${'$'}dir" == *saf-mirrors/* ]]; then
+            dir="${'$'}{dir#*saf-mirrors/}"
+            case "${'$'}dir" in
+                */*) dir="[saf]/${'$'}{dir#*/}" ;;
+                *)   dir="[saf]" ;;
+            esac
+        fi
+        __vscodroid_dir="${'$'}dir"
+    }
+    PROMPT_COMMAND=__vscodroid_prompt
+    PS1='\[\033[32m\]${'$'}{__vscodroid_dir}\[\033[0m\] \${'$'} '
+""".trimIndent()
+
+/** Anchors for the legacy prompt block. The replacement matches none of them. */
+private const val PROMPT_ANCHOR_START = "__vscodroid_prompt() {"
+private const val PROMPT_ANCHOR_END = "PS1=''"
+private const val LEGACY_PROMPT_COMMENT = "# Prompt via PROMPT_COMMAND"
+
+/**
  * The bundled bash inside the terminal profile, and the bundled git. Both are
  * anchored on their key and match only a nativeLibraryDir value, so a path the
  * user chose themselves is left alone.
@@ -764,17 +824,39 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
  * directory (issue #3). Every quantifier here is fenced by the delimiter it
  * must not cross.
  */
-private val BASH_PROFILE_PATH = Regex(
+private val LEGACY_BASH_PROFILE_PATH = Regex(
     """("terminal\.integrated\.profiles\.linux"\s*:\s*\{\s*"bash"\s*:\s*\{[^{}]*?"path"\s*:\s*)"/data/app/[^"]*["]"""
 )
 private val GIT_PATH = Regex("""("git\.path"\s*:\s*)"/data/app/[^"]*["]""")
 
 /**
- * Points the two settings.json values that embed nativeLibraryDir back at the
- * current install, returning the updated document or `null` when nothing needed
- * changing.
+ * The two settings that shipped alongside the old profile path and blocked shell
+ * integration with it. Matched only in the exact shape this app wrote, so a
+ * profile the user has since edited is left as they wrote it.
+ */
+private val LEGACY_PROFILE_ARGS = Regex(
+    """("terminal\.integrated\.profiles\.linux"\s*:\s*\{\s*"bash"\s*:\s*\{[^{}]*?"args"\s*:\s*)\["-i"\]"""
+)
+private val SHELL_INTEGRATION_OFF = Regex(
+    """("terminal\.integrated\.shellIntegration\.enabled"\s*:\s*)false"""
+)
+
+/**
+ * Reconciles the settings.json values this app manages, returning the updated
+ * document or `null` when nothing needed changing.
  *
- * Substitutes the two values in place and leaves every other byte untouched.
+ * Two jobs. `git.path` still embeds `nativeLibraryDir`, which a reinstall moves,
+ * so it is re-pointed whenever it has gone stale. The terminal profile is instead
+ * migrated *off* `nativeLibraryDir` and onto the `usr/bin/bash` symlink, which
+ * `setupToolSymlinks()` already repairs on every launch — after that move the
+ * pattern no longer matches and the profile never goes stale again.
+ *
+ * The move carries the other two halves of the shell-integration fix with it,
+ * because all three were written by the same release. Bundling them keeps the
+ * migration one-shot: once the path is off `/data/app/`, nothing here fires
+ * again, so a user who later turns shell integration back off keeps it off.
+ *
+ * Substitutes values in place and leaves every other byte untouched.
  * settings.json is JSONC: comments and trailing commas are legal there, so
  * parsing the document to re-serialise it would strip the user's comments,
  * escape every slash, and turn `["-i",]` into `["-i", null]`.
@@ -782,8 +864,15 @@ private val GIT_PATH = Regex("""("git\.path"\s*:\s*)"/data/app/[^"]*["]""")
  * A pattern that does not match changes nothing, so a file the user has
  * restructured is left as they wrote it rather than mangled.
  */
-internal fun refreshManagedPaths(content: String, bashPath: String, gitPath: String): String? {
-    var updated = BASH_PROFILE_PATH.replace(content) { "${it.groupValues[1]}\"$bashPath\"" }
-    updated = GIT_PATH.replace(updated) { "${it.groupValues[1]}\"$gitPath\"" }
+internal fun refreshManagedPaths(content: String, shellPath: String, gitPath: String): String? {
+    var updated = GIT_PATH.replace(content) { "${it.groupValues[1]}\"$gitPath\"" }
+
+    val movedProfile =
+        LEGACY_BASH_PROFILE_PATH.replace(updated) { "${it.groupValues[1]}\"$shellPath\"" }
+    if (movedProfile != updated) {
+        updated = LEGACY_PROFILE_ARGS.replace(movedProfile) { "${it.groupValues[1]}[]" }
+        updated = SHELL_INTEGRATION_OFF.replace(updated) { "${it.groupValues[1]}true" }
+    }
+
     return updated.takeIf { it != content }
 }
