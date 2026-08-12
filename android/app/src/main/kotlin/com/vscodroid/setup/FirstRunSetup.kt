@@ -692,12 +692,6 @@ claude() {
                     "python.languageServer": "Jedi",
                     "python.defaultInterpreterPath": "${context.filesDir.absolutePath}/usr/bin/python3",
                     "claudeCode.claudeProcessWrapper": "${Environment.getNodeSymlinkPath(context)}",
-                    "gitlens.showWelcomeOnInstall": false,
-                    "gitlens.showWhatsNewAfterUpgrades": false,
-                    "gitlens.codeLens.enabled": false,
-                    "gitlens.currentLine.enabled": true,
-                    "gitlens.hovers.enabled": false,
-                    "gitlens.statusBar.enabled": false,
                     "launch": {
                         "version": "0.2.0",
                         "configurations": [

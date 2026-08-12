@@ -29,13 +29,16 @@ WORK_DIR="$ROOT_DIR/toolchains/extensions"
 #
 # Re-derive the pins after bumping VSCODE_VERSION; the comments say what is
 # holding one back.
+#
+# GitLens is deliberately absent. VS Code's own SCM view, inline blame and diff
+# editor cover what this app needs, and GitLens is 22 MB plus a walkthrough and
+# a welcome view on first run. Anyone who wants it can install it from Open VSX.
 EXTENSIONS=(
     "PKief.material-icon-theme@5.37.0"
     "esbenp.prettier-vscode@12.4.0"
     "ms-python.python@2026.4.0"
     "dbaeumer.vscode-eslint@3.0.34"
     "bradlc.vscode-tailwindcss@0.16.0"
-    "eamodio.gitlens@18.3.0"            # newest stable; later builds are all pre-release
 )
 
 OPENVSX_API="https://open-vsx.org/api"
