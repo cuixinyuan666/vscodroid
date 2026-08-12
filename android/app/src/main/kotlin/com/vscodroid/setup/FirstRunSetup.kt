@@ -679,6 +679,16 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
             }
         }
 
+        val superseded = supersededExtensionDirs(
+            extensionsDir.list()?.toList() ?: emptyList(),
+            bundled.toList(),
+        )
+        for (name in superseded) {
+            if (File(extensionsDir, name).deleteRecursively()) {
+                Logger.i(tag, "Removed superseded bundled extension: $name")
+            }
+        }
+
         // Generate extensions.json only if it doesn't exist (first run).
         // VS Code Server manages this file for marketplace-installed extensions,
         // so we only write it once for bundled extensions.
@@ -687,7 +697,8 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
             generateExtensionsManifest(extensionsDir, bundled)
         }
 
-        Logger.i(tag, "Bundled extensions: $extracted extracted, ${bundled.size} total")
+        Logger.i(tag, "Bundled extensions: $extracted extracted, " +
+            "${superseded.size} superseded removed, ${bundled.size} total")
     }
 
     private fun generateExtensionsManifest(extensionsDir: File, bundledDirs: Array<String>) {
@@ -940,6 +951,52 @@ private val SHELL_INTEGRATION_OFF = Regex(
  * A pattern that does not match changes nothing, so a file the user has
  * restructured is left as they wrote it rather than mangled.
  */
+/**
+ * Names the extension directories left behind by an earlier bundled version.
+ *
+ * Bundled extensions are extracted to `publisher.name-version` directories, so
+ * bumping a version extracts a new directory beside the old one. Nothing breaks
+ * without cleaning up — the scanner discovers extensions by listing directories
+ * (`extensionsScannerService.ts:585-598`) and prefers the highest version when it
+ * finds duplicates (`:350-361`), so the new copy is the one that loads either way.
+ * What is left is disk, and it never comes back: the Python extension alone is
+ * 29 MB, kept on a phone for as long as the app is installed.
+ *
+ * Only strictly older copies are named. A user who installed a newer build of the
+ * same extension from the marketplace keeps it — that is their copy, and the
+ * scanner already prefers it. A version that is not purely numeric is left alone
+ * rather than guessed at.
+ */
+internal fun supersededExtensionDirs(present: List<String>, bundled: List<String>): List<String> {
+    fun split(dir: String): Pair<String, String>? {
+        val cut = dir.lastIndexOf('-')
+        if (cut <= 0 || cut == dir.length - 1) return null
+        return dir.substring(0, cut) to dir.substring(cut + 1)
+    }
+
+    fun parts(version: String): List<Int>? =
+        version.split('.').map { it.toIntOrNull() ?: return null }
+
+    fun isOlder(a: String, b: String): Boolean {
+        val left = parts(a) ?: return false
+        val right = parts(b) ?: return false
+        for (i in 0 until maxOf(left.size, right.size)) {
+            val l = left.getOrElse(i) { 0 }
+            val r = right.getOrElse(i) { 0 }
+            if (l != r) return l < r
+        }
+        return false
+    }
+
+    val current = bundled.mapNotNull(::split).toMap()
+    return present.filter { name ->
+        if (name in bundled) return@filter false
+        val (id, version) = split(name) ?: return@filter false
+        val bundledVersion = current[id] ?: return@filter false
+        isOlder(version, bundledVersion)
+    }
+}
+
 internal fun refreshManagedPaths(content: String, shellPath: String, gitPath: String): String? {
     var updated = GIT_PATH.replace(content) { "${it.groupValues[1]}\"$gitPath\"" }
 

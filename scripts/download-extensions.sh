@@ -15,14 +15,23 @@ ASSETS_DIR="$ROOT_DIR/android/app/src/main/assets/extensions"
 WORK_DIR="$ROOT_DIR/toolchains/extensions"
 
 # Extensions to bundle: publisher.name or publisher.name@version
-# Pin versions to ensure compatibility with VS Code 1.96.4
+#
+# Every one is pinned, and the pin is the newest version whose engines.vscode is
+# satisfied by the VSCODE_VERSION file. Leaving one unpinned would resolve to
+# whatever is newest on the day of the build, and an extension needing a newer VS
+# Code than the server does not error — it simply never activates, so the feature
+# is missing with nothing in the log to explain it. The check after extraction
+# below turns that into a failed build instead.
+#
+# Re-derive the pins after bumping VSCODE_VERSION; the comments say what is
+# holding one back.
 EXTENSIONS=(
-    "PKief.material-icon-theme@5.31.0"
-    "esbenp.prettier-vscode@11.0.3"
-    "ms-python.python@2024.22.1"
-    "dbaeumer.vscode-eslint@3.0.20"
-    "bradlc.vscode-tailwindcss@0.14.28"
-    "eamodio.gitlens@2026.2.1114"
+    "PKief.material-icon-theme@5.37.0"
+    "esbenp.prettier-vscode@11.0.3"     # 12.x needs ^1.101.0, which needs Node 22
+    "ms-python.python@2026.4.0"
+    "dbaeumer.vscode-eslint@3.0.34"
+    "bradlc.vscode-tailwindcss@0.16.0"
+    "eamodio.gitlens@2026.3.1505"       # later builds need ^1.101.0
 )
 
 OPENVSX_API="https://open-vsx.org/api"
@@ -123,6 +132,10 @@ for EXT_SPEC in "${EXTENSIONS[@]}"; do
     if [ "$DOTFILES_FOUND" -eq 0 ]; then
         echo "  No dotfiles found (OK)"
     fi
+
+    # An extension whose engines.vscode is newer than the server fails silently:
+    # it is registered, never activates, and nothing is logged.
+    python3 "$SCRIPT_DIR/check-extension.py" "$DEST_DIR" "$ROOT_DIR/VSCODE_VERSION"
 
     echo "  Extracted: $(du -sh "$DEST_DIR" | cut -f1) -> $DIR_NAME"
 done

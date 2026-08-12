@@ -43,6 +43,7 @@ yarn-error.log*
 !/android/app/src/main/assets/extensions/vscodroid.vscodroid-process-monitor-*/
 !/android/app/src/main/assets/extensions/vscodroid.vscodroid-saf-bridge-*/
 !/android/app/src/main/assets/extensions/vscodroid.vscodroid-welcome-*/
+!/android/app/src/main/assets/extensions/vscodroid.vscodroid-github-auth-*/
 /android/app/src/main/assets/usr/
 
 # ===== Toolchain Asset Packs (populated by scripts/download-*.sh) =====
