@@ -6,7 +6,10 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 SERVER_DIR="$ROOT_DIR/server"
 JNILIBS_DIR="$ROOT_DIR/android/app/src/main/jniLibs/arm64-v8a"
 
-# VS Code 1.96.4 — last stable release using Node 20 (Electron 32)
+# VS Code 1.96.4 — matches the bundled Node 20.18.1.
+# Not the last Node 20 release: .nvmrc says 1.100.3 is still 20.19.0, and only
+# 1.101.0 moves to 22.15.1. Raising this pin needs libnode.so rebuilt to match,
+# and every patch below re-verified — they match minified identifiers.
 VSCODE_VERSION="${VSCODE_VERSION:-1.96.4}"
 ARCH="arm64"
 QUALITY="stable"

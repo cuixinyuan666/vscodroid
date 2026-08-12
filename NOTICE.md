@@ -6,7 +6,7 @@ VSCodroid includes and/or distributes the following third-party software. We are
 
 | Software | Version | License | URL |
 |----------|---------|---------|-----|
-| Code - OSS (VS Code) | 1.96.4 | MIT | https://github.com/microsoft/vscode |
+| Visual Studio Code Server | 1.96.4 | Microsoft proprietary — see `assets/vscode-reh/LICENSE` | https://update.code.visualstudio.com |
 | Node.js | 20.18.1 | MIT | https://github.com/nodejs/node |
 | npm | 10.8.2 | Artistic License 2.0 | https://github.com/npm/cli |
 | Python | 3.12.12 | PSF License | https://www.python.org |

@@ -287,17 +287,20 @@ If you discover a security vulnerability, please **do not** open a public issue.
 
 ## ⚖️ Legal
 
-VSCodroid is built from the MIT-licensed [Code - OSS](https://github.com/microsoft/vscode) source code. It is **not affiliated with or endorsed by Microsoft Corporation**.
+VSCodroid is **not affiliated with or endorsed by Microsoft Corporation**.
+
+The bundled editor server is currently the official **Visual Studio Code Server** distribution, which Microsoft publishes under its own proprietary terms — **not** the MIT-licensed [Code - OSS](https://github.com/microsoft/vscode) source. The licence that applies to it is the one shipped inside the download, at `android/app/src/main/assets/vscode-reh/LICENSE`. Replacing it with a Code - OSS build compiled from source is in progress.
 
 - "Visual Studio Code" and "VS Code" are trademarks of Microsoft.
 - Uses [Open VSX](https://open-vsx.org) extension registry, not Microsoft Marketplace.
-- See [LICENSE](LICENSE) for full license text.
 - See [NOTICE.md](NOTICE.md) for third-party attribution.
 - See [Privacy Policy](https://rmyndharis.github.io/VSCodroid/privacy-policy.html) for data practices.
 
 ## 📄 License
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+VSCodroid's **own** source — the Android app, the build scripts, and the bundled configuration — is licensed under the **MIT License**. See [LICENSE](LICENSE).
+
+That licence does not extend to the third-party components VSCodroid downloads or bundles; each carries its own terms, listed in [NOTICE.md](NOTICE.md).
 
 ---
 
