@@ -50,6 +50,10 @@ class FirstRunSetup(private val context: Context) {
             reportProgress("Creating directories...", 2)
             createDirectories()
 
+            if (isUpgrade) {
+                runPreExtractionMigrations(previousVersionCode)
+            }
+
             // The reh-web download carries the web client inside this same tree,
             // so this one extraction is both the server and the workbench.
             reportProgress("Extracting server files...", 5)
@@ -732,15 +736,52 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
         Logger.i(tag, "Generated extensions.json with ${entries.length()} entries")
     }
 
+    /**
+     * Migrations that have to run *before* the assets are unpacked.
+     *
+     * Kept separate from [runMigrations] because the ordering is not a detail:
+     * extraction merges into whatever is already on disk and never deletes, so
+     * anything that removes a stale tree has to happen first. Run afterwards it
+     * would delete what was just unpacked, and the app would come up with no
+     * server at all.
+     */
+    private fun runPreExtractionMigrations(fromVersionCode: Int) {
+        if (fromVersionCode < PIVOT_VERSION_CODE) {
+            // The server tree changed origin, not just version: what was there is a
+            // pre-built VS Code Server, and what replaces it is Code - OSS built
+            // from source. Their file sets differ — vsda and the bundled node are
+            // gone, several paths moved — and extractAssetDir only ever writes over
+            // what it recognises. Merging the two leaves orphans from the old tree
+            // that nothing overwrites and nothing loads, with no visible symptom
+            // beyond behaviour nobody can account for.
+            val serverTree = File(context.filesDir, "server/vscode-reh")
+            if (serverTree.exists()) {
+                val freed = serverTree.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+                if (serverTree.deleteRecursively()) {
+                    Logger.i(tag, "Removed the previous server tree (${freed / 1_048_576} MB)")
+                } else {
+                    // Not fatal on its own: extraction still writes the new tree over
+                    // it. Say so loudly, because what survives is the orphan case
+                    // above rather than a clean failure.
+                    Logger.e(tag, "Could not remove the previous server tree; " +
+                        "the new one will be merged into it")
+                }
+            }
+        }
+    }
+
     private fun runMigrations(fromVersionCode: Int) {
         Logger.i(tag, "Running migrations from versionCode $fromVersionCode")
 
-        // Add new migrations at the bottom with the next versionCode.
-        // Each block runs for users upgrading FROM a version before the threshold.
-        // Example:
-        // if (fromVersionCode < 3) {
-        //     migrateToV3()  // e.g., add new .bashrc entries
-        // }
+        // Post-extraction migrations go here; anything that deletes belongs in
+        // runPreExtractionMigrations instead.
+        //
+        // Note that files owned by the user are not migrated from this method at
+        // all. settings.json and .bashrc are both written only when absent, so a
+        // change to their defaults reaches nobody who already has them — the
+        // anchored rewrites in updateSettingsNativeLibPaths() and
+        // ensurePromptFix() handle that, and they run on every launch rather than
+        // only on a version change.
 
         Logger.i(tag, "Migrations complete")
     }
@@ -783,6 +824,17 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
     companion object {
         private const val KEY_VERSION = "setup_version"
         private const val KEY_VERSION_CODE = "setup_version_code"
+
+        /**
+         * The release that replaces the pre-built VS Code Server with Code - OSS
+         * built from source. Upgrades from anything earlier need the old server
+         * tree removed rather than merged into.
+         *
+         * Must match versionCode in app/build.gradle.kts for the release that
+         * ships the new tree; a mismatch means the migration either never runs or
+         * runs for users who do not need it.
+         */
+        private const val PIVOT_VERSION_CODE = 11
     }
 }
 
