@@ -22,8 +22,11 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-$ROOT_DIR/android/app/src/main/assets/vscode-reh}"
 
 # Must match remote/.npmrc `target` at the VS Code tag AND the bundled
 # libnode.so. A mismatch changes NODE_MODULE_VERSION and every addon here is
-# rejected at load with no useful message.
-NODE_VERSION="${NODE_VERSION:-20.18.1}"
+# rejected at load with no useful message — terminals stop working and the log
+# says only that a module could not be loaded. The check at the end compares the
+# headers used here against the runtime actually being shipped, so the two
+# cannot drift apart silently.
+NODE_VERSION="${NODE_VERSION:-24.18.0}"
 
 TARGET=aarch64-linux-android
 API=33
@@ -124,29 +127,13 @@ compile() {
 # verify <out.node> — a glibc dependency or a 4 KB segment must fail the build,
 # not surface later as a dlopen error on a user's device.
 verify() {
-    local out=$1 name=$2 bad=0
+    local out=$1 name=$2
 
-    local needed
-    needed=$("$READELF" -d "$out" | awk -F'[][]' '/NEEDED/{print $2}')
-    while read -r lib; do
-        [ -z "$lib" ] && continue
-        case "$lib" in
-            libc.so|libm.so|libdl.so|liblog.so|libandroid.so) ;;
-            *) echo "  FAIL $name needs non-Bionic library: $lib"; bad=1 ;;
-        esac
-    done <<< "$needed"
-
-    while read -r align; do
-        [ -z "$align" ] && continue
-        if [ "$((align))" -lt 16384 ]; then
-            echo "  FAIL $name has a LOAD segment aligned to $align (need >= 0x4000)"
-            bad=1
-        fi
-    done <<< "$("$READELF" -l "$out" | awk '/LOAD/{print $NF}')"
-
-    [ "$bad" -eq 0 ] || return 1
-    printf '  ok   %-24s %8s bytes, Bionic-only, 16K aligned\n' \
-        "$name" "$(wc -c < "$out" | tr -d ' ')"
+    # Shared with download-node.sh rather than reimplemented against the NDK's
+    # readelf: an addon and the runtime that loads it have to agree about what
+    # "loads on Android" means, and two copies of that judgement drift.
+    python3 "$SCRIPT_DIR/verify-android-elf.py" "$out" || return 1
+    printf '  ok   %-24s %8s bytes\n' "$name" "$(wc -c < "$out" | tr -d ' ')"
 }
 
 failed=0

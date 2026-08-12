@@ -52,7 +52,7 @@ jobs:
             toolchains/termux-packages/Packages
             toolchains/build/npm/
             toolchains/extensions/
-          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-claude-code.sh') }}
+          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-claude-code.sh') }}
           restore-keys: |
             downloads-
 
@@ -67,7 +67,7 @@ jobs:
             android/app/src/main/assets/extensions/
             android/app/src/main/jniLibs/arm64-v8a/
             server/vscode-reh/
-          key: assets-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-claude-code.sh', 'scripts/build-native-addons.sh') }}
+          key: assets-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-claude-code.sh', 'scripts/build-native-addons.sh') }}
           restore-keys: |
             assets-
 
@@ -126,32 +126,13 @@ jobs:
         if: steps.cache-assets.outputs.cache-hit != 'true'
         run: bash scripts/build-native-addons.sh
 
-      # libnode.so: Download pre-built binary from latest GitHub release.
-      # If no release exists yet, create a stub so Gradle can produce an APK
-      # (it will crash at runtime without a real binary).
-      - name: Fetch libnode.so
+      # libnode.so is Termux's nodejs-lts, not a hand-cross-compiled binary kept
+      # as a release asset. The old one ran but segfaulted inside the Claude Code
+      # CLI's subcommands, and there was no way to debug a build we could not
+      # reproduce. Its version also decides which VS Code releases are reachable.
+      - name: Fetch Node runtime
         if: steps.cache-assets.outputs.cache-hit != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          LIBNODE="android/app/src/main/jniLibs/arm64-v8a/libnode.so"
-          if [ -f "$LIBNODE" ] && [ "$(wc -c < "$LIBNODE")" -gt 1000 ]; then
-            echo "libnode.so already exists ($(du -sh "$LIBNODE" | cut -f1))"
-            exit 0
-          fi
-          echo "Attempting to download libnode.so from latest GitHub release..."
-          if gh release download --repo "$REPO" \
-               --pattern "libnode.so" \
-               --dir android/app/src/main/jniLibs/arm64-v8a/ 2>/dev/null; then
-            echo "Downloaded libnode.so ($(du -sh "$LIBNODE" | cut -f1))"
-          else
-            echo "WARNING: libnode.so not found in releases. Creating stub."
-            echo "Build will succeed but APK will not run without a real libnode.so."
-            printf '\x7fELF' > "$LIBNODE"
-            dd if=/dev/zero bs=1 count=60 >> "$LIBNODE" 2>/dev/null
-          fi
+        run: bash scripts/download-node.sh
 
       - name: Verify assets
         run: |

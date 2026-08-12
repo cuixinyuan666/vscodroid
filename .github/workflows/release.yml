@@ -112,7 +112,7 @@ jobs:
             toolchains/termux-packages/Packages
             toolchains/build/npm/
             toolchains/extensions/
-          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-claude-code.sh') }}
+          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-claude-code.sh') }}
           restore-keys: |
             downloads-
 
@@ -154,41 +154,12 @@ jobs:
       - name: Build native addons
         run: bash scripts/build-native-addons.sh
 
-      # libnode.so must exist as a GitHub release asset or be downloadable via LIBNODE_URL.
-      - name: Fetch libnode.so
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          LIBNODE_URL: ${{ secrets.LIBNODE_URL }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          LIBNODE="android/app/src/main/jniLibs/arm64-v8a/libnode.so"
-          if [ -f "$LIBNODE" ] && [ "$(wc -c < "$LIBNODE")" -gt 1000 ]; then
-            echo "libnode.so already exists ($(du -sh "$LIBNODE" | cut -f1))"
-            exit 0
-          fi
-          # Try direct URL first
-          if [ -n "${LIBNODE_URL:-}" ]; then
-            echo "Downloading libnode.so from LIBNODE_URL..."
-            curl -L --fail --show-error -o "$LIBNODE" "$LIBNODE_URL"
-            echo "Downloaded ($(du -sh "$LIBNODE" | cut -f1))"
-            exit 0
-          fi
-          # Try current tag's release, then any release with libnode.so
-          for tag in "$TAG" ""; do
-            FLAG=""
-            [ -n "$tag" ] && FLAG="--tag $tag"
-            echo "Trying: gh release download $FLAG --pattern libnode.so ..."
-            if gh release download --repo "$REPO" $FLAG \
-                 --pattern "libnode.so" \
-                 --dir android/app/src/main/jniLibs/arm64-v8a/ 2>/dev/null; then
-              echo "Downloaded ($(du -sh "$LIBNODE" | cut -f1))"
-              exit 0
-            fi
-          done
-          echo "ERROR: libnode.so not found in any release. Upload it to a release first."
-          exit 1
+      # libnode.so is Termux's nodejs-lts, not a hand-cross-compiled binary kept
+      # as a release asset. The old one ran but segfaulted inside the Claude Code
+      # CLI's subcommands, and there was no way to debug a build we could not
+      # reproduce. Its version also decides which VS Code releases are reachable.
+      - name: Fetch Node runtime
+        run: bash scripts/download-node.sh
 
       - name: Verify assets
         run: |

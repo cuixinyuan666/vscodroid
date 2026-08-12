@@ -43,6 +43,14 @@ REQUIRED_PACKAGES=(
     krb5
     libdb
     libresolv-wrapper
+    # Node's own dependencies. It is fetched by download-node.sh, but its
+    # libraries belong here: step 5 wipes assets/usr/lib before repopulating it,
+    # so anything placed there by a later script would survive only by running
+    # after this one.
+    c-ares
+    libicu
+    libc++
+    libsqlite
 )
 
 # Soname mapping: returns space-separated soname(s) for a package.
@@ -69,6 +77,11 @@ get_sonames() {
         krb5)              echo "libgssapi_krb5.so.2 libkrb5.so.3 libk5crypto.so.3 libkrb5support.so.0 libcom_err.so.3" ;;
         libdb)             echo "libdb-18.1.so" ;;
         libresolv-wrapper) echo "libresolv_wrapper.so" ;;
+        c-ares)            echo "libcares.so" ;;
+        # libicudata is the 32 MB data blob the other two are useless without.
+        libicu)            echo "libicui18n.so.78 libicuuc.so.78 libicudata.so.78" ;;
+        libc++)            echo "libc++_shared.so" ;;
+        libsqlite)         echo "libsqlite3.so" ;;
         *)                 echo "" ;;
     esac
 }
@@ -80,6 +93,7 @@ LIB_PACKAGES=(
     libnghttp2 libnghttp3 libngtcp2 libssh2 zlib
     libevent libandroid-glob libedit ldns
     krb5 libdb libresolv-wrapper
+    c-ares libicu libc++ libsqlite
 )
 
 echo "=== Downloading Termux Tools (bash + git + tmux + make + ssh) ==="
