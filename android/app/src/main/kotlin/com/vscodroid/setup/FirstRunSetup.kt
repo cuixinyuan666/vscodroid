@@ -371,6 +371,14 @@ class FirstRunSetup(private val context: Context) {
                 bashrc.appendText(npmBashFunctions())
                 Logger.i(tag, "Appended npm/npx functions to .bashrc")
             }
+            // Guarded separately from the npm block rather than added to it: an
+            // install that predates this already has npm(), so a shared guard
+            // would skip the new function forever, and a widened one would append
+            // npm() a second time.
+            if (!content.contains("claude()")) {
+                bashrc.appendText(claudeBashFunction())
+                Logger.i(tag, "Appended claude function to .bashrc")
+            }
         }
 
         // Update .npmrc on every launch — nativeLibDir changes on APK reinstall
@@ -462,6 +470,29 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
 """
 
     /**
+     * `claude` in the terminal, which the extension's own login screen suggests.
+     *
+     * A function for the same reason npm is one: SELinux denies exec of anything
+     * under filesDir. It runs the very file the extension launches rather than a
+     * second copy — 13 MB, and two copies would drift apart on the first upgrade.
+     * The glob resolves the version so a bundled upgrade needs no change here.
+     */
+    private fun claudeBashFunction(): String = """
+
+# claude — the CLI the Claude Code extension launches, run through node because
+# SELinux blocks exec of scripts under filesDir.
+claude() {
+    local cli
+    cli=${'$'}(echo "${'$'}HOME"/.vscodroid/extensions/Anthropic.claude-code-*/resources/native-binary/claude)
+    if [ ! -f "${'$'}cli" ]; then
+        echo "claude: the Claude Code extension is not installed" >&2
+        return 127
+    fi
+    node "${'$'}cli" "${'$'}@"
+}
+"""
+
+    /**
      * Updates nativeLibraryDir paths in settings.json.
      *
      * Android changes nativeLibraryDir on every reinstall (random hash in path).
@@ -476,6 +507,7 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
             settingsFile.readText(),
             Environment.getTerminalShellPath(context),
             Environment.getGitPath(context),
+            Environment.getNodeSymlinkPath(context),
         ) ?: return
 
         settingsFile.writeText(updated)
@@ -613,6 +645,7 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
                     "security.workspace.trust.enabled": false,
                     "python.languageServer": "Jedi",
                     "python.defaultInterpreterPath": "${context.filesDir.absolutePath}/usr/bin/python3",
+                    "claudeCode.claudeProcessWrapper": "${Environment.getNodeSymlinkPath(context)}",
                     "gitlens.showWelcomeOnInstall": false,
                     "gitlens.showWhatsNewAfterUpgrades": false,
                     "gitlens.codeLens.enabled": false,
@@ -928,6 +961,16 @@ private val SHELL_INTEGRATION_OFF = Regex(
     """("terminal\.integrated\.shellIntegration\.enabled"\s*:\s*)false"""
 )
 
+private val CLAUDE_WRAPPER = Regex("""("claudeCode\.claudeProcessWrapper"\s*:\s*)"[^"]*"""")
+
+/**
+ * The first property in the document, with the indentation it sits at.
+ *
+ * Anchored to the opening brace so it cannot match a property nested inside some
+ * other object further down, which would put the inserted line in the wrong scope.
+ */
+private val FIRST_PROPERTY = Regex("""(?<=\{)\s*\n([ \t]*)(?=")""")
+
 /**
  * Reconciles the settings.json values this app manages, returning the updated
  * document or `null` when nothing needed changing.
@@ -997,7 +1040,12 @@ internal fun supersededExtensionDirs(present: List<String>, bundled: List<String
     }
 }
 
-internal fun refreshManagedPaths(content: String, shellPath: String, gitPath: String): String? {
+internal fun refreshManagedPaths(
+    content: String,
+    shellPath: String,
+    gitPath: String,
+    claudeWrapper: String,
+): String? {
     var updated = GIT_PATH.replace(content) { "${it.groupValues[1]}\"$gitPath\"" }
 
     val movedProfile =
@@ -1007,5 +1055,33 @@ internal fun refreshManagedPaths(content: String, shellPath: String, gitPath: St
         updated = SHELL_INTEGRATION_OFF.replace(updated) { "${it.groupValues[1]}true" }
     }
 
+    // Without this setting the Claude Code extension refuses to start at all —
+    // resolveClaudeBinary() throws "Unsupported platform" rather than looking on
+    // PATH — so an install that predates the setting needs it added, not just
+    // refreshed. The value names a filesDir symlink, which unlike the two paths
+    // above does not move between reinstalls.
+    updated = if (CLAUDE_WRAPPER.containsMatchIn(updated)) {
+        CLAUDE_WRAPPER.replace(updated) { "${it.groupValues[1]}\"$claudeWrapper\"" }
+    } else {
+        insertSetting(updated, "claudeCode.claudeProcessWrapper", claudeWrapper)
+    }
+
     return updated.takeIf { it != content }
+}
+
+/**
+ * Adds a setting to a JSONC document, directly after its opening brace.
+ *
+ * The document belongs to the user and is full of comments and formatting this
+ * app has no business reflowing, so exactly one line is inserted and nothing
+ * else moves. It borrows the indentation of the first property when there is
+ * one, which covers the document this app writes and anything formatted like it.
+ */
+private fun insertSetting(content: String, key: String, value: String): String {
+    val brace = content.indexOf('{')
+    if (brace < 0) return content
+    val indent = FIRST_PROPERTY.find(content)?.groupValues?.get(1) ?: "    "
+    return content.substring(0, brace + 1) +
+        "\n$indent\"$key\": \"$value\"," +
+        content.substring(brace + 1)
 }

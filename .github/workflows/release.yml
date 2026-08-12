@@ -112,7 +112,7 @@ jobs:
             toolchains/termux-packages/Packages
             toolchains/build/npm/
             toolchains/extensions/
-          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh') }}
+          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-claude-code.sh') }}
           restore-keys: |
             downloads-
 
@@ -144,6 +144,12 @@ jobs:
 
       - name: Download extensions
         run: bash scripts/download-extensions.sh
+
+      # Kept separate from download-extensions.sh: this one substitutes the
+      # extension's bundled musl binary with the JavaScript CLI, which is what
+      # makes it run on Bionic at all.
+      - name: Bundle Claude Code
+        run: bash scripts/download-claude-code.sh
 
       - name: Build native addons
         run: bash scripts/build-native-addons.sh

@@ -68,6 +68,7 @@ bundletool.jar
 /toolchains/build/
 /toolchains/termux-packages/
 /toolchains/extensions/
+/toolchains/claude-code/
 
 # ===== Python =====
 __pycache__/
@@ -150,3 +151,6 @@ plans/
 *.bak
 *.orig
 toolchain-zips/
+
+# Where release.yml stages downloaded build artifacts; a local run leaves it behind
+/artifacts/

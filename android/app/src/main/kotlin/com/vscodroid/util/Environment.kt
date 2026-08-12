@@ -80,6 +80,13 @@ object Environment {
             "NPM_CONFIG_PREFIX" to "$filesDir/usr",
             "NPM_CONFIG_CACHE" to "$cacheDir/npm-cache",
             "PROJECTS_DIR" to getProjectsDir(context),
+            // The Claude Code CLI otherwise looks for a ripgrep under its own
+            // vendor/<arch>-<platform>/ — a directory that cannot exist here,
+            // since process.platform reports "android" and the builds shipped
+            // are for glibc and musl. Unset, it finds nothing and searching
+            // fails with no explanation. Falsy sends it to `rg` on PATH, which
+            // is the Bionic build already bundled as libripgrep.so.
+            "USE_BUILTIN_RIPGREP" to "0",
             "VSCODROID_PORT" to port.toString(),
             "VSCODROID_VERSION" to getVersionName(context),
         )
@@ -144,6 +151,20 @@ object Environment {
      */
     fun getTerminalShellPath(context: Context): String =
         "${context.filesDir}/usr/bin/bash"
+
+    /**
+     * The node the Claude Code extension launches its CLI with.
+     *
+     * Names the symlink rather than nativeLibraryDir/libnode.so, and the
+     * difference matters twice. Android hands out a new nativeLibraryDir on every
+     * reinstall, so a path recorded in settings.json goes stale — the symlink
+     * lives under filesDir, which does not move, and setupToolSymlinks() re-points
+     * it at every launch. And SELinux denies execve on app_data_file, so the
+     * script could not be made executable itself; execve resolves the symlink and
+     * checks the target, which is in nativeLibraryDir and allowed.
+     */
+    fun getNodeSymlinkPath(context: Context): String =
+        "${context.filesDir}/usr/bin/node"
 
     fun getGitPath(context: Context): String =
         "${context.applicationInfo.nativeLibraryDir}/libgit.so"
