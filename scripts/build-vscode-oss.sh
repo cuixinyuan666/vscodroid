@@ -60,11 +60,16 @@ step "Patches"
 # build — which is the whole reason these are moving here from regexes against
 # minified output, where a stale pattern printed SKIP and exited 0.
 #
-# Applied to a clean tree every time: the checkout is reset first, so a rerun
-# does not fail on already-applied hunks and cannot accumulate half-states.
+# Applied to a clean tree every time, so a rerun does not fail on already-applied
+# hunks and cannot accumulate half-states. All three steps are needed, and the
+# first is the one that is easy to miss: a patch that adds a file leaves it
+# staged, where neither checkout nor clean will touch it, and the next run dies
+# with "already exists in working directory".
 PATCHES="${PATCHES:-/patches}"
 if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
+    git -C "$SRC" reset -q 2>/dev/null || true
     git -C "$SRC" checkout -- src/ 2>/dev/null || true
+    git -C "$SRC" clean -fdq src/ 2>/dev/null || true
     for patch in "$PATCHES"/*.patch; do
         git -C "$SRC" apply --verbose "$patch" 2>&1 | sed 's/^/  /'
         echo "  applied $(basename "$patch")"
@@ -180,6 +185,7 @@ if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
     done <<'FINGERPRINTS'
 0001 platform|out/server-main.js|platform==="android"
 0002 userDataPath|out/vs/platform/terminal/node/ptyHostMain.js|case"android"
+0003 ptyHost worker|out/server-main.js|__vsc_disconnect
 FINGERPRINTS
 fi
 
