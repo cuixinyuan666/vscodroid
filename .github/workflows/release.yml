@@ -17,6 +17,59 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Tags and history are needed to compare this release against the
+          # previous one. The default shallow fetch has neither, and the
+          # comparison would quietly pass by finding nothing.
+          fetch-depth: 0
+
+      # A tag whose versionName does not match the one in build.gradle.kts is the
+      # quietest way to ship a broken upgrade. FirstRunSetup.isFirstRun() gates on
+      # versionName, so an unchanged one means existing installs skip setup
+      # entirely: no extraction, and no migration, while the release itself looks
+      # completely normal. Nothing downstream notices, and the symptom on a device
+      # is an app running against files from the previous version.
+      - name: Check the tag matches the app version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Through the environment and validated before use: the tag reaches a
+          # git command below, and the workflow's v* filter is a match rule, not
+          # a guarantee about the rest of the name.
+          case "$TAG" in
+            v[0-9]*) ;;
+            *) echo "::error::Refusing tag $TAG; expected vMAJOR.MINOR.PATCH"; exit 1 ;;
+          esac
+
+          gradle_file=android/app/build.gradle.kts
+          version_name=$(grep -m1 'versionName = ' "$gradle_file" | sed 's/.*"\(.*\)".*/\1/')
+          version_code=$(grep -m1 'versionCode = ' "$gradle_file" | sed 's/[^0-9]*//g')
+          tag_version=${TAG#v}
+
+          echo "tag          : $TAG"
+          echo "versionName  : $version_name"
+          echo "versionCode  : $version_code"
+
+          if [ "$tag_version" != "$version_name" ]; then
+            echo "::error::Tag $TAG does not match versionName $version_name in $gradle_file." \
+                 "Existing installs gate first-run setup on versionName, so releasing this" \
+                 "would skip extraction and migrations for every upgrading user."
+            exit 1
+          fi
+
+          # versionCode is what migrations threshold against; a repeat means a
+          # migration written for this release runs for nobody.
+          previous=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || echo "")
+          if [ -n "$previous" ]; then
+            previous_code=$(git show "$previous:$gradle_file" 2>/dev/null \
+              | grep -m1 'versionCode = ' | sed 's/[^0-9]*//g' || echo "")
+            if [ -n "$previous_code" ] && [ "$version_code" -le "$previous_code" ]; then
+              echo "::error::versionCode $version_code is not greater than $previous_code in $previous." \
+                   "Migrations threshold on versionCode and would not run."
+              exit 1
+            fi
+            echo "previous tag : $previous (versionCode ${previous_code:-unknown})"
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
