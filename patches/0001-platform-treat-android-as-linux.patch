@@ -27,8 +27,8 @@ index d2072de..493253f 100644
 -	_isLinux = (nodeProcess.platform === 'linux');
 +	// Android reports its platform as 'android', not 'linux'. This single line
 +	// decides isLinux, Platform, OS and getTargetPlatform for the whole product,
-+	// and everything downstream that asks "is this a Linux-shaped system" — path
-+	// separators, shell selection, the platform-suffixed settings keys — is
++	// and everything downstream that asks "is this a Linux-shaped system" -- path
++	// separators, shell selection, the platform-suffixed settings keys -- is
 +	// answered from here. Bionic is close enough to Linux for all of them.
 +	_isLinux = (nodeProcess.platform === 'linux' || nodeProcess.platform === 'android');
  	_isLinuxSnap = _isLinux && !!nodeProcess.env['SNAP'] && !!nodeProcess.env['SNAP_REVISION'];

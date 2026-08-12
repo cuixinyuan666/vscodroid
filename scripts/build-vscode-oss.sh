@@ -9,7 +9,9 @@ set -euo pipefail
 # Docker Desktop bind mount makes that pathologically slow:
 #
 #   docker volume create vscodroid-codeoss
+#   docker volume create vscodroid-npm-cache
 #   docker run --rm -v vscodroid-codeoss:/work \
+#       -v vscodroid-npm-cache:/root/.npm \
 #       -e VSCODE_VERSION="$(cat VSCODE_VERSION)" \
 #       -v "$PWD/scripts:/scripts:ro" \
 #       -v "$PWD/branding:/branding" \
@@ -77,9 +79,11 @@ step "Patches"
 # with "already exists in working directory".
 PATCHES="${PATCHES:-/patches}"
 if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
+    # build/ as well as src/: patches reach the build tooling too, and a tree
+    # reset that misses one of them fails the next run on an applied hunk.
     git -C "$SRC" reset -q 2>/dev/null || true
-    git -C "$SRC" checkout -- src/ 2>/dev/null || true
-    git -C "$SRC" clean -fdq src/ 2>/dev/null || true
+    git -C "$SRC" checkout -- src/ build/ 2>/dev/null || true
+    git -C "$SRC" clean -fdq src/ build/ 2>/dev/null || true
     for patch in "$PATCHES"/*.patch; do
         git -C "$SRC" apply --verbose "$patch" 2>&1 | sed 's/^/  /'
         echo "  applied $(basename "$patch")"
@@ -92,6 +96,13 @@ step "Branding"
 # Skippable so the stage can be run bare when isolating a build problem.
 BRANDING="${BRANDING:-/branding}"
 if [ -d "$BRANDING" ]; then
+    # Restore what this stage overwrites before overwriting it. The overlay is
+    # applied with update(), so on a reused work volume it merges into the
+    # previous run's output — which means a key REMOVED from the overlay stays in
+    # the file forever, and the stage silently stops matching what it declares.
+    # That cost three build attempts: extensionsGallery was dropped from the
+    # overlay and the build kept downloading builtin extensions from Open VSX.
+    git -C "$SRC" checkout -- product.json resources/server/ 2>/dev/null || true
     python3 - "$BRANDING/product.json" "$SRC/product.json" <<'PY'
 import json, sys
 
@@ -129,20 +140,54 @@ else
 fi
 
 step "Dependencies (npm ci)"
+# Around 3 GB over the wire, and a single reset anywhere in it fails the whole
+# stage — which then costs another full download to retry. npm's own retry only
+# covers individual requests, so the stage is retried as a whole too. Mount a
+# volume at /root/.npm (see the header) and a retry resumes from cache instead of
+# starting over.
 t0=$SECONDS
-npm ci
+for attempt in 1 2 3; do
+    if npm ci --fetch-retries=5 --fetch-retry-mintimeout=10000 \
+              --fetch-retry-maxtimeout=120000 --prefer-offline; then
+        break
+    fi
+    if [ "$attempt" = 3 ]; then
+        echo "  npm ci failed three times; the last error is above" >&2
+        exit 1
+    fi
+    echo "  npm ci failed, retrying ($attempt/3)" >&2
+done
 elapsed $(( SECONDS - t0 ))
 du -sh node_modules remote/node_modules 2>/dev/null | sed 's/^/  /'
 
-step "Build (gulp vscode-reh-web-linux-$ARCH-min)"
-# The -min task chains compile, bundle, minify and package. The -min-ci variant
-# is only the packaging tail — it skips compileBuildTask and minifyTask entirely
-# (gulpfile.reh.js:470-486), so it is correct only when an earlier job already
-# produced out-vscode-reh-web-min.
+step "Build (core-ci)"
+# Two tasks, in the order Microsoft's own pipelines run them, and NOT the single
+# `vscode-reh-web-linux-$ARCH-min` that looks like the obvious entry point.
+#
+# That task still exists but nothing at Microsoft calls it: every shipping
+# pipeline runs `core-ci` and then the `-min-ci` packaging tail
+# (product-build-linux-compile.yml:211,311, and the darwin/win32/alpine
+# equivalents). `core-ci` is esbuild -- tsgo type-check, transpile, then bundle
+# straight into out-vscode-reh-web-min. The legacy gulp-and-mangler chain was
+# renamed `core-ci-old` (gulpfile.vscode.ts:195) and is invoked by nothing.
+#
+# Calling `-min` cost eight failed builds, and every failure was in that
+# abandoned path: the mangler's protected-fields gate, 168 compile errors from
+# tests indexing private fields the mangler had renamed, 14 more from
+# dynamic-import destructuring, and a non-ASCII check inside a minify step
+# core-ci never runs. Microsoft says as much in
+# .github/instructions/buildNext.instructions.md: "The new build doesn't do
+# TypeScript-based mangling yet."
 t0=$SECONDS
-npm run gulp "vscode-reh-web-linux-$ARCH-min"
+npm run gulp core-ci
 elapsed $(( SECONDS - t0 ))
 
+step "Package (vscode-reh-web-linux-$ARCH-min-ci)"
+# Packaging only -- native extensions, the node download, the copy into place.
+# Correct precisely because core-ci has already produced out-vscode-reh-web-min.
+t0=$SECONDS
+npm run gulp "vscode-reh-web-linux-$ARCH-min-ci"
+elapsed $(( SECONDS - t0 ))
 step "Prune"
 # The node-linux-arm64 gulp task downloads a GNU/Linux Node and packageTask ships
 # it. Its interpreter (/lib/ld-linux-aarch64.so.1) does not exist on Android and
@@ -155,6 +200,20 @@ if [ -f "$OUT/node" ]; then
     rm -f "$OUT/node"
     echo "  removed the unusable GNU/Linux node binary ($size)"
 fi
+
+# GitHub Copilot, which 1.133 ships as a builtin. It is 300 MB of the tree on its
+# own, plus a node_modules copy that carries ripgrep builds for two architectures
+# -- one of them x86-64, which is what the native-architecture check trips over.
+# It is also not MIT, needs a subscription nobody here has, and this app bundles
+# Claude Code for the same job. Removed rather than shipped and ignored: the
+# whole tree goes into every APK.
+for copilot in extensions/copilot node_modules/@github; do
+    if [ -e "$OUT/$copilot" ]; then
+        size=$(du -sh "$OUT/$copilot" | cut -f1)
+        rm -rf "$OUT/$copilot"
+        echo "  removed $copilot ($size)"
+    fi
+done
 
 # gulp's reh-web package task leaves both of these behind, and product.json still
 # names one of them in licenseFileName. Code - OSS is MIT, and MIT asks that the

@@ -260,9 +260,18 @@ class FirstRunSetup(private val context: Context) {
     }
 
     /**
-     * Creates a symlink so VS Code's @vscode/ripgrep finds rg at its expected path.
-     * The rg binary lives in nativeLibraryDir as libripgrep.so, but VS Code looks for
-     * node_modules/@vscode/ripgrep/bin/rg inside the server directory.
+     * Creates a symlink so VS Code's ripgrep finds rg at its expected path.
+     *
+     * The binary lives in nativeLibraryDir as libripgrep.so, because SELinux will
+     * not exec anything under filesDir. VS Code looks for it inside the server
+     * tree instead, so the two are joined by a symlink -- execve resolves it and
+     * checks the target, which is where execution is allowed.
+     *
+     * The path it looks in moved in VS Code 1.133: @vscode/ripgrep with a single
+     * bin/rg became @vscode/ripgrep-universal with one directory per platform.
+     * Both are linked, so an install carrying either tree finds it; the older one
+     * costs a directory and a symlink.
+     *
      * Safe to call on every launch (recreates if stale, skips if current).
      */
     fun setupRipgrepVscodeSymlink() {
@@ -270,24 +279,31 @@ class FirstRunSetup(private val context: Context) {
         val rgBinary = File("$nativeLibDir/libripgrep.so")
         if (!rgBinary.exists()) return
 
-        val rgBinDir = File(context.filesDir, "server/vscode-reh/node_modules/@vscode/ripgrep/bin")
-        rgBinDir.mkdirs()
-        val rgLink = File(rgBinDir, "rg")
         val target = rgBinary.absolutePath
+        val serverDir = File(context.filesDir, "server/vscode-reh/node_modules")
+        val binDirs = listOf(
+            File(serverDir, "@vscode/ripgrep-universal/bin/linux-arm64"),
+            File(serverDir, "@vscode/ripgrep/bin"),
+        )
 
-        val linkExists = try { Os.lstat(rgLink.absolutePath); true } catch (e: Exception) { false }
-        if (linkExists) {
+        for (rgBinDir in binDirs) {
+            rgBinDir.mkdirs()
+            val rgLink = File(rgBinDir, "rg")
+
+            val linkExists = try { Os.lstat(rgLink.absolutePath); true } catch (e: Exception) { false }
+            if (linkExists) {
+                try {
+                    if (Os.readlink(rgLink.absolutePath) == target) continue
+                } catch (_: Exception) { }
+                rgLink.delete()
+            }
+
             try {
-                if (Os.readlink(rgLink.absolutePath) == target) return
-            } catch (_: Exception) { }
-            rgLink.delete()
-        }
-
-        try {
-            Os.symlink(target, rgLink.absolutePath)
-            Logger.i(tag, "ripgrep symlink: ${rgLink.absolutePath} -> $target")
-        } catch (e: Exception) {
-            Logger.d(tag, "Failed to create ripgrep symlink: ${e.message}")
+                Os.symlink(target, rgLink.absolutePath)
+                Logger.i(tag, "ripgrep symlink: ${rgLink.absolutePath} -> $target")
+            } catch (e: Exception) {
+                Logger.d(tag, "Failed to create ripgrep symlink: ${e.message}")
+            }
         }
     }
 

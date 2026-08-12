@@ -98,7 +98,7 @@ index 0000000..5ffcd93
 + * over `parentPort` on the child side, so the module inside sees the IPC channel
 + * it expects.
 + *
-+ * Only what the callers use is implemented — `send`, `connected`, `kill`, `pid`
++ * Only what the callers use is implemented -- `send`, `connected`, `kill`, `pid`
 + * and the `message`/`error`/`exit` events, plus `stdout`/`stderr` for the
 + * Extension Host. Anything else is deliberately absent rather than faked, so a
 + * new dependency on `ChildProcess` fails loudly here instead of behaving oddly on
@@ -195,7 +195,7 @@ index 0000000..5ffcd93
 +
 +		// Give the module the disconnect it would get from a closing IPC channel,
 +		// so its own shutdown runs, then stop the thread. terminate() alone would
-+		// drop pending work — for the Pty Host that means orphaned shells.
++		// drop pending work -- for the Pty Host that means orphaned shells.
 +		try {
 +			this._worker.postMessage({ __vsc_disconnect: true });
 +		} catch {

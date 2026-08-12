@@ -95,7 +95,7 @@ fi
 cd \"\$S\"
 tar xzf /data/local/tmp/oss.tar.gz
 mv '$TREE' vscode-reh
-RG=\"\$S/vscode-reh/node_modules/@vscode/ripgrep/bin/rg\"
+RG=\"\$S/vscode-reh/node_modules/@vscode/ripgrep-universal/bin/linux-arm64/rg\"
 rm -f \"\$RG\"
 ln -s '$NLD/libripgrep.so' \"\$RG\"
 echo \"  deployed: \$(du -sh \$S/vscode-reh | cut -f1)\"

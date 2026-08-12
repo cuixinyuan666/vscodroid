@@ -24,7 +24,9 @@ MACHINES = {0x3E: "x86-64", AARCH64: "aarch64", 0x28: "arm", 0xF3: "riscv"}
 REQUIRED = [
     "out/server-main.js",
     "product.json",
-    "node_modules/@vscode/ripgrep/bin/rg",
+    # Moved in 1.133: @vscode/ripgrep became @vscode/ripgrep-universal, which
+    # ships one binary per platform instead of one per install.
+    "node_modules/@vscode/ripgrep-universal/bin/linux-arm64/rg",
     # Code - OSS is MIT and this tree is redistributed inside every APK, so the
     # copyright notice has to travel with it. product.json names it too.
     "LICENSE.txt",
@@ -90,9 +92,17 @@ def main(tree):
         # only path.
         check("webviewContentExternalBaseUrlTemplate" not in product,
               "no vscode-cdn.net template")
+        # Asserted as an absence, not a presence. The gallery is deliberately not
+        # set at build time: builtInExtensions.ts:96 downloads the bundled
+        # js-debug extensions from whatever gallery product.json names, and Open
+        # VSX repackages them, so their sha256 no longer matches the one
+        # product.json records and the build fails on a checksum mismatch.
+        # Left unset, the download goes to each extension's own GitHub release
+        # where the hashes do match, and assets/server.js writes the Open VSX
+        # gallery into product.json on every start instead.
         gallery = product.get("extensionsGallery", {}).get("serviceUrl", "")
-        check("open-vsx.org" in gallery, "gallery points at Open VSX",
-              f"serviceUrl = {gallery!r}")
+        check("marketplace.visualstudio.com" not in gallery,
+              "no Microsoft marketplace URL", f"serviceUrl = {gallery!r}")
 
     return 1 if failed else 0
 

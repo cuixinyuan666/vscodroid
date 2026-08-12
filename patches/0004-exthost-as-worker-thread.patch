@@ -63,7 +63,7 @@ index 06d614b..04286bc 100644
 +		// Unreachable on the initial connection now that _canSendSocket is false,
 +		// but acceptReconnection() calls this without checking it. A worker_thread has
 +		// no channel that can carry a socket handle, and send() would drop it while
-+		// reporting success — leaving the host waiting for a connection that never
++		// reporting success -- leaving the host waiting for a connection that never
 +		// arrives, with nothing logged. Refusing here at least says so.
 +		this._logError(`<${extensionHostProcess.pid}> Cannot hand a socket to a worker_thread Extension Host; the client must reconnect from scratch.`);
  	}

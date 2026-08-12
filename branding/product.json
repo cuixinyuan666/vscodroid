@@ -7,18 +7,15 @@
     "",
     "assets/server.js rewrites product.json again at every start. That override",
     "stays, because it is the only place the port-dependent values can be filled",
-    "in, but it merges shallowly — a nested object it names replaces the built one",
+    "in, but it merges shallowly \u2014 a nested object it names replaces the built one",
     "wholesale. Keep extensionsGallery identical in both."
   ],
-
   "remove": [
     "webviewContentExternalBaseUrlTemplate",
-
     "darwinBundleIdentifier",
     "linuxIconName",
     "tunnelApplicationName",
     "nodejsRepository",
-
     "win32AppUserModelId",
     "win32DirName",
     "win32MutexName",
@@ -30,9 +27,14 @@
     "win32arm64AppId",
     "win32arm64UserAppId",
     "win32x64AppId",
-    "win32x64UserAppId"
+    "win32x64UserAppId",
+    "voiceWsUrl",
+    "agentsTelemetryAppName",
+    "darwinProfileUUID",
+    "darwinProfilePayloadUUID",
+    "electronArtifactFeed",
+    "nodejsArtifactFeed"
   ],
-
   "set": {
     "nameShort": "VSCodroid",
     "nameLong": "VSCodroid",
@@ -42,19 +44,11 @@
     "serverDataFolderName": ".vscodroid-server",
     "urlProtocol": "vscodroid",
     "quality": "stable",
-
-    "extensionsGallery": {
-      "serviceUrl": "https://open-vsx.org/vscode/gallery",
-      "itemUrl": "https://open-vsx.org/vscode/item",
-      "resourceUrlTemplate": "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
-      "controlUrl": "",
-      "nlsBaseUrl": ""
-    },
-    "linkProtectionTrustedDomains": ["https://open-vsx.org"],
-
+    "linkProtectionTrustedDomains": [
+      "https://open-vsx.org"
+    ],
     "telemetryOptIn": false,
     "enableTelemetry": false,
-
     "reportIssueUrl": "https://github.com/rmyndharis/VSCodroid/issues/new",
     "licenseUrl": "https://github.com/rmyndharis/VSCodroid/blob/main/LICENSE",
     "serverLicenseUrl": "https://github.com/rmyndharis/VSCodroid/blob/main/LICENSE"

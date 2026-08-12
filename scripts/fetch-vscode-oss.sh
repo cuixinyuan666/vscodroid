@@ -93,13 +93,14 @@ echo "=== ripgrep ==="
 # filesDir is unexecutable no matter how it is chmodded; binaries have to be
 # packaged as lib*.so in jniLibs, which Android extracts into nativeLibraryDir
 # with execute permission. FirstRunSetup.kt:270-288 then symlinks
-# node_modules/@vscode/ripgrep/bin/rg at it, which is the path VS Code's search
-# service looks for.
+# node_modules/@vscode/ripgrep-universal/bin/linux-arm64/rg at it, which is the
+# path VS Code's search service looks for. That path moved in 1.133 -- the
+# package used to be @vscode/ripgrep with a single bin/rg.
 #
 # libripgrep.so is gitignored, so this is its only source in a clean checkout —
 # without it Search returns nothing and nothing else fails.
 JNILIBS_DIR="$ROOT_DIR/android/app/src/main/jniLibs/arm64-v8a"
 mkdir -p "$JNILIBS_DIR"
-cp "$DEST/node_modules/@vscode/ripgrep/bin/rg" "$JNILIBS_DIR/libripgrep.so"
+cp "$DEST/node_modules/@vscode/ripgrep-universal/bin/linux-arm64/rg" "$JNILIBS_DIR/libripgrep.so"
 chmod +x "$JNILIBS_DIR/libripgrep.so"
 echo "  rg -> libripgrep.so ($(du -h "$JNILIBS_DIR/libripgrep.so" | cut -f1))"
