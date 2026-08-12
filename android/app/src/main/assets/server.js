@@ -110,12 +110,18 @@ if (!fs.existsSync(rehEntryPoint)) {
         // Without this every folder opens in Restricted Mode, which blocks most
         // extensions from activating.
         //
-        // The security.workspace.trust.enabled setting cannot do it. That setting
-        // is registered with ConfigurationScope.APPLICATION, and an
-        // application-scoped setting is not read from the remote side — our
-        // settings.json lives in the server's user-data-dir, which is exactly the
-        // side it is ignored from. It has therefore never had any effect here,
-        // despite being written since the first release.
+        // The security.workspace.trust.enabled setting cannot do it, and for two
+        // reasons rather than one. The setting is registered with
+        // ConfigurationScope.APPLICATION, and the remote side contributes only
+        // REMOTE_MACHINE_SCOPES — MACHINE, WINDOW, RESOURCE, LANGUAGE_OVERRIDABLE,
+        // MACHINE_OVERRIDABLE (configuration.ts:387) — so an application-scoped
+        // setting is ignored here whatever file it is in. Separately, until
+        // 2026-08-12 the file this app wrote was not read at all: the workbench
+        // takes remote settings from <server-data-dir>/data/Machine/settings.json
+        // (server.main.ts:39-40, environmentService.ts:86,
+        // remoteAgentEnvironmentImpl.ts:112), and we were writing a sibling
+        // User/settings.json. Fixing the path made every other default take
+        // effect; it does not make this one work.
         // isWorkspaceTrustEnabled() checks environmentService.disableWorkspaceTrust
         // before it consults the configuration at all, so the flag is the only
         // route that works, and webClientServer passes it through to the web

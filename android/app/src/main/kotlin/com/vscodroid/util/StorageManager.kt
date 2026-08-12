@@ -27,7 +27,12 @@ object StorageManager {
         return JSONObject().apply {
             put("vscode_server", dirSize(File(filesDir, "server")))
             put("extensions", dirSize(File(filesDir, "home/.vscodroid/extensions")))
-            put("user_data", dirSize(File(filesDir, "home/.vscodroid/User")))
+            // data/User, not the sibling User/: the server keeps globalStorage,
+            // History and workspaceStorage there. The directory this used to
+            // measure was this app's own and is now empty. Logs are counted
+            // separately below and live in data/logs, so this stays on data/User
+            // rather than data/ to avoid counting them twice.
+            put("user_data", dirSize(File(filesDir, "home/.vscodroid/data/User")))
             put("logs", dirSize(File(filesDir, "home/.vscodroid/data/logs")))
             put("tools", dirSize(File(filesDir, "usr")))
             put("saf_mirrors", dirSize(File(filesDir, "saf-mirrors")))

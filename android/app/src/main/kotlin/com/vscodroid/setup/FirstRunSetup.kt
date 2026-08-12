@@ -500,7 +500,9 @@ claude() {
      * reference this directory, so they must be refreshed on each launch.
      */
     fun updateSettingsNativeLibPaths() {
-        val settingsFile = File(context.filesDir, "home/.vscodroid/User/settings.json")
+        migrateSettingsToMachinePath()
+
+        val settingsFile = File(Environment.getMachineSettingsPath(context))
         if (!settingsFile.exists()) return
 
         val updated = refreshManagedPaths(
@@ -512,6 +514,33 @@ claude() {
 
         settingsFile.writeText(updated)
         Logger.i(tag, "Refreshed managed paths in settings.json")
+    }
+
+    /**
+     * Moves settings.json from the path this app used to write to the one the
+     * workbench reads.
+     *
+     * Everything written to the old path was inert — the theme, the terminal
+     * profile, the Python interpreter, all of it — so the move is what makes those
+     * defaults take effect for the first time. It is a move rather than a fresh
+     * write because the old file is reachable from the terminal and may have been
+     * edited by hand.
+     *
+     * Runs on every launch and does nothing once the file is in place. If both
+     * exist the new one wins and the old is left alone, since only the new one has
+     * been in use.
+     */
+    private fun migrateSettingsToMachinePath() {
+        val legacy = File(context.filesDir, "home/.vscodroid/User/settings.json")
+        val current = File(Environment.getMachineSettingsPath(context))
+        if (current.exists() || !legacy.exists()) return
+
+        current.parentFile?.mkdirs()
+        if (legacy.copyTo(current, overwrite = false).exists() && legacy.delete()) {
+            Logger.i(tag, "Moved settings.json to the path the workbench reads")
+        } else {
+            Logger.e(tag, "Could not move settings.json to ${current.absolutePath}")
+        }
     }
 
     private fun createWelcomeProject() {
@@ -605,9 +634,10 @@ claude() {
 
     private fun createDefaultSettings() {
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
-        val settingsDir = File(context.filesDir, "home/.vscodroid/User")
-        settingsDir.mkdirs()
-        val settingsFile = File(settingsDir, "settings.json")
+        // Environment.getMachineSettingsPath explains why it is this path and not
+        // the `User/` one that looks like the obvious home for user settings.
+        val settingsFile = File(Environment.getMachineSettingsPath(context))
+        settingsFile.parentFile?.mkdirs()
         if (!settingsFile.exists()) {
             // The terminal profile is inert today and is written for the day it is
             // not. VS Code keys these settings `…profiles.linux`, the remote

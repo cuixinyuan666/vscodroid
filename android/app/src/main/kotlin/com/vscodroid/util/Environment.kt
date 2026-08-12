@@ -127,6 +127,30 @@ object Environment {
     fun getUserDataDir(context: Context): String =
         "${context.filesDir}/home/.vscodroid"
 
+    /**
+     * The settings file the workbench actually reads from this side.
+     *
+     * Not `<user-data-dir>/User/settings.json`, which is what this app wrote for
+     * its first year and which nothing has ever read. The path is derived in three
+     * steps, none of them where you would look first:
+     * `server.main.ts:39-40` sets `USER_DATA_PATH = <server-data-dir>/data`,
+     * ignoring `--user-data-dir` entirely; `environmentService.ts:86` puts machine
+     * settings at `<USER_DATA_PATH>/Machine/settings.json`; and
+     * `remoteAgentEnvironmentImpl.ts:112` hands exactly that to the client as the
+     * remote `settingsPath`.
+     *
+     * Only REMOTE_MACHINE_SCOPES are taken from it — MACHINE, WINDOW, RESOURCE,
+     * LANGUAGE_OVERRIDABLE, MACHINE_OVERRIDABLE (`configuration.ts:387`). An
+     * APPLICATION-scoped setting is still ignored here no matter how correct the
+     * path is, which is why Workspace Trust needs the server's CLI flag.
+     *
+     * Settings the user edits in the workbench go to IndexedDB in the WebView
+     * instead, and take precedence over this file. That is the right order: these
+     * are defaults, not overrides.
+     */
+    fun getMachineSettingsPath(context: Context): String =
+        "${getUserDataDir(context)}/data/Machine/settings.json"
+
     fun getExtensionsDir(context: Context): String =
         "${context.filesDir}/home/.vscodroid/extensions"
 
