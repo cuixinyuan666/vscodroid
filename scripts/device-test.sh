@@ -91,6 +91,28 @@ skip() {
     printf "  ${YELLOW}SKIP${RESET}  %s — %s\n" "$1" "$2"
 }
 
+# A first launch is interrupted by the Android 13+ notification request and by the
+# first-run toolchain picker. Both take focus, so the app is backgrounded and its
+# process disappears — through logcat and ps that is indistinguishable from a
+# crash, and it is the reason this suite used to time out on a healthy device.
+# Matched by button text out of the view hierarchy rather than by coordinates, so
+# it survives a layout change.
+dismiss_blocking_dialogs() {
+    $ADB shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || return 0
+    DIALOG_XML=$($ADB shell cat /sdcard/ui.xml 2>/dev/null | tr -d '\r') || return 0
+    for BUTTON in Allow Skip; do
+        BOUNDS=$(echo "$DIALOG_XML" \
+            | grep -o "text=\"$BUTTON\"[^>]*bounds=\"\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]\"" \
+            | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1)
+        [ -z "$BOUNDS" ] && continue
+        COORDS=$(echo "$BOUNDS" | tr -cd '0-9,][' | tr '][' ' ' | tr ',' ' ')
+        set -- $COORDS
+        [ $# -lt 4 ] && continue
+        $ADB shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 )) >/dev/null 2>&1
+        vlog "Dismissed \"$BUTTON\" dialog"
+    done
+}
+
 vlog() {
     if $VERBOSE; then
         echo "       $*"
@@ -193,6 +215,12 @@ fi
 # ═══════════════════════════════════════════════════════════════════
 printf "\n${BOLD}Phase 2: Launch & First Run${RESET}\n"
 
+# Stop first. `am start` against a running instance just delivers the intent to
+# it and produces no new log lines, so every wait below would sit until timeout
+# reading an empty buffer — which looks exactly like the app failing to start.
+$ADB shell am force-stop "$PKG" 2>/dev/null
+sleep 2
+
 # Clear logcat before launch so we only see fresh output
 $ADB logcat -c 2>/dev/null
 
@@ -220,6 +248,7 @@ while [ $ELAPSED -lt $SETUP_TIMEOUT ]; do
         SETUP_OK=true
         break
     fi
+    dismiss_blocking_dialogs
     sleep 2
     ELAPSED=$((ELAPSED + 2))
     # Show progress every 10s
@@ -364,10 +393,17 @@ fi
 
 # Test 17: python3
 PYTHON_OUT=$(run_tool "files/usr/bin/python3" --version)
-if echo "$PYTHON_OUT" | grep -q "Python 3\.12"; then
+# The bundled Python version is resolved from the Termux index at build time,
+# so it moves without warning. Derive what to expect from the library that
+# actually shipped rather than pinning a number here that goes stale silently.
+PY_EXPECTED=$(ls "$ROOT_DIR"/android/app/src/main/assets/usr/lib/libpython3.*.so 2>/dev/null \
+    | head -1 | sed 's/.*libpython\(3\.[0-9]*\)\.so/\1/')
+if [ -z "$PY_EXPECTED" ]; then
+    skip "tool_python" "no bundled libpython to compare against"
+elif echo "$PYTHON_OUT" | grep -q "Python ${PY_EXPECTED}"; then
     pass "tool_python ($PYTHON_OUT)"
 else
-    fail "tool_python" "Expected Python 3.12.x, got: $PYTHON_OUT"
+    fail "tool_python" "Expected Python ${PY_EXPECTED}.x, got: $PYTHON_OUT"
 fi
 
 # Test 18: git
@@ -404,15 +440,20 @@ vlog "$(echo "$PROC_LIST" | head -5)"
 # Test 21: extensions_manifest
 EXT_JSON=$($ADB shell run-as "$PKG" cat "files/home/.vscodroid/extensions/extensions.json" 2>/dev/null || true)
 if echo "$EXT_JSON" | grep -q '"identifier"'; then
-    EXT_COUNT=$(echo "$EXT_JSON" | grep -c '"identifier"' || true)
+    # grep -c counts matching *lines*, and VS Code rewrites this file as a single
+    # line, so it reported 1 no matter how many extensions were installed — which
+    # reads as a catastrophic loss when comparing two runs. Count occurrences.
+    EXT_COUNT=$(echo "$EXT_JSON" | grep -o '"identifier"' | wc -l | tr -d ' ')
     pass "extensions_manifest ($EXT_COUNT extensions)"
 else
     fail "extensions_manifest" "No extensions found in manifest"
 fi
 
 # Test 22: settings_json
-# settings.json is created by FirstRunSetup, not by VS Code server
-SETTINGS_CHECK=$($ADB shell "run-as $PKG sh -c 'test -f files/home/.vscodroid/data/Machine/settings.json && echo EXISTS'" 2>/dev/null)
+# settings.json is created by FirstRunSetup, not by VS Code server, and it
+# lands in User/ — data/Machine/ is where VS Code would put machine settings
+# and nothing writes there, so the old path could only ever fail.
+SETTINGS_CHECK=$($ADB shell "run-as $PKG sh -c 'test -f files/home/.vscodroid/User/settings.json && echo EXISTS'" 2>/dev/null)
 if echo "$SETTINGS_CHECK" | grep -q "EXISTS"; then
     pass "settings_json"
 else
