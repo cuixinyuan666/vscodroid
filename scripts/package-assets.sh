@@ -8,26 +8,16 @@ JNILIBS_DIR="$ROOT_DIR/android/app/src/main/jniLibs/arm64-v8a"
 
 echo "=== Packaging Assets ==="
 
-# VS Code web client
-WEB_SRC="$ROOT_DIR/server/lib/vscode-web"
-if [ -d "$WEB_SRC" ]; then
-    echo "Copying vscode-web..."
-    rm -rf "$ASSETS_DIR/vscode-web"
-    cp -r "$WEB_SRC" "$ASSETS_DIR/vscode-web"
-    echo "  ✓ vscode-web: $(du -sh "$ASSETS_DIR/vscode-web" | cut -f1)"
-else
-    echo "  ⚠ vscode-web not found (run build-vscode.sh first)"
-fi
-
-# VS Code server (remote extension host)
-REH_SRC="$ROOT_DIR/server/lib/vscode-reh"
+# VS Code server. The reh-web download carries the web client inside it, so this
+# one tree is both halves — there is no separate vscode-web to copy.
+REH_SRC="$ROOT_DIR/server/vscode-reh"
 if [ -d "$REH_SRC" ]; then
     echo "Copying vscode-reh..."
     rm -rf "$ASSETS_DIR/vscode-reh"
     cp -r "$REH_SRC" "$ASSETS_DIR/vscode-reh"
     echo "  ✓ vscode-reh: $(du -sh "$ASSETS_DIR/vscode-reh" | cut -f1)"
 else
-    echo "  ⚠ vscode-reh not found (run build-vscode.sh first)"
+    echo "  ⚠ vscode-reh not found (run download-vscode-server.sh first)"
 fi
 
 # Server bootstrap
@@ -42,7 +32,6 @@ fi
 echo ""
 echo "=== Packaging Summary ==="
 echo "Assets dir: $ASSETS_DIR"
-[ -d "$ASSETS_DIR/vscode-web" ] && echo "  vscode-web: $(du -sh "$ASSETS_DIR/vscode-web" | cut -f1)"
 [ -d "$ASSETS_DIR/vscode-reh" ] && echo "  vscode-reh: $(du -sh "$ASSETS_DIR/vscode-reh" | cut -f1)"
 
 echo ""

@@ -22,7 +22,6 @@ const LOG_LEVEL = args.log || 'info';
 const HOME_DIR = process.env.HOME || '/data/data/com.vscodroid/files/home';
 const SERVER_DIR = path.dirname(__filename);
 const REH_DIR = path.join(SERVER_DIR, 'vscode-reh');
-const WEB_DIR = path.join(SERVER_DIR, 'vscode-web');
 
 // Product configuration override — port-dependent fields set at runtime below
 const productOverrides = {

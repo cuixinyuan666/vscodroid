@@ -4,6 +4,12 @@
 **Version**: 1.0-draft
 **Date**: 2026-02-10
 
+> **Historical document — describes the plan as of 2026-02-10, not the code.**
+> The implementation diverged. Most visibly: there is no code-server fork and no `.diff` patches.
+> A pre-built server is downloaded and rewritten in place by `scripts/download-vscode-server.sh`;
+> `patches/` and `apply-patches.sh` were deleted on 2026-08-11 having never been invoked.
+> Read `CLAUDE.md` for what the code actually does, and verify against the code itself.
+
 ---
 
 ## 1. Build System

@@ -4,6 +4,11 @@
 **Version**: 1.0-draft
 **Date**: 2026-02-10
 
+> **Historical document — describes the plan as of 2026-02-10, not the code.**
+> Steps referring to `apply-patches.sh`, `build-vscode.sh`, or `patches/*.diff` describe a
+> build-from-source path that was never wired up; those files were deleted on 2026-08-11.
+> Read `CLAUDE.md` for what the code actually does, and verify against the code itself.
+
 ---
 
 ## 1. Overview

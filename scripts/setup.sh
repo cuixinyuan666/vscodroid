@@ -48,22 +48,13 @@ fi
 echo ""
 echo "Initializing git submodules..."
 cd "$ROOT_DIR"
-if [ -f .gitmodules ]; then
-    git submodule update --init --recursive
-    echo "  ✓ Submodules initialized"
-else
-    echo "  ⚠ No .gitmodules found (code-server submodule not yet added)"
-fi
 
 # Create required directories
 echo ""
 echo "Creating directory structure..."
 mkdir -p "$ROOT_DIR/android/app/src/main/jniLibs/arm64-v8a"
-mkdir -p "$ROOT_DIR/android/app/src/main/assets/vscode-web"
 mkdir -p "$ROOT_DIR/android/app/src/main/assets/vscode-reh"
 mkdir -p "$ROOT_DIR/android/app/src/main/assets/extensions"
-mkdir -p "$ROOT_DIR/patches/code-server"
-mkdir -p "$ROOT_DIR/patches/vscodroid"
 mkdir -p "$ROOT_DIR/test/projects"
 mkdir -p "$ROOT_DIR/test/extensions"
 echo "  ✓ Directories created"
@@ -73,7 +64,7 @@ echo "=== Setup complete ==="
 echo ""
 echo "Next steps:"
 echo "  1. Cross-compile Node.js:  ./toolchains/build-node.sh"
-echo "  2. Build VS Code:          ./scripts/build-vscode.sh"
+echo "  2. Fetch VS Code Server:   ./scripts/download-vscode-server.sh"
 echo "  3. Package assets:         ./scripts/package-assets.sh"
 echo "  4. Build APK:              cd android && ./gradlew assembleDebug"
 echo "  5. Deploy:                 ./scripts/deploy.sh"

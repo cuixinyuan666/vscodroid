@@ -8,7 +8,7 @@ import java.io.File
  * Tracks disk usage per component and provides cache-clearing operations.
  *
  * Components tracked:
- * - VS Code Server (vscode-reh + vscode-web)
+ * - VS Code Server (vscode-reh — the reh-web build, workbench included)
  * - Extensions (marketplace + bundled)
  * - User data (settings, state, logs)
  * - Tools (usr/ — bash, git, python, npm, etc.)
