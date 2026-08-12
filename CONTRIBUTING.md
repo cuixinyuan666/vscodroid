@@ -70,8 +70,8 @@ Run the download scripts in this order:
 # 5. Download pre-bundled extensions
 ./scripts/download-extensions.sh
 
-# 6. Build node-pty native module (requires NDK)
-./scripts/build-node-pty.sh
+# 6. Build the Bionic native addons (requires NDK)
+./scripts/build-native-addons.sh
 
 # 7. (Optional) Download on-demand toolchains
 ./scripts/download-go.sh
@@ -149,7 +149,7 @@ VSCodroid/
 │   ├── download-npm.sh               # Download npm from Node.js tarball
 │   ├── download-python.sh            # Download Python 3 from Termux
 │   ├── download-extensions.sh        # Download pre-bundled extensions
-│   ├── build-node-pty.sh             # Cross-compile node-pty for ARM64
+│   ├── build-native-addons.sh        # Cross-compile node-pty + @parcel/watcher for Bionic
 │   ├── download-go.sh                # Download Go toolchain
 │   ├── download-ruby.sh              # Download Ruby toolchain
 │   ├── download-java.sh              # Download Java (OpenJDK 17) toolchain

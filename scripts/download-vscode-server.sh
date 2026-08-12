@@ -42,6 +42,16 @@ mkdir -p vscode-reh
 tar xzf "$ARCHIVE_NAME" -C vscode-reh --strip-components=1
 echo "  Extracted: $(du -sh vscode-reh | cut -f1)"
 
+# Drop the bundled Node. It is a 92 MiB GNU/Linux binary whose interpreter
+# (/lib/ld-linux-aarch64.so.1) does not exist on Android, nothing in this project
+# references it, and the runtime uses nativeLibraryDir/libnode.so instead. Left in
+# place it is packed into the APK and then copied again into filesDir at first
+# run, so removing it here is worth roughly 92 MiB twice.
+if [ -f "vscode-reh/node" ]; then
+    rm -f "vscode-reh/node"
+    echo "  Removed the unusable GNU/Linux node binary"
+fi
+
 # Verify entry point exists
 if [ ! -f "vscode-reh/out/server-main.js" ]; then
     # Try alternative entry point location
@@ -400,32 +410,41 @@ JSEOF
     echo "  Replaced native-watchdog with JS shim"
 fi
 
-# Replace Linux node-pty binary with Android ARM64 build
-# The pre-built pty.node is compiled for Linux glibc and won't load on Android Bionic.
-# Our build-node-pty.sh cross-compiles node-pty with NDK for Android ARM64.
+# Replace the glibc native addons with the Bionic builds.
+#
+# Every addon in the download is compiled against glibc and fails at dlopen on
+# Android — node-pty took the terminal with it, and @parcel/watcher took the
+# whole File Watcher process ("library libstdc++.so.6 not found"), which is why
+# recursive file watching has never worked rather than merely degraded.
+# scripts/build-native-addons.sh produces the replacements.
 echo ""
-echo "Setting up node-pty native module..."
+echo "Setting up Bionic native addons..."
+ANDROID_ADDON_ROOT="$ROOT_DIR/android/app/src/main/assets/vscode-reh/node_modules"
+for addon_path in \
+    "node-pty/build/Release/pty.node" \
+    "@parcel/watcher/build/Release/watcher.node"
+do
+    dest="vscode-reh/node_modules/$addon_path"
+    src="$ANDROID_ADDON_ROOT/$addon_path"
+    if [ ! -d "vscode-reh/node_modules/${addon_path%%/build/*}" ]; then
+        echo "  WARNING: ${addon_path%%/build/*} not in the download"
+        continue
+    fi
+    rm -f "$dest"
+    if [ -f "$src" ]; then
+        mkdir -p "$(dirname "$dest")"
+        cp "$src" "$dest"
+        echo "  Replaced ${addon_path%%/build/*} with the Bionic build"
+    else
+        echo "  NOTE: no Bionic build for ${addon_path%%/build/*}."
+        echo "        Run scripts/build-native-addons.sh first."
+    fi
+done
+
 NODE_PTY_DIR="vscode-reh/node_modules/node-pty"
 if [ -d "$NODE_PTY_DIR" ]; then
-    # Remove Linux binary (won't work on Android Bionic)
-    rm -f "$NODE_PTY_DIR/build/Release/pty.node"
-    # Remove pipeTerminal.js shim if it exists (from previous builds)
+    # Left over from the era before a real PTY; harmless but confusing to find.
     rm -f "$NODE_PTY_DIR/lib/pipeTerminal.js"
-    # The Android ARM64 pty.node is pre-built by scripts/build-node-pty.sh
-    # and lives in the assets directory. Use ROOT_DIR (absolute) to avoid
-    # subshell cd failures when the directory doesn't exist yet (CI).
-    ANDROID_PTY_NODE="$ROOT_DIR/android/app/src/main/assets/vscode-reh/node_modules/node-pty/build/Release/pty.node"
-    if [ -f "$ANDROID_PTY_NODE" ]; then
-        mkdir -p "$NODE_PTY_DIR/build/Release"
-        cp "$ANDROID_PTY_NODE" "$NODE_PTY_DIR/build/Release/pty.node"
-        echo "  Copied Android ARM64 pty.node"
-    else
-        echo "  NOTE: Android pty.node not found. Run scripts/build-node-pty.sh first."
-        echo "        Terminal will not work without native node-pty."
-    fi
-    echo "  node-pty native module ready"
-else
-    echo "  WARNING: node-pty directory not found"
 fi
 
 # Create browser entry point stubs for extensions

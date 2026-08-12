@@ -65,6 +65,19 @@ t0=$SECONDS
 npm run gulp "vscode-reh-web-linux-$ARCH-min"
 elapsed $(( SECONDS - t0 ))
 
+step "Prune"
+# The node-linux-arm64 gulp task downloads a GNU/Linux Node and packageTask ships
+# it. Its interpreter (/lib/ld-linux-aarch64.so.1) does not exist on Android and
+# nothing here references it — the runtime uses nativeLibraryDir/libnode.so. The
+# OSS build produces it byte-for-byte the same as the proprietary one, so the
+# pivot does not remove it and this stays a post-build step. Doing it here rather
+# than patching the gulpfile keeps it upright across version bumps.
+if [ -f "$OUT/node" ]; then
+    size=$(du -h "$OUT/node" | cut -f1)
+    rm -f "$OUT/node"
+    echo "  removed the unusable GNU/Linux node binary ($size)"
+fi
+
 step "Verify"
 fail=0
 # The three paths VSCodroid actually loads. A build that misses any of them is

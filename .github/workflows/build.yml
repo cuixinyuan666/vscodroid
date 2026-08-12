@@ -67,7 +67,7 @@ jobs:
             android/app/src/main/assets/extensions/
             android/app/src/main/jniLibs/arm64-v8a/
             server/vscode-reh/
-          key: assets-${{ hashFiles('scripts/download-vscode-server.sh', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/build-node-pty.sh') }}
+          key: assets-${{ hashFiles('scripts/download-vscode-server.sh', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/build-native-addons.sh') }}
           restore-keys: |
             assets-
 
@@ -108,9 +108,9 @@ jobs:
         if: steps.cache-assets.outputs.cache-hit != 'true'
         run: bash scripts/download-extensions.sh
 
-      - name: Build node-pty
+      - name: Build native addons
         if: steps.cache-assets.outputs.cache-hit != 'true'
-        run: bash scripts/build-node-pty.sh
+        run: bash scripts/build-native-addons.sh
 
       # libnode.so: Download pre-built binary from latest GitHub release.
       # If no release exists yet, create a stub so Gradle can produce an APK
