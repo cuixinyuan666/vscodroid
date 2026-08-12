@@ -73,6 +73,14 @@ STT_FUNC, STT_OBJECT = 2, 1
 # before anything runs. Only the ones that actually turn up are listed; a new one
 # is reported rather than guessed at, because guessing a type here means memory
 # corruption rather than a link error.
+# Provided by the dynamic linker rather than by any library, so dlsym cannot find
+# them by name -- but a stub linked against libdl can take their address the
+# ordinary way. Everything else goes through dlsym.
+LINKER_PROVIDED = {
+    "dlopen", "dlsym", "dlclose", "dlerror", "dladdr", "dlvsym",
+    "dl_iterate_phdr", "dl_unwind_find_exidx",
+}
+
 DATA_SYMBOLS = {
     "stdout": ("FILE *", "stdout"),
     "stderr": ("FILE *", "stderr"),
@@ -209,15 +217,32 @@ def generate(inputs, out_dir: pathlib.Path):
             " * at the version the addon asks for.",
             " */",
             "#include <dlfcn.h>",
+            "#include <link.h>",
             "#include <stdio.h>",
             "#include <stdlib.h>",
             "",
             "extern char **environ;",
             "",
+            "#include <android/log.h>",
+            "",
             "/* Bionic merged libm, libdl, libpthread and librt into libc, so one",
             " * handle answers for every name this stub stands in for. Opened with",
             " * NOLOAD because libc is always already mapped. */",
-            "static void *__fwd_libc;",
+            "/* Resolution lives in libglibc-shim.so, not here: this file exports",
+            " * dlopen@GLIBC_2.17 and friends, so calling dlopen by name from inside",
+            " * it would bind to its own unfilled trampoline. */",
+            "extern void *__shim_resolve(const char *name);",
+            "",
+            "/* Reached when Bionic has no symbol of that name, so the pointer stayed",
+            " * null. Branching to it would be a jump to address zero -- a SIGSEGV",
+            " * with no indication of which of 254 forwarders was responsible. Naming",
+            " * it costs one compare per call and turns a blind crash into a fact. */",
+            '__attribute__((noreturn, used, visibility("hidden")))',
+            "static void __fwd_missing(const char *name) {",
+            '    __android_log_print(ANDROID_LOG_FATAL, "glibc-shim",',
+            '                        "no Bionic symbol for %s", name);',
+            "    abort();",
+            "}",
             "",
         ]
         targets, inits = [], []
@@ -241,23 +266,31 @@ def generate(inputs, out_dir: pathlib.Path):
                 lines.append(f'__asm__(".symver {fwd},{name}@@{version}");')
 
         for ptr, name, fwd in targets:
+            label = f".L_miss_{fwd}"
+            nsym = f"__name_{fwd}"
+            # used, because the only reference is from inline asm and the
+            # compiler would otherwise drop it; hidden, so adrp/add can reach it
+            # directly instead of going through the GOT.
+            lines.append(f'__attribute__((used, visibility("hidden")))')
+            lines.append(f'static const char {nsym}[] = "{name}";')
             lines.append(
                 f'__asm__(".globl {fwd}\\n"\n'
                 f'        "{fwd}:\\n"\n'
                 f'        "  adrp x16, {ptr}\\n"\n'
                 f'        "  ldr  x16, [x16, :lo12:{ptr}]\\n"\n'
-                f'        "  br   x16\\n");')
+                f'        "  cbz  x16, {label}\\n"\n'
+                f'        "  br   x16\\n"\n'
+                f'        "{label}:\\n"\n'
+                f'        "  adrp x0, {nsym}\\n"\n'
+                f'        "  add  x0, x0, :lo12:{nsym}\\n"\n'
+                f'        "  b    __fwd_missing\\n");')
 
         lines.append("")
         lines.append("__attribute__((constructor)) static void __fwd_init(void) {")
-        lines.append('    __fwd_libc = dlopen("libc.so", RTLD_LAZY | RTLD_NOLOAD);')
-        lines.append("    /* RTLD_NEXT, never RTLD_DEFAULT: on Bionic RTLD_DEFAULT is NULL")
-        lines.append("     * and searches globally, where the first match is this stub's own")
-        lines.append("     * exported symbol -- the pointer would aim at the trampoline that")
-        lines.append("     * reads it, and the first call recurses until the stack ends. */")
-        lines.append("    if (!__fwd_libc) __fwd_libc = RTLD_NEXT;")
+        lines.append('    __android_log_print(ANDROID_LOG_INFO, "glibc-shim",')
+        lines.append(f'                        "init {soname}");')
         for ptr, name, _ in targets:
-            lines.append(f'    {ptr} = dlsym(__fwd_libc, "{name}");')
+            lines.append(f'    {ptr} = __shim_resolve("{name}");')
         lines.extend(inits)
         lines.append("}")
         c_path.write_text("\n".join(lines) + "\n")

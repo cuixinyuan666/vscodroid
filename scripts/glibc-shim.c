@@ -209,3 +209,79 @@ int __register_atfork(void (*prepare)(void), void (*parent)(void),
 /* jemalloc's sized deallocation. Bionic's allocator does not expose it, and the
  * size is only a hint -- free() is always correct, just less informed. */
 void sdallocx(void *ptr, size_t size, int flags) { (void)size; (void)flags; free(ptr); }
+
+/*
+ * Symbol resolution for the generated stubs.
+ *
+ * It lives here, and that is the whole point. Those stubs export glibc names --
+ * dlopen@GLIBC_2.17 among them -- so a call to dlopen from inside one of them
+ * binds to its own trampoline, whose pointer is not filled yet. It aborts on the
+ * first thing it tries to resolve. This file exports none of those names, so the
+ * same call reaches Bionic.
+ *
+ * libdl is consulted separately because Bionic's dl family is provided by the
+ * dynamic linker rather than by libc, and taking its address here is the only
+ * way to get the real one.
+ */
+#include <dlfcn.h>
+#include <link.h>
+
+static void *shim_libc;
+static void *shim_libdl;
+
+__attribute__((constructor(101))) static void shim_open_handles(void) {
+    shim_libc = dlopen("libc.so", RTLD_LAZY | RTLD_NOLOAD);
+    shim_libdl = dlopen("libdl.so", RTLD_LAZY | RTLD_NOLOAD);
+}
+
+void *__shim_resolve(const char *name) {
+    if (!shim_libc) shim_open_handles();
+
+    /* The linker owns these; dlsym does not find them by name. */
+    if (!__builtin_strcmp(name, "dlopen")) return (void *)&dlopen;
+    if (!__builtin_strcmp(name, "dlsym")) return (void *)&dlsym;
+    if (!__builtin_strcmp(name, "dlclose")) return (void *)&dlclose;
+    if (!__builtin_strcmp(name, "dlerror")) return (void *)&dlerror;
+    if (!__builtin_strcmp(name, "dladdr")) return (void *)&dladdr;
+    if (!__builtin_strcmp(name, "dl_iterate_phdr")) return (void *)&dl_iterate_phdr;
+
+    void *p = shim_libc ? dlsym(shim_libc, name) : 0;
+    if (!p && shim_libdl) p = dlsym(shim_libdl, name);
+    if (!p) p = dlsym(RTLD_NEXT, name);
+    return p;
+}
+
+char **__shim_environ(void) { return environ; }
+
+/*
+ * The last few glibc keeps and Bionic does not.
+ *
+ * bcmp is the BSD spelling of memcmp with only its zero/non-zero result
+ * meaningful, which is exactly what memcmp already promises.
+ */
+int bcmp(const void *a, const void *b, size_t n) { return memcmp(a, b, n); }
+
+/*
+ * pidfd helpers, glibc 2.36 and later. Bionic has the syscalls but not these
+ * wrappers. Reporting "not implemented" is honest and is a case callers of these
+ * already handle -- they exist precisely because older kernels lack them.
+ */
+int pidfd_getpid(int fd) { (void)fd; errno = ENOSYS; return -1; }
+int pidfd_spawnp(int *pidfd, const char *file, const void *facts,
+                 const void *attrp, char *const argv[], char *const envp[]) {
+    (void)pidfd; (void)file; (void)facts; (void)attrp; (void)argv; (void)envp;
+    errno = ENOSYS;
+    return ENOSYS;
+}
+
+/*
+ * posix_spawn's chdir action. Bionic has it under the _np name POSIX had not yet
+ * standardised when it was added; the declaration is guarded by API level in the
+ * headers, so it is declared here rather than relying on the guard.
+ */
+int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, const char *);
+
+int posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t *acts,
+                                      const char *path) {
+    return posix_spawn_file_actions_addchdir_np(acts, path);
+}

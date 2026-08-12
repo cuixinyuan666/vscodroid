@@ -108,7 +108,7 @@ for stub in "${STUBS[@]}"; do
         "$src" \
         -Wl,-soname,"$stub" \
         ${version_script[@]+"${version_script[@]}"} \
-        -L"$OUT_DIR" -lglibc-shim \
+        -L"$OUT_DIR" -lglibc-shim -llog \
         "${PAGE_SIZE_FLAGS[@]}"
     printf '  %-18s %8s bytes%s\n' "$stub" "$(wc -c < "$OUT_DIR/$stub" | tr -d ' ')" \
         "$([ -f "$generated" ] && echo '  (versioned forwarders)' || echo '')"
