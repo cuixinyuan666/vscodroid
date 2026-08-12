@@ -1,12 +1,15 @@
 package com.vscodroid.util
 
-import com.vscodroid.util.Logger
+import android.content.Context
+import android.content.SharedPreferences
 import io.mockk.every
 import io.mockk.just
+import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.Runs
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -14,14 +17,33 @@ import org.junit.jupiter.api.Test
 import java.net.ServerSocket
 
 /**
- * Tests for [PortFinder] — port discovery and availability checking.
+ * Tests for [PortFinder] — port discovery, availability checking, and the
+ * remembered port that keeps the workbench origin stable across cold starts.
  */
 class PortFinderTest {
+
+    private lateinit var context: Context
+
+    /** Stands in for the SharedPreferences file, so a round trip can be asserted. */
+    private var stored: Int = 0
 
     @BeforeEach
     fun setUp() {
         mockkObject(Logger)
         every { Logger.w(any(), any(), any()) } just Runs
+
+        stored = 0
+        val editor = mockk<SharedPreferences.Editor>(relaxed = true)
+        every { editor.putInt(any(), any()) } answers {
+            stored = secondArg()
+            editor
+        }
+        val prefs = mockk<SharedPreferences>(relaxed = true)
+        every { prefs.getInt(any(), any()) } answers { stored }
+        every { prefs.edit() } returns editor
+
+        context = mockk(relaxed = true)
+        every { context.getSharedPreferences(any(), any()) } returns prefs
     }
 
     @Nested
@@ -36,19 +58,57 @@ class PortFinderTest {
         @Test
         fun `returns a port that is currently available`() {
             val port = PortFinder.findAvailablePort()
-            // The port should be available immediately after findAvailablePort returns
             assertTrue(PortFinder.isPortAvailable(port), "Port $port should be available after discovery")
         }
 
         @Test
-        fun `returns different ports on successive calls`() {
-            // OS assigns random ephemeral ports, so consecutive calls should differ
-            val port1 = PortFinder.findAvailablePort()
-            val port2 = PortFinder.findAvailablePort()
-            // Note: tiny chance they're the same, but extremely unlikely in practice
-            // We just verify both are valid
-            assertTrue(port1 in 1..65535)
-            assertTrue(port2 in 1..65535)
+        fun `prefers a port below the ephemeral range`() {
+            // A port from ServerSocket(0) comes out of the kernel's ephemeral range,
+            // where an unrelated outbound socket can be holding it by the next launch.
+            // Scanning from a fixed base is what makes the remembered port worth
+            // remembering, so the scan must actually be reached.
+            val port = PortFinder.findAvailablePort()
+            assertTrue(port < 32768, "Port $port should sit below the ephemeral range")
+        }
+
+        @Test
+        fun `skips a port that is already bound`() {
+            ServerSocket(13337).use {
+                val port = PortFinder.findAvailablePort()
+                assertNotEquals(13337, port, "the scan must step over a bound port")
+                assertTrue(PortFinder.isPortAvailable(port))
+            }
+        }
+    }
+
+    @Nested
+    inner class RememberedPortTest {
+
+        @Test
+        fun `remembers the port it allocated`() {
+            val first = PortFinder.getOrAllocatePort(context)
+            assertEquals(first, stored, "the allocated port must be persisted")
+        }
+
+        @Test
+        fun `returns the same port on the next cold start`() {
+            // The workbench keys IndexedDB by origin, and the port is part of the
+            // origin: a different port here empties secret storage and every
+            // extension's globalState, with nothing in any log to explain it.
+            val first = PortFinder.getOrAllocatePort(context)
+            val second = PortFinder.getOrAllocatePort(context)
+            assertEquals(first, second)
+        }
+
+        @Test
+        fun `moves off a remembered port that something else has taken`() {
+            val first = PortFinder.getOrAllocatePort(context)
+
+            ServerSocket(first).use {
+                val second = PortFinder.getOrAllocatePort(context)
+                assertNotEquals(first, second, "a taken port cannot be reused")
+                assertEquals(second, stored, "the new port must replace the old one")
+            }
         }
     }
 
@@ -57,7 +117,6 @@ class PortFinderTest {
 
         @Test
         fun `returns true for an unused port`() {
-            // Use an ephemeral port that the OS assigns
             val port = ServerSocket(0).use { it.localPort }
             assertTrue(PortFinder.isPortAvailable(port), "Released port $port should be available")
         }
@@ -66,22 +125,8 @@ class PortFinderTest {
         fun `returns false for a port in use`() {
             ServerSocket(0).use { socket ->
                 val port = socket.localPort
-                // Socket is still bound — port should be unavailable
                 assertFalse(PortFinder.isPortAvailable(port), "Bound port $port should NOT be available")
             }
-        }
-    }
-
-    @Nested
-    inner class ConstantsTest {
-
-        @Test
-        fun `DEFAULT_PORT is 13337`() {
-            // PortFinder.DEFAULT_PORT is private, but we can verify via the fallback behavior.
-            // We can't easily force an exception in findAvailablePort without reflection,
-            // so we just test the overall contract that it returns a valid port.
-            val port = PortFinder.findAvailablePort()
-            assertTrue(port in 1..65535, "Port should always be valid")
         }
     }
 }

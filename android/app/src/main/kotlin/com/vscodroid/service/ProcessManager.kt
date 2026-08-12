@@ -57,7 +57,7 @@ class ProcessManager(private val context: Context) {
     /**
      * Starts the Node.js code-server process.
      *
-     * Allocates a port on the first call and keeps it for the lifetime of this
+     * Resolves the port on the first call and keeps it for the lifetime of this
      * instance, builds the command line from [Environment] paths, spawns the
      * process, and begins output reading and watchdog monitoring.
      *
@@ -75,8 +75,10 @@ class ProcessManager(private val context: Context) {
         isShuttingDown = false
         // Keep the port across restarts. The WebView's loaded URL and the bridge's
         // allowed-origin check are both bound to it, and neither is rebuilt on restart.
+        // Across cold starts it is the workbench's IndexedDB that is bound to it —
+        // see PortFinder.getOrAllocatePort.
         if (_port == 0) {
-            _port = PortFinder.findAvailablePort()
+            _port = PortFinder.getOrAllocatePort(context)
         }
         Logger.i(tag, "Starting server on port $_port")
 
