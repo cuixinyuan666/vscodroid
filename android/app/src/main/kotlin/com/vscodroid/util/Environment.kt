@@ -193,6 +193,26 @@ object Environment {
     fun getGitPath(context: Context): String =
         "${context.applicationInfo.nativeLibraryDir}/libgit.so"
 
+    /**
+     * musl's loader, and the only way the Claude Code CLI starts here.
+     *
+     * The CLI is a musl binary the user's extension brings with it, sitting under
+     * filesDir where SELinux refuses execve() for targetSdk >= 29. It does allow
+     * map and execute, which is all a loader needs, so the loader is execve'd
+     * from nativeLibraryDir -- the one directory an app may execute from -- and
+     * mmaps the CLI out of filesDir itself.
+     *
+     * It is named as claudeCode.claudeProcessWrapper directly rather than through
+     * a shim, because resolveClaudeBinary() passes the resolved binary path as the
+     * wrapper's first argument, which is already how a loader expects to be
+     * called. The glibc build the marketplace would otherwise serve cannot be
+     * loaded at all: its startup calls set_robust_list and rseq, and Android's
+     * app seccomp filter kills the process for either. Patch 0009 is what makes
+     * the marketplace hand over the musl build instead.
+     */
+    fun getMuslLoaderPath(context: Context): String =
+        "${context.applicationInfo.nativeLibraryDir}/libldmusl.so"
+
     private fun getSystemCaCertsPath(): String =
         // Android 14+ (APEX module), fallback to legacy path
         if (File("/apex/com.android.conscrypt/cacerts").isDirectory)

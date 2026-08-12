@@ -68,6 +68,9 @@ bundletool.jar
 /toolchains/build/
 /toolchains/termux-packages/
 /toolchains/extensions/
+/toolchains/musl/
+# download-claude-code.sh is gone; this keeps its leftover work directory from
+# showing up as untracked on machines that ran it before the bundling was dropped.
 /toolchains/claude-code/
 
 # ===== Python =====

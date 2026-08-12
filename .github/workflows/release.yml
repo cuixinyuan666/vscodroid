@@ -112,7 +112,8 @@ jobs:
             toolchains/termux-packages/Packages
             toolchains/build/npm/
             toolchains/extensions/
-          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-claude-code.sh') }}
+            toolchains/musl/
+          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-musl-loader.sh') }}
           restore-keys: |
             downloads-
 
@@ -145,11 +146,12 @@ jobs:
       - name: Download extensions
         run: bash scripts/download-extensions.sh
 
-      # Kept separate from download-extensions.sh: this one substitutes the
-      # extension's bundled musl binary with the JavaScript CLI, which is what
-      # makes it run on Bionic at all.
-      - name: Bundle Claude Code
-        run: bash scripts/download-claude-code.sh
+      # Claude Code is no longer bundled: the user installs the extension from
+      # the marketplace and the CLI comes inside it, so nothing of Anthropic's is
+      # redistributed here and the version is theirs to update. What this ships
+      # is musl's loader, which is the only way that CLI starts on Android.
+      - name: Download musl loader
+        run: bash scripts/download-musl-loader.sh
 
       - name: Build native addons
         run: bash scripts/build-native-addons.sh

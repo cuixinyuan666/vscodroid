@@ -63,6 +63,7 @@ class FirstRunSetup(private val context: Context) {
             extractAssetFile("server.js", "server/server.js")
             extractAssetFile("process-monitor.js", "server/process-monitor.js")
             extractAssetFile("platform-fix.js", "server/platform-fix.js")
+            extractAssetFile("dns-proxy.js", "server/dns-proxy.js")
 
             reportProgress("Extracting tools...", 62)
             extractAssetDir("usr", "usr")
@@ -489,22 +490,25 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
      * `claude` in the terminal, which the extension's own login screen suggests.
      *
      * A function for the same reason npm is one: SELinux denies exec of anything
-     * under filesDir. It runs the very file the extension launches rather than a
-     * second copy — 13 MB, and two copies would drift apart on the first upgrade.
-     * The glob resolves the version so a bundled upgrade needs no change here.
+     * under filesDir, and the CLI lives there — it ships inside the extension the
+     * user installed. It runs that very file rather than a second copy, so the
+     * terminal and the extension are always on the same version, and the glob
+     * picks up whatever version is installed without this needing to change.
      */
     private fun claudeBashFunction(): String = """
 
-# claude — the CLI the Claude Code extension launches, run through node because
-# SELinux blocks exec of scripts under filesDir.
+# claude — the CLI the Claude Code extension brings with it. Started through
+# musl's loader: the CLI is a musl binary under filesDir, which SELinux will not
+# execve but will let a loader map. libldmusl.so is found on PATH, which already
+# includes nativeLibraryDir.
 claude() {
     local cli
     cli=${'$'}(echo "${'$'}HOME"/.vscodroid/extensions/Anthropic.claude-code-*/resources/native-binary/claude)
     if [ ! -f "${'$'}cli" ]; then
-        echo "claude: the Claude Code extension is not installed" >&2
+        echo "claude: install the Claude Code extension first" >&2
         return 127
     fi
-    node "${'$'}cli" "${'$'}@"
+    libldmusl.so "${'$'}cli" "${'$'}@"
 }
 """
 
@@ -525,7 +529,7 @@ claude() {
             settingsFile.readText(),
             Environment.getTerminalShellPath(context),
             Environment.getGitPath(context),
-            Environment.getNodeSymlinkPath(context),
+            Environment.getMuslLoaderPath(context),
         ) ?: return
 
         settingsFile.writeText(updated)
@@ -691,7 +695,7 @@ claude() {
                     "security.workspace.trust.enabled": false,
                     "python.languageServer": "Jedi",
                     "python.defaultInterpreterPath": "${context.filesDir.absolutePath}/usr/bin/python3",
-                    "claudeCode.claudeProcessWrapper": "${Environment.getNodeSymlinkPath(context)}",
+                    "claudeCode.claudeProcessWrapper": "${Environment.getMuslLoaderPath(context)}",
                     "launch": {
                         "version": "0.2.0",
                         "configurations": [
@@ -1098,8 +1102,8 @@ internal fun refreshManagedPaths(
     // Without this setting the Claude Code extension refuses to start at all —
     // resolveClaudeBinary() throws "Unsupported platform" rather than looking on
     // PATH — so an install that predates the setting needs it added, not just
-    // refreshed. The value names a filesDir symlink, which unlike the two paths
-    // above does not move between reinstalls.
+    // refreshed. The value names musl's loader in nativeLibraryDir, so like the
+    // two paths above it moves on every reinstall and has to be rewritten here.
     updated = if (CLAUDE_WRAPPER.containsMatchIn(updated)) {
         CLAUDE_WRAPPER.replace(updated) { "${it.groupValues[1]}\"$claudeWrapper\"" }
     } else {

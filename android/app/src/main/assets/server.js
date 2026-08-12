@@ -145,31 +145,47 @@ if (!fs.existsSync(rehEntryPoint)) {
 
     // Launch server
     const { fork } = require('child_process');
-    const server = fork(serverArgs[0], serverArgs.slice(1), {
-        env: process.env,
-        stdio: 'inherit'
-    });
 
-    // Start process monitor (non-fatal if it fails)
+    // The proxy has to be listening before the child is forked, because the
+    // child inherits its address as HTTPS_PROXY and never asks again. It resolves
+    // to an empty environment if it could not bind, so a failure here costs musl
+    // clients their DNS and nothing else. See dns-proxy.js for why any of this
+    // is needed.
+    let startProxy;
     try {
-        const monitor = require(path.join(SERVER_DIR, 'process-monitor.js'));
-        monitor.start(server.pid);
+        startProxy = require(path.join(SERVER_DIR, 'dns-proxy.js')).start;
     } catch (e) {
-        log('warn', 'Process monitor failed to start: ' + e.message);
+        log('warn', 'dns-proxy not available: ' + e.message);
+        startProxy = () => Promise.resolve({});
     }
 
-    server.on('error', (err) => {
-        log('error', `Failed to start VS Code Server: ${err.message}`);
-        process.exit(1);
-    });
+    startProxy(log).then((proxyEnv) => {
+        const server = fork(serverArgs[0], serverArgs.slice(1), {
+            env: { ...process.env, ...proxyEnv },
+            stdio: 'inherit'
+        });
 
-    server.on('exit', (code) => {
-        log('info', `VS Code Server exited with code ${code}`);
-        process.exit(code || 0);
-    });
+        // Start process monitor (non-fatal if it fails)
+        try {
+            const monitor = require(path.join(SERVER_DIR, 'process-monitor.js'));
+            monitor.start(server.pid);
+        } catch (e) {
+            log('warn', 'Process monitor failed to start: ' + e.message);
+        }
 
-    process.on('SIGTERM', () => {
-        log('info', 'Received SIGTERM, shutting down...');
-        server.kill('SIGTERM');
+        server.on('error', (err) => {
+            log('error', `Failed to start VS Code Server: ${err.message}`);
+            process.exit(1);
+        });
+
+        server.on('exit', (code) => {
+            log('info', `VS Code Server exited with code ${code}`);
+            process.exit(code || 0);
+        });
+
+        process.on('SIGTERM', () => {
+            log('info', 'Received SIGTERM, shutting down...');
+            server.kill('SIGTERM');
+        });
     });
 }
