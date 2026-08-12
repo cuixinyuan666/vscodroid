@@ -285,3 +285,198 @@ int posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t *acts,
                                       const char *path) {
     return posix_spawn_file_actions_addchdir_np(acts, path);
 }
+
+/* ------------------------------------------------------------------------
+ * Translating wrappers.
+ *
+ * Everything above is a symbol Bionic simply lacks. What follows is different
+ * and more dangerous: symbols Bionic HAS, whose arguments it lays out
+ * differently from glibc. Forwarding one of these does not fail -- it writes
+ * the right bytes to the wrong offsets and the program carries on. There is no
+ * crash to find, and the damage surfaces somewhere else entirely.
+ *
+ * Each wrapper below converts at the boundary. The generator points the
+ * versioned export at these instead of at Bionic, and refuses to forward any
+ * other symbol on its known-incompatible list -- so a struct we have not
+ * translated yet aborts by name rather than corrupting quietly.
+ * ------------------------------------------------------------------------ */
+
+#include <android/log.h>
+#include <netdb.h>
+#include <sys/socket.h>
+
+/*
+ * struct sigaction, and the two libcs could hardly disagree more on arm64.
+ *
+ *   Bionic (32 bytes)   int sa_flags; union{handler}; sigset_t sa_mask (8);
+ *                       void (*sa_restorer)(void);
+ *   glibc  (152 bytes)  union{handler}; sigset_t sa_mask (128); int sa_flags;
+ *                       void (*sa_restorer)(void);
+ *
+ * Handed one glibc struct unconverted, Bionic reads the low half of the handler
+ * pointer as sa_flags and takes the handler itself out of the first word of the
+ * mask. It then installs that as a signal handler. Nothing reports an error.
+ *
+ * Only the low 64 bits of glibc's mask carry anything: there are 64 signals and
+ * the kernel's own sigset is 64 bits wide. The remaining 120 bytes exist so the
+ * structure can outlive that limit, and are copied as zero.
+ */
+struct glibc_sigaction {
+    void *handler;
+    unsigned long mask[16];
+    int flags;
+    void (*restorer)(void);
+};
+
+static void from_glibc_sigaction(const struct glibc_sigaction *g, struct sigaction *b) {
+    b->sa_flags = g->flags;
+    b->sa_handler = (sighandler_t)g->handler;
+    memset(&b->sa_mask, 0, sizeof(b->sa_mask));
+    b->sa_mask.sig[0] = g->mask[0];
+    b->sa_restorer = g->restorer;
+}
+
+static void to_glibc_sigaction(const struct sigaction *b, struct glibc_sigaction *g) {
+    memset(g, 0, sizeof(*g));
+    g->handler = (void *)b->sa_handler;
+    g->mask[0] = b->sa_mask.sig[0];
+    g->flags = b->sa_flags;
+    g->restorer = b->sa_restorer;
+}
+
+int __shim_sigaction(int signum, const struct glibc_sigaction *act,
+                     struct glibc_sigaction *oldact) {
+    struct sigaction b_act, b_old;
+    int rc = sigaction(signum, act ? (from_glibc_sigaction(act, &b_act), &b_act) : 0,
+                       oldact ? &b_old : 0);
+    if (rc == 0 && oldact) to_glibc_sigaction(&b_old, oldact);
+    return rc;
+}
+
+/*
+ * Signal sets. glibc's is 128 bytes, Bionic's is 8, and only the first 8 mean
+ * anything. Bionic's sigemptyset would leave the other 120 as whatever was on
+ * the caller's stack -- harmless while every reader is one of these wrappers,
+ * and not worth relying on. They are cleared.
+ */
+int __shim_sigemptyset(unsigned long *set) {
+    memset(set, 0, 128);
+    return 0;
+}
+
+int __shim_sigfillset(unsigned long *set) {
+    memset(set, 0, 128);
+    set[0] = ~0UL;
+    return 0;
+}
+
+int __shim_sigaddset(unsigned long *set, int signum) {
+    if (signum < 1 || signum > 64) { errno = EINVAL; return -1; }
+    set[0] |= 1UL << (signum - 1);
+    return 0;
+}
+
+int __shim_sigdelset(unsigned long *set, int signum) {
+    if (signum < 1 || signum > 64) { errno = EINVAL; return -1; }
+    set[0] &= ~(1UL << (signum - 1));
+    return 0;
+}
+
+int __shim_sigismember(const unsigned long *set, int signum) {
+    if (signum < 1 || signum > 64) { errno = EINVAL; return -1; }
+    return (set[0] >> (signum - 1)) & 1;
+}
+
+int __shim_sigprocmask(int how, const unsigned long *set, unsigned long *oldset) {
+    sigset_t b_set, b_old;
+    if (set) { memset(&b_set, 0, sizeof(b_set)); b_set.sig[0] = set[0]; }
+    int rc = sigprocmask(how, set ? &b_set : 0, oldset ? &b_old : 0);
+    if (rc == 0 && oldset) {
+        memset(oldset, 0, 128);
+        oldset[0] = b_old.sig[0];
+    }
+    return rc;
+}
+
+int __shim_pthread_sigmask(int how, const unsigned long *set, unsigned long *oldset) {
+    sigset_t b_set, b_old;
+    if (set) { memset(&b_set, 0, sizeof(b_set)); b_set.sig[0] = set[0]; }
+    int rc = pthread_sigmask(how, set ? &b_set : 0, oldset ? &b_old : 0);
+    if (rc == 0 && oldset) {
+        memset(oldset, 0, 128);
+        oldset[0] = b_old.sig[0];
+    }
+    return rc;
+}
+
+/*
+ * struct addrinfo. Same size and same fields, but Bionic orders them
+ * ai_canonname then ai_addr, where glibc has ai_addr then ai_canonname
+ * (netdb.h in both). Forwarded unconverted, a caller reads the canonical name
+ * as a socket address and connects to whatever that memory happens to hold.
+ *
+ * The list is converted in place on the way out, which is safe because both
+ * layouts are the same size and we own the allocation until freeaddrinfo.
+ */
+struct glibc_addrinfo {
+    int ai_flags, ai_family, ai_socktype, ai_protocol;
+    socklen_t ai_addrlen;
+    struct sockaddr *ai_addr;
+    char *ai_canonname;
+    struct glibc_addrinfo *ai_next;
+};
+
+int __shim_getaddrinfo(const char *node, const char *service,
+                       const struct glibc_addrinfo *hints,
+                       struct glibc_addrinfo **res) {
+    struct addrinfo b_hints;
+    struct addrinfo *b_res = 0;
+
+    if (hints) {
+        memset(&b_hints, 0, sizeof(b_hints));
+        b_hints.ai_flags = hints->ai_flags;
+        b_hints.ai_family = hints->ai_family;
+        b_hints.ai_socktype = hints->ai_socktype;
+        b_hints.ai_protocol = hints->ai_protocol;
+    }
+
+    int rc = getaddrinfo(node, service, hints ? &b_hints : 0, &b_res);
+    if (rc != 0) return rc;
+
+    /* Same size, swapped middle: rewriting each node in place keeps the
+     * allocation Bionic's, so freeaddrinfo still owns it. */
+    for (struct addrinfo *n = b_res; n; n = n->ai_next) {
+        struct glibc_addrinfo *g = (struct glibc_addrinfo *)n;
+        char *canon = n->ai_canonname;
+        struct sockaddr *addr = n->ai_addr;
+        g->ai_addr = addr;
+        g->ai_canonname = canon;
+    }
+    *res = (struct glibc_addrinfo *)b_res;
+    return 0;
+}
+
+void __shim_freeaddrinfo(struct glibc_addrinfo *res) {
+    /* Swap back before handing it to Bionic, which will read its own layout. */
+    for (struct glibc_addrinfo *g = res; g; g = g->ai_next) {
+        struct addrinfo *n = (struct addrinfo *)g;
+        struct sockaddr *addr = g->ai_addr;
+        char *canon = g->ai_canonname;
+        n->ai_canonname = canon;
+        n->ai_addr = addr;
+    }
+    freeaddrinfo((struct addrinfo *)res);
+}
+
+/*
+ * Reached when a symbol on the known-incompatible list is called and no
+ * translating wrapper has been written for it. Forwarding it would write the
+ * right bytes to the wrong offsets and continue; this stops instead, and names
+ * the wrapper that is owed.
+ */
+__attribute__((noreturn)) void __shim_untranslated(const char *name) {
+    __android_log_print(ANDROID_LOG_FATAL, "glibc-shim",
+                        "%s passes a struct glibc and Bionic lay out differently, "
+                        "and has no translating wrapper yet", name);
+    abort();
+}

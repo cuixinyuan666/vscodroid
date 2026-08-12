@@ -81,6 +81,57 @@ LINKER_PROVIDED = {
     "dl_iterate_phdr", "dl_unwind_find_exidx",
 }
 
+# Symbols Bionic has, but whose arguments it lays out differently from glibc.
+# Forwarding one of these does not fail -- it writes the right bytes to the wrong
+# offsets and execution continues, so the damage appears somewhere else with
+# nothing to connect it back. These point at translating wrappers in
+# glibc-shim.c instead of at Bionic.
+#
+# Both entries here were verified against the NDK headers on arm64, not inherited
+# from a list:
+#   sigaction   Bionic puts sa_flags first and uses an 8-byte mask; glibc puts
+#               the handler first and uses 128 bytes (bits/signal_types.h)
+#   addrinfo    Bionic orders ai_canonname before ai_addr; glibc is the other
+#               way round, so an unconverted caller reads a name as a socket
+#               address (netdb.h)
+# The sigset_t helpers come with sigaction: they operate on the 128-byte set its
+# callers pass.
+TRANSLATED = {
+    "sigaction": "__shim_sigaction",
+    "sigemptyset": "__shim_sigemptyset",
+    "sigfillset": "__shim_sigfillset",
+    "sigaddset": "__shim_sigaddset",
+    "sigdelset": "__shim_sigdelset",
+    "sigismember": "__shim_sigismember",
+    "sigprocmask": "__shim_sigprocmask",
+    "pthread_sigmask": "__shim_pthread_sigmask",
+    "getaddrinfo": "__shim_getaddrinfo",
+    "freeaddrinfo": "__shim_freeaddrinfo",
+}
+
+# The same hazard, without a wrapper written yet: these abort by name on first
+# call rather than forwarding, because a loud stop beats silent corruption and
+# the message says which wrapper is owed.
+#
+# The list is empty, and that is a finding rather than an oversight. A published
+# glibc-compatibility shim for FreeBSD refuses to auto-forward seventeen structs
+# (sigaction, stat, statfs, dirent, termios, sockaddr, msghdr, passwd, utsname,
+# rlimit and more), and that list was the starting point here. Checked one by one
+# against the NDK headers on arm64, all but two turned out to be identical:
+# Bionic and glibc both follow the same Linux kernel ABI, where FreeBSD does not.
+# struct msghdr, struct passwd (LP64), struct statfs and stack_t all match field
+# for field.
+#
+# So blocking them would have broken working code to prevent a problem that is
+# not there. Only what was verified different gets a wrapper -- see TRANSLATED --
+# and only what is verified different belongs here.
+#
+# Before adding a name: read the struct in
+#   $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/*/sysroot/usr/include
+# and compare it against glibc's for aarch64. An entry added on suspicion turns
+# a working call into an abort.
+NEEDS_TRANSLATION = set()
+
 DATA_SYMBOLS = {
     "stdout": ("FILE *", "stdout"),
     "stderr": ("FILE *", "stderr"),
@@ -232,6 +283,7 @@ def generate(inputs, out_dir: pathlib.Path):
             " * dlopen@GLIBC_2.17 and friends, so calling dlopen by name from inside",
             " * it would bind to its own unfilled trampoline. */",
             "extern void *__shim_resolve(const char *name);",
+            "extern void __shim_untranslated(const char *name);",
             "",
             "/* Reached when Bionic has no symbol of that name, so the pointer stayed",
             " * null. Branching to it would be a jump to address zero -- a SIGSEGV",
@@ -286,14 +338,25 @@ def generate(inputs, out_dir: pathlib.Path):
                 f'        "  b    __fwd_missing\\n");')
 
         lines.append("")
+        lines.append("__PLACEHOLDER_EXTERNS__")
         lines.append("__attribute__((constructor)) static void __fwd_init(void) {")
         lines.append('    __android_log_print(ANDROID_LOG_INFO, "glibc-shim",')
         lines.append(f'                        "init {soname}");')
+        externs = []
         for ptr, name, _ in targets:
-            lines.append(f'    {ptr} = __shim_resolve("{name}");')
+            if name in TRANSLATED:
+                externs.append(f"extern void {TRANSLATED[name]}(void);")
+                lines.append(f"    {ptr} = (void *)&{TRANSLATED[name]};")
+            elif name in NEEDS_TRANSLATION:
+                lines.append(f"    {ptr} = 0;  /* no wrapper yet; aborts by name */")
+            else:
+                lines.append(f'    {ptr} = __shim_resolve("{name}");')
         lines.extend(inits)
         lines.append("}")
-        c_path.write_text("\n".join(lines) + "\n")
+        body = "\n".join(lines)
+        body = body.replace("__PLACEHOLDER_EXTERNS__",
+                            "\n".join(sorted(set(externs))) if externs else "")
+        c_path.write_text(body + "\n")
 
         map_lines = []
         for version, symbols in sorted(versions.items()):
@@ -307,6 +370,15 @@ def generate(inputs, out_dir: pathlib.Path):
         total = sum(len(v) for v in versions.values())
         print(f"  {soname:<20} {total:4d} symbols across "
               f"{len(versions)} version(s)")
+
+    pending = sorted(
+        n for versions in wanted.values() for syms in versions.values()
+        for n in syms if n in NEEDS_TRANSLATION)
+    if pending:
+        print(f"\n  no translating wrapper yet ({len(pending)}) -- these abort by name")
+        print("  on first call rather than forwarding a struct laid out differently:")
+        for name in pending:
+            print(f"    {name}")
 
     if skipped_data:
         print(f"\n  data imports, not forwarded ({len(skipped_data)}) -- these must be"
