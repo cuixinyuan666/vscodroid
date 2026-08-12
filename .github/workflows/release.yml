@@ -12,7 +12,9 @@ jobs:
   build-release:
     name: Build Release
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Two Gradle release builds plus ~360 MB of toolchain downloads. Raised
+    # before the first tag rather than after one times out at 90%.
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -205,8 +207,59 @@ jobs:
           VSCODROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease
 
-      # AAB requires toolchain asset packs (~360 MB) which aren't in git.
-      # AAB is built locally for Play Store upload. CI only builds APK for GitHub Releases.
+      # The toolchains are fetched once, here, and feed two outputs that have to
+      # agree: download-*.sh fills android/toolchain_*/src/main/assets, which is
+      # what bundleRelease packs into the AAB for Play Asset Delivery, and
+      # package-toolchains.sh zips those same directories for the GitHub Release
+      # that non-Play installs download from. Fetched separately they can differ —
+      # the versions come from the Termux index at fetch time, so one app version
+      # could ship Go 1.24 through Play and Go 1.25 through GitHub.
+      - name: Download toolchain assets
+        run: |
+          bash scripts/download-go.sh
+          bash scripts/download-ruby.sh
+          bash scripts/download-java.sh
+
+      # Built here rather than on a maintainer's machine. While the server was a
+      # pre-built download the host made no difference; building Code - OSS from
+      # source, it decides the contents — @vscode/ripgrep's postinstall branches on
+      # os.platform() and node-gyp takes its flavour from the host — so an AAB
+      # produced on macOS could differ from the APK that passed CI with no step
+      # anywhere failing.
+      - name: Build signed AAB
+        working-directory: android
+        env:
+          VSCODROID_KEYSTORE_FILE: ${{ github.workspace }}/android/keystore.jks
+          VSCODROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          VSCODROID_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          VSCODROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew bundleRelease
+
+      - name: Package toolchain ZIPs
+        run: |
+          bash scripts/package-toolchains.sh
+
+          # package-toolchains.sh only fails when it produces nothing, which is
+          # right locally but not here. ToolchainRegistry points every non-Play
+          # install at releases/latest/download/<name>.zip, so a release missing
+          # one ZIP looks entirely normal while that one toolchain fails to
+          # install for every sideloaded user -- including ones already on it.
+          registry=android/app/src/main/kotlin/com/vscodroid/setup/ToolchainRegistry.kt
+          missing=0
+          for zip_name in $(grep -o 'toolchain_[a-z]*\.zip' "$registry" | sort -u); do
+            if [ ! -f "toolchain-zips/$zip_name" ]; then
+              echo "::error::$registry links to $zip_name but it was not packaged."
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+
+      - name: Report artifact sizes
+        run: |
+          ls -la android/app/build/outputs/apk/release/*.apk \
+                 android/app/build/outputs/bundle/release/*.aab \
+                 toolchain-zips/*.zip 2>/dev/null \
+            | awk '{ printf "  %8.1f MiB  %s\n", $5/1048576, $NF }'
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -214,6 +267,8 @@ jobs:
           name: release-artifacts
           path: |
             android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/bundle/release/*.aab
+            toolchain-zips/*.zip
 
   github-release:
     name: GitHub Release
@@ -230,27 +285,16 @@ jobs:
           name: release-artifacts
           path: artifacts
 
-      - name: Install packaging dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libarchive-tools zstd zip
-
-      - name: Download toolchain assets
-        run: |
-          bash scripts/download-go.sh
-          bash scripts/download-ruby.sh
-          bash scripts/download-java.sh
-
-      - name: Package toolchain ZIPs
-        run: bash scripts/package-toolchains.sh
-
+      # Nothing is fetched or built here. Everything the release publishes was
+      # produced by one run of build-release, so the AAB's asset packs and the
+      # ZIPs attached below cannot disagree about which toolchain version this
+      # release ships.
       - name: Generate checksums
         run: |
           cd artifacts
-          find . -type f -name "*.apk" -exec sha256sum {} \; > checksums.sha256
-          for zip in ../toolchain-zips/*.zip; do
-            [ -f "$zip" ] && sha256sum "$zip" >> checksums.sha256
-          done
+          find . -type f \( -name "*.apk" -o -name "*.aab" -o -name "*.zip" \) \
+            -exec sha256sum {} \; > checksums.sha256
+          cat checksums.sha256
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -258,5 +302,6 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/**/*.apk
-            toolchain-zips/*.zip
+            artifacts/**/*.aab
+            artifacts/**/*.zip
             artifacts/checksums.sha256
