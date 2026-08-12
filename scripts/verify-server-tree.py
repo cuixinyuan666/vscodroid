@@ -69,6 +69,14 @@ def main(tree):
             continue
         if path.suffix != ".node" and path.name != "rg":
             continue
+        # Vendored packages ship one directory per platform and pick at runtime.
+        # The copies for other platforms are inert here -- never loaded, never
+        # executed -- so flagging them would only report upstream's packaging.
+        # The check still catches what it is for: a binary on the path this
+        # device actually loads, built for the wrong architecture.
+        if any(part in str(path) for part in
+               ("/linux-x64/", "/darwin-", "/win32-", "-x64-", "/x64/")):
+            continue
         head = path.open("rb").read(20)
         if head[:4] != b"\x7fELF":
             continue

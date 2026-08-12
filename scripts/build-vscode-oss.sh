@@ -201,20 +201,6 @@ if [ -f "$OUT/node" ]; then
     echo "  removed the unusable GNU/Linux node binary ($size)"
 fi
 
-# GitHub Copilot, which 1.133 ships as a builtin. It is 300 MB of the tree on its
-# own, plus a node_modules copy that carries ripgrep builds for two architectures
-# -- one of them x86-64, which is what the native-architecture check trips over.
-# It is also not MIT, needs a subscription nobody here has, and this app bundles
-# Claude Code for the same job. Removed rather than shipped and ignored: the
-# whole tree goes into every APK.
-for copilot in extensions/copilot node_modules/@github; do
-    if [ -e "$OUT/$copilot" ]; then
-        size=$(du -sh "$OUT/$copilot" | cut -f1)
-        rm -rf "$OUT/$copilot"
-        echo "  removed $copilot ($size)"
-    fi
-done
-
 # gulp's reh-web package task leaves both of these behind, and product.json still
 # names one of them in licenseFileName. Code - OSS is MIT, and MIT asks that the
 # copyright notice travel with the copies — this tree is redistributed inside
