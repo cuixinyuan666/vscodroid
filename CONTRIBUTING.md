@@ -58,8 +58,11 @@ Run the download scripts in this order:
 # 1. Fetch the Code - OSS server tree built by the build-vscode-oss workflow
 ./scripts/fetch-vscode-oss.sh
 
-# 2. Download Termux tools (bash, git, tmux, make, openssh)
+# 2. Download Termux tools (bash, git, tmux, make, openssh) and Node's libraries
 ./scripts/download-termux-tools.sh
+
+# 2b. The Node runtime. After step 2, which places the libraries it links against
+./scripts/download-node.sh
 
 # 3. Download npm
 ./scripts/download-npm.sh
@@ -146,7 +149,8 @@ VSCodroid/
 ├── scripts/                       # Download and build scripts
 │   ├── fetch-vscode-oss.sh           # Fetch the built Code - OSS server tree
 │   ├── build-vscode-oss.sh           # Build it from source (CI / Docker only)
-│   ├── download-termux-tools.sh      # Download bash, git, tmux, make, openssh
+│   ├── download-termux-tools.sh      # Download bash, git, tmux, make, openssh + libs
+│   ├── download-node.sh              # Termux nodejs-lts -> libnode.so
 │   ├── download-npm.sh               # Download npm from Node.js tarball
 │   ├── download-python.sh            # Download Python 3 from Termux
 │   ├── download-extensions.sh        # Download pre-bundled extensions
@@ -196,7 +200,9 @@ Each script downloads pre-built binaries and places them in the correct location
 | `fetch-vscode-oss.sh` | Downloads the Code - OSS server tree from the `server-<version>` release, verifies it, and installs ripgrep as `libripgrep.so` | `server/vscode-reh/`, `jniLibs/arm64-v8a/libripgrep.so` |
 | `build-vscode-oss.sh` | Builds that tree from the MIT source with `patches/` and `branding/` applied. Run by the build-vscode-oss workflow on an arm64 runner, or locally in Docker; not needed for a normal build | a `.tar.gz` published as a release asset |
 | `verify-server-tree.py` | Checks a server tree: required paths, no vsda, no bundled GNU/Linux node, every native binary aarch64, branding applied. Run by both scripts above | exit status |
-| `download-termux-tools.sh` | Downloads bash, git, tmux, make, openssh from Termux APT repo, extracts .deb packages | `jniLibs/arm64-v8a/`, `assets/usr/` |
+| `download-termux-tools.sh` | Downloads bash, git, tmux, make, openssh and every shared library the bundled binaries link against, including Node's | `jniLibs/arm64-v8a/`, `assets/usr/` |
+| `download-node.sh` | Installs Termux's `nodejs-lts` as `libnode.so`. Run after `download-termux-tools.sh`, which places the libraries it links against | `jniLibs/arm64-v8a/libnode.so` |
+| `verify-android-elf.py` | Checks a binary can load on Android: aarch64, no unbundled dependency, 16 KB-aligned segments. Used by the two scripts above | exit status |
 | `download-npm.sh` | Extracts npm from Node.js linux-arm64 tarball | `assets/usr/lib/node_modules/npm/` |
 | `download-python.sh` | Downloads Python 3.12 + deps from Termux | `jniLibs/arm64-v8a/`, `assets/usr/lib/python3.12/` |
 | `download-extensions.sh` | Downloads marketplace extensions from Open VSX (supports `publisher.name@version` pinning) | `assets/extensions/` |

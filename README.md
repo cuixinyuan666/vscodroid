@@ -224,10 +224,10 @@ adb install android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 > [!WARNING]
-> **Cross-compilation required.** Building from source involves cross-compiling Node.js and
-> native modules for ARM64 Android. The steps above will build the Android shell, but the
-> full development setup (including server binaries) requires additional steps.
-> See the complete [Development Guide](docs/09-DEVELOPMENT_GUIDE.md) for detailed instructions.
+> **The steps above build the Android shell only.** A runnable app also needs the server tree,
+> the Node runtime and the bundled tools, which the `scripts/download-*.sh` scripts fetch.
+> Only the two native addons are cross-compiled, by `scripts/build-native-addons.sh`, and that
+> needs the Android NDK. See [CONTRIBUTING.md](CONTRIBUTING.md) for the order to run them in.
 
 ## 📦 Size Estimates
 
