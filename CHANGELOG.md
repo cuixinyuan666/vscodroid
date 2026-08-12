@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Launching no longer crashes outright if refreshing tool paths fails
 - Comments and formatting in `settings.json` now survive the refresh of bundled tool paths
 - Build and release workflows no longer fail when the runner's package index is out of date
+- Cold start no longer crashes while the WebView still shows its placeholder URL — thanks [@4in4in](https://github.com/4in4in) for the fix ([#6](https://github.com/rmyndharis/VSCodroid/pull/6))
 
 ## [1.0.0] - 2026-04-21
 
