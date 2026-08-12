@@ -1,0 +1,92 @@
+name: Build Code - OSS server
+
+# Manual only. This is the measurement and proving ground for the Code - OSS
+# pivot, not part of PR CI: it clones the VS Code source and runs a full gulp
+# build, which is orders of magnitude more expensive than the current job that
+# just downloads a pre-built server.
+on:
+  workflow_dispatch:
+    inputs:
+      vscode_version:
+        description: VS Code tag to build
+        default: "1.96.4"
+        type: string
+      runner:
+        # ubuntu-latest is x64, so remote/ native modules compile for x64 while
+        # the target is arm64. That is survivable only because every .node is
+        # overlaid with a Bionic build afterwards — if that overlay is ever
+        # partial, an x64 addon reaches the device and fails at dlopen. An arm64
+        # runner removes the mismatch at the source.
+        description: Runner to build on
+        default: ubuntu-latest
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the tag's required Node version
+        id: node
+        env:
+          # Through the environment, never interpolated into the script body: a
+          # workflow_dispatch input is attacker-controlled text as far as the
+          # shell is concerned, and this one lands in a URL.
+          VSCODE_VERSION: ${{ inputs.vscode_version }}
+        run: |
+          case "$VSCODE_VERSION" in
+            *[!0-9.]*|"") echo "refusing tag: $VSCODE_VERSION" >&2; exit 1 ;;
+          esac
+          # .nvmrc at the tag is authoritative for the build host. Reading it
+          # here rather than hardcoding keeps a version bump from silently
+          # building on the wrong Node.
+          version=$(curl -fsSL \
+            "https://raw.githubusercontent.com/microsoft/vscode/${VSCODE_VERSION}/.nvmrc")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building with Node $version"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.node.outputs.version }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libkrb5-dev libsecret-1-dev libx11-dev \
+            libxkbfile-dev pkg-config python3 python3-setuptools
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: codeoss-npm-${{ inputs.vscode_version }}-${{ runner.arch }}
+          restore-keys: codeoss-npm-${{ inputs.vscode_version }}-
+
+      - name: Build
+        env:
+          VSCODE_VERSION: ${{ inputs.vscode_version }}
+          WORK: ${{ runner.temp }}/codeoss
+        run: |
+          mkdir -p "$WORK"
+          bash scripts/build-vscode-oss.sh
+
+      - name: Report cost
+        if: always()
+        run: |
+          df -h "${{ runner.temp }}" | tail -1
+          du -sh "${{ runner.temp }}/codeoss"/* 2>/dev/null || true
+
+      - name: Upload server tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-reh-web-linux-arm64-${{ inputs.vscode_version }}
+          path: ${{ runner.temp }}/codeoss/vscode-reh-web-linux-arm64
+          retention-days: 7
+          if-no-files-found: error
