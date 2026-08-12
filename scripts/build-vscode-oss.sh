@@ -186,6 +186,7 @@ if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
 0001 platform|out/server-main.js|platform==="android"
 0002 userDataPath|out/vs/platform/terminal/node/ptyHostMain.js|case"android"
 0003 ptyHost worker|out/server-main.js|__vsc_disconnect
+0004 extHost worker|out/server-main.js|worker_thread Extension Host
 FINGERPRINTS
 fi
 

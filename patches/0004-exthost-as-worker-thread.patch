@@ -1,0 +1,83 @@
+Run the Extension Host as a worker_thread instead of a forked process.
+
+Completes the pair started with the Pty Host. The Extension Host is the
+longest-lived fork the server makes, and on Android 12+ every fork spends one of
+32 system-wide background process slots.
+
+It needs more than the Pty Host did, because it hands the client's socket to the
+child over IPC and a worker_thread has no channel that can carry a handle.
+_canSendSocket is therefore forced off, which selects the named-pipe path VS Code
+already uses on Windows — the host connects back over a pipe and the server
+bridges the two sockets itself, with no handle ever crossing the IPC boundary.
+
+That is not quite sufficient, and the gap is not in the plan this follows.
+_sendSocketToExtensionHost is unreachable on the initial connection once the flag
+is off, but acceptReconnection() calls it without checking the flag at all. Left
+alone, send(msg, socket) would report success while dropping the socket, and the
+host would wait for a connection that never arrives with nothing logged. It now
+refuses and says so, which makes a failed reconnection diagnosable instead of
+silent. Reconnecting after a WebView recreation consequently needs a fresh
+connection rather than a resumed one; that is a real limitation, recorded here
+rather than discovered later.
+
+  noUnusedParameters di tsconfig: src/tsconfig.base.json:0,src/tsconfig.json:0
+  parameter dipakai di pesan log
+diff --git a/src/vs/server/node/extensionHostConnection.ts b/src/vs/server/node/extensionHostConnection.ts
+index a358489..0930e4a 100644
+--- a/src/vs/server/node/extensionHostConnection.ts
++++ b/src/vs/server/node/extensionHostConnection.ts
+@@ -11,6 +11,7 @@ import { Disposable, DisposableStore, toDisposable } from '../../base/common/lif
+ import { FileAccess } from '../../base/common/network.js';
+ import { delimiter, join } from '../../base/common/path.js';
+ import { IProcessEnvironment, isWindows } from '../../base/common/platform.js';
++import { forkOrWorker } from '../../base/node/workerAsChildProcess.js';
+ import { removeDangerousEnvVariables } from '../../base/common/processes.js';
+ import { createRandomIPCHandle, NodeSocket, WebSocketNodeSocket } from '../../base/parts/ipc/node/ipc.net.js';
+ import { IConfigurationService } from '../../platform/configuration/common/configuration.js';
+@@ -125,7 +126,11 @@ export class ExtensionHostConnection extends Disposable {
+ 		@IConfigurationService private readonly _configurationService: IConfigurationService
+ 	) {
+ 		super();
+-		this._canSendSocket = (!isWindows || !this._environmentService.args['socket-path']);
++		// Forced off because the Extension Host runs as a worker_thread, and a socket
++		// handle cannot be transferred to one. Left on, the constructor would pick the
++		// branch that hands the socket over IPC; the pipe path this selects instead is
++		// the same one Windows already uses.
++		this._canSendSocket = false;
+ 		this._disposed = false;
+ 		this._remoteAddress = remoteAddress;
+ 		this._extensionHostProcess = null;
+@@ -183,14 +188,12 @@ export class ExtensionHostConnection extends Disposable {
+ 	private async _sendSocketToExtensionHost(extensionHostProcess: cp.ChildProcess, connectionData: ConnectionData): Promise<void> {
+ 		// Make sure all outstanding writes have been drained before sending the socket
+ 		await connectionData.socketDrain();
+-		const msg = connectionData.toIExtHostSocketMessage();
+-		let socket: net.Socket;
+-		if (connectionData.socket instanceof NodeSocket) {
+-			socket = connectionData.socket.socket;
+-		} else {
+-			socket = connectionData.socket.socket.socket;
+-		}
+-		extensionHostProcess.send(msg, socket);
++		// Unreachable on the initial connection now that _canSendSocket is false,
++		// but acceptReconnection() calls this without checking it. A worker_thread has
++		// no channel that can carry a socket handle, and send() would drop it while
++		// reporting success — leaving the host waiting for a connection that never
++		// arrives, with nothing logged. Refusing here at least says so.
++		this._logError(`<${extensionHostProcess.pid}> Cannot hand a socket to a worker_thread Extension Host; the client must reconnect from scratch.`);
+ 	}
+ 
+ 	public shortenReconnectionGraceTimeIfNecessary(): void {
+@@ -268,7 +271,11 @@ export class ExtensionHostConnection extends Disposable {
+ 			const args = ['--type=extensionHost', `--transformURIs`];
+ 			const useHostProxy = this._environmentService.args['use-host-proxy'];
+ 			args.push(`--useHostProxy=${useHostProxy ? 'true' : 'false'}`);
+-			this._extensionHostProcess = cp.fork(FileAccess.asFileUri('bootstrap-fork').fsPath, args, opts);
++			// A thread rather than a process. Android 12+ kills background child
++			// processes past a system-wide limit of 32, and the Extension Host is the
++			// longest-lived fork the server makes. bootstrap-fork gives the module the
++			// same IPC either way.
++			this._extensionHostProcess = forkOrWorker(true, cp.fork, FileAccess.asFileUri('bootstrap-fork').fsPath, args, opts);
+ 			const pid = this._extensionHostProcess.pid;
+ 			this._log(`<${pid}> Launched Extension Host Process.`);
+ 
