@@ -5,9 +5,12 @@
 **Date**: 2026-02-10
 
 > **Historical document — describes the plan as of 2026-02-10, not the code.**
-> Steps referring to `apply-patches.sh`, `build-vscode.sh`, or `patches/*.diff` describe a
-> build-from-source path that was never wired up; those files were deleted on 2026-08-11.
-> Read `CLAUDE.md` for what the code actually does, and verify against the code itself.
+> The server is built from the MIT Code - OSS source by `.github/workflows/build-vscode-oss.yml`,
+> with unified diffs in `patches/` applied before the build; app builds fetch the result with
+> `scripts/fetch-vscode-oss.sh`. Anything here about downloading a pre-built server from Microsoft's
+> CDN, or about inline regex patches in `download-vscode-server.sh`, describes a path that was
+> removed on 2026-08-12. Read `CLAUDE.md` for what the code actually does, and verify against the
+> code itself.
 
 ---
 

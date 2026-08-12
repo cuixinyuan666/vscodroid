@@ -16,7 +16,7 @@ echo "[1/4] Running setup..."
 # Step 2: Fetch the VS Code Server
 echo ""
 echo "[2/4] Fetching VS Code Server..."
-"$SCRIPT_DIR/download-vscode-server.sh"
+"$SCRIPT_DIR/fetch-vscode-oss.sh"
 
 # Step 3: Package assets
 echo ""

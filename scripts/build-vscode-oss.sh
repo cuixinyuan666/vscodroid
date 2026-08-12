@@ -10,10 +10,17 @@ set -euo pipefail
 #
 #   docker volume create vscodroid-codeoss
 #   docker run --rm -v vscodroid-codeoss:/work \
-#       -v "$PWD/scripts/build-vscode-oss.sh:/build.sh:ro" \
+#       -e VSCODE_VERSION="$(cat VSCODE_VERSION)" \
+#       -v "$PWD/scripts:/scripts:ro" \
 #       -v "$PWD/branding:/branding" \
 #       -v "$PWD/patches:/patches:ro" \
-#       vscodroid-codeoss-build:20.18.0 bash /build.sh
+#       vscodroid-codeoss-build:20.18.0 bash /scripts/build-vscode-oss.sh
+#
+# Run it on an arm64 host. Every native module in the tree is built for the build
+# host, and only two of them are overlaid afterwards by build-native-addons.sh —
+# ripgrep in particular is downloaded by its own postinstall for whatever
+# os.platform()/arch() reports. The Verify stage refuses to finish an x86-64
+# tree rather than let one reach a device, where it fails at exec.
 #
 # Patches and branding are both applied to the source before gulp runs, so their
 # effects are baked in wherever the build inlines them rather than only where a
@@ -21,9 +28,12 @@ set -euo pipefail
 # could not, so a broken build is attributable to a stage rather than discovered
 # on a device.
 
-VSCODE_VERSION="${VSCODE_VERSION:-1.96.4}"
+# No default. The pin lives in the repo's VSCODE_VERSION file and is passed in;
+# a second copy here is a second thing to forget when the version moves.
+VSCODE_VERSION="${VSCODE_VERSION:?pass it in from the repo VSCODE_VERSION file}"
 ARCH="${ARCH:-arm64}"
 WORK="${WORK:-/work}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SRC="$WORK/vscode"
 # gulpfile.reh.js: BUILD_ROOT = path.dirname(REPO_ROOT), and destinationFolderName
@@ -146,27 +156,26 @@ if [ -f "$OUT/node" ]; then
     echo "  removed the unusable GNU/Linux node binary ($size)"
 fi
 
-step "Verify"
-fail=0
-# The three paths VSCodroid actually loads. A build that misses any of them is
-# broken for us no matter how green gulp was.
-for p in out/server-main.js product.json node_modules/@vscode/ripgrep/bin; do
-    if [ -e "$OUT/$p" ]; then
-        echo "  ok      $p"
-    else
-        echo "  MISSING $p"
-        fail=1
+# gulp's reh-web package task leaves both of these behind, and product.json still
+# names one of them in licenseFileName. Code - OSS is MIT, and MIT asks that the
+# copyright notice travel with the copies — this tree is redistributed inside
+# every APK, so the notice has to be in it.
+for f in LICENSE.txt ThirdPartyNotices.txt; do
+    if [ -f "$SRC/$f" ]; then
+        cp "$SRC/$f" "$OUT/$f"
+        echo "  added $f"
     fi
 done
 
-# vsda is the signing addon that only ships in Microsoft's build. Its presence
-# would mean this tree is not the OSS one we think it is.
-if [ -e "$OUT/node_modules/vsda" ]; then
-    echo "  UNEXPECTED node_modules/vsda — this is not an OSS tree"
-    fail=1
-else
-    echo "  ok      no vsda"
-fi
+step "Verify"
+fail=0
+
+# Tree shape, branding and native architecture are checked by the same script the
+# fetcher runs, so what is proven here is exactly what is proven again on the way
+# into an APK. The build-specific checks — that each patch survived into the
+# packaged bundles, and that the product.json key set has not drifted — stay here,
+# because only this side has the patches and the expectation file.
+python3 "$SCRIPT_DIR/verify-server-tree.py" "$OUT" || fail=1
 
 # Applying a patch to the source proves nothing about the package: the file may
 # not be in this target's graph, or the build may inline an older copy. Each
@@ -212,11 +221,9 @@ def check(label, ok, detail=""):
     if not ok:
         bad = True
 
-check("product.json is branded", product.get("nameLong") == "VSCodroid",
-      f"nameLong = {product.get('nameLong')!r}")
-check("no vscode-cdn.net template", "webviewContentExternalBaseUrlTemplate" not in product)
-check("gallery points at Open VSX",
-      "open-vsx.org" in product.get("extensionsGallery", {}).get("serviceUrl", ""))
+# product.json's own branding is checked by verify-server-tree.py, which runs on
+# both sides of the pivot. What is left here needs the branding directory, so it
+# can only run at build time.
 check("manifest.json is branded", manifest.get("name") == "VSCodroid",
       f"name = {manifest.get('name')!r}")
 
@@ -248,5 +255,16 @@ du -sh "$OUT" | awk '{print "  size    : "$1}'
 df -h "$WORK" | tail -1 | awk '{print "  disk free after: "$4}'
 
 [ "$fail" -eq 0 ] || { echo; echo "VERIFY FAILED"; exit 1; }
+
+step "Package"
+# Packed here rather than in the workflow so a local build and a CI build produce
+# the same file. The contents are stored without a leading directory, so the
+# fetcher extracts straight into whatever name the app expects.
+TARBALL="$WORK/vscode-reh-web-linux-$ARCH-$VSCODE_VERSION.tar.gz"
+t0=$SECONDS
+tar -C "$OUT" -czf "$TARBALL" .
+elapsed $(( SECONDS - t0 ))
+echo "  tarball : $TARBALL"
+du -h "$TARBALL" | awk '{print "  size    : "$1}'
 echo
 echo "=== Code - OSS reh-web build complete ==="

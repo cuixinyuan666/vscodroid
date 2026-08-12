@@ -5,10 +5,12 @@
 **Date**: 2026-02-10
 
 > **Historical document — describes the plan as of 2026-02-10, not the code.**
-> The implementation diverged. Most visibly: there is no code-server fork and no `.diff` patches.
-> A pre-built server is downloaded and rewritten in place by `scripts/download-vscode-server.sh`;
-> `patches/` and `apply-patches.sh` were deleted on 2026-08-11 having never been invoked.
-> Read `CLAUDE.md` for what the code actually does, and verify against the code itself.
+> The server is built from the MIT Code - OSS source by `.github/workflows/build-vscode-oss.yml`,
+> with unified diffs in `patches/` applied before the build; app builds fetch the result with
+> `scripts/fetch-vscode-oss.sh`. Anything here about downloading a pre-built server from Microsoft's
+> CDN, or about inline regex patches in `download-vscode-server.sh`, describes a path that was
+> removed on 2026-08-12. Read `CLAUDE.md` for what the code actually does, and verify against the
+> code itself.
 
 ---
 

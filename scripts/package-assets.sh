@@ -17,7 +17,7 @@ if [ -d "$REH_SRC" ]; then
     cp -r "$REH_SRC" "$ASSETS_DIR/vscode-reh"
     echo "  ✓ vscode-reh: $(du -sh "$ASSETS_DIR/vscode-reh" | cut -f1)"
 else
-    echo "  ⚠ vscode-reh not found (run download-vscode-server.sh first)"
+    echo "  ⚠ vscode-reh not found (run fetch-vscode-oss.sh first)"
 fi
 
 # Server bootstrap

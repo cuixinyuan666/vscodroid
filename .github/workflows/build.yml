@@ -52,7 +52,7 @@ jobs:
             toolchains/termux-packages/Packages
             toolchains/build/npm/
             toolchains/extensions/
-          key: downloads-${{ hashFiles('scripts/download-vscode-server.sh', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh') }}
+          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh') }}
           restore-keys: |
             downloads-
 
@@ -67,7 +67,7 @@ jobs:
             android/app/src/main/assets/extensions/
             android/app/src/main/jniLibs/arm64-v8a/
             server/vscode-reh/
-          key: assets-${{ hashFiles('scripts/download-vscode-server.sh', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/build-native-addons.sh') }}
+          key: assets-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/build-native-addons.sh') }}
           restore-keys: |
             assets-
 
@@ -81,11 +81,18 @@ jobs:
           sudo apt-get install -y --no-install-recommends libarchive-tools
 
       # Download and prepare all assets (only if not cached)
-      - name: Download VS Code Server
+      # Built from the MIT source by build-vscode-oss.yml and published as a
+      # server-<version> release; this only downloads and checks it. Before the
+      # pivot the tree came pre-built from Microsoft's update CDN, which is
+      # covered by the Microsoft pre-release licence rather than MIT and so could
+      # not be modified and redistributed inside an APK.
+      - name: Fetch Code - OSS server
         if: steps.cache-assets.outputs.cache-hit != 'true'
-        run: bash scripts/download-vscode-server.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/fetch-vscode-oss.sh
 
-      - name: Copy VS Code Server to assets
+      - name: Copy the server into assets
         if: steps.cache-assets.outputs.cache-hit != 'true'
         run: |
           mkdir -p android/app/src/main/assets/

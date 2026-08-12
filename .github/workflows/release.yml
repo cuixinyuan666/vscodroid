@@ -112,15 +112,22 @@ jobs:
             toolchains/termux-packages/Packages
             toolchains/build/npm/
             toolchains/extensions/
-          key: downloads-${{ hashFiles('scripts/download-vscode-server.sh', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh') }}
+          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh') }}
           restore-keys: |
             downloads-
 
       # Download and prepare all core assets
-      - name: Download VS Code Server
-        run: bash scripts/download-vscode-server.sh
+      # Built from the MIT source by build-vscode-oss.yml and published as a
+      # server-<version> release; this only downloads and checks it. Before the
+      # pivot the tree came pre-built from Microsoft's update CDN, which is
+      # covered by the Microsoft pre-release licence rather than MIT and so could
+      # not be modified and redistributed inside an APK.
+      - name: Fetch Code - OSS server
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/fetch-vscode-oss.sh
 
-      - name: Copy VS Code Server to assets
+      - name: Copy the server into assets
         run: |
           mkdir -p android/app/src/main/assets/
           rm -rf android/app/src/main/assets/vscode-reh

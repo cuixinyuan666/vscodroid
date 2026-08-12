@@ -289,7 +289,7 @@ If you discover a security vulnerability, please **do not** open a public issue.
 
 VSCodroid is **not affiliated with or endorsed by Microsoft Corporation**.
 
-The bundled editor server is currently the official **Visual Studio Code Server** distribution, which Microsoft publishes under its own proprietary terms — **not** the MIT-licensed [Code - OSS](https://github.com/microsoft/vscode) source. The licence that applies to it is the one shipped inside the download, at `android/app/src/main/assets/vscode-reh/LICENSE`. Replacing it with a Code - OSS build compiled from source is in progress.
+The bundled editor server is built from the MIT-licensed [Code - OSS](https://github.com/microsoft/vscode) source, with this project's Android patches and branding applied before the build. Its licence and third-party notices ship inside the tree, at `android/app/src/main/assets/vscode-reh/LICENSE.txt` and `ThirdPartyNotices.txt`. Earlier releases bundled Microsoft's pre-built Visual Studio Code Server distribution instead, which is covered by Microsoft's own proprietary terms rather than MIT.
 
 - "Visual Studio Code" and "VS Code" are trademarks of Microsoft.
 - Uses [Open VSX](https://open-vsx.org) extension registry, not Microsoft Marketplace.
