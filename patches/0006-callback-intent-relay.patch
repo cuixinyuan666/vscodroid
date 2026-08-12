@@ -1,0 +1,42 @@
+Relay the OAuth callback into the app with an intent:// navigation.
+
+callback.html hands the result back by writing to localStorage, which the
+workbench then reads. That never happens here: the callback lands in the system
+browser while the workbench runs in a WebView, and the two are separate storage
+origins, so every sign-in flow hangs waiting for a value that was written
+somewhere else.
+
+intent:// rather than a custom scheme, because Chrome refuses to navigate to one
+from script without a user gesture while intent:// is always permitted and
+resolves through the manifest intent-filter. Synchronously rather than from a
+timeout, because the activation that permits the navigation is gone by the time
+one would fire. The localStorage write is left in place so the flow still works
+if the page is ever opened in the WebView itself.
+
+diff --git a/src/vs/code/browser/workbench/callback.html b/src/vs/code/browser/workbench/callback.html
+index 4f54d4d..abdefec 100644
+--- a/src/vs/code/browser/workbench/callback.html
++++ b/src/vs/code/browser/workbench/callback.html
+@@ -62,6 +62,22 @@
+ 			}
+ 
+ 			localStorage.setItem(`vscode-web.url-callbacks[${id}]`, JSON.stringify(uri));
++
++			// Relay the callback into the Android app.
++			//
++			// The localStorage write above is how the workbench normally collects this,
++			// and it never reaches us: the callback lands in the system browser while the
++			// workbench runs in a WebView, and those are separate storage origins.
++			//
++			// intent:// rather than a custom scheme, because Chrome blocks navigation to
++			// one from script without a user gesture while intent:// is always allowed and
++			// resolves through the manifest intent-filter. Synchronous rather than
++			// deferred, because the activation permitting the navigation is gone by the
++			// time a timeout would fire.
++			try {
++				const payload = encodeURIComponent(JSON.stringify({ id: id, uri: uri }));
++				window.location.href = 'intent://callback?data=' + payload + '#Intent;scheme=vscodroid;end';
++			} catch (e) { }
+ 		</script>
+ 
+ 		<!-- Styling -->

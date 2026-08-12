@@ -174,6 +174,9 @@ fi
 # packaged output is searched for it.
 if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
     # patch | bundle it must reach | fingerprint that survives minification
+    # Not every patch leaves one: 0007 flips a single boolean and its only
+    # distinctive text is a comment, which minification strips. An absent row is
+    # deliberate, not an oversight.
     while IFS='|' read -r id bundle pattern; do
         [ -z "$id" ] && continue
         if [ -f "$OUT/$bundle" ] && grep -q "$pattern" "$OUT/$bundle"; then
@@ -188,6 +191,8 @@ if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
 0003 ptyHost worker|out/server-main.js|__vsc_disconnect
 0004 extHost worker|out/server-main.js|worker_thread Extension Host
 0005 webview csp|out/vs/workbench/contrib/webview/browser/pre/index.html|script-src 'unsafe-inline'
+0006 callback relay|out/vs/code/browser/workbench/callback.html|intent://callback
+0008 activitybar height|out/vs/code/browser/workbench/workbench.js|.activitybar .composite-bar
 FINGERPRINTS
 fi
 
