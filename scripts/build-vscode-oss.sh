@@ -11,11 +11,13 @@ set -euo pipefail
 #   docker volume create vscodroid-codeoss
 #   docker run --rm -v vscodroid-codeoss:/work \
 #       -v "$PWD/scripts/build-vscode-oss.sh:/build.sh:ro" \
+#       -v "$PWD/branding:/branding:ro" \
 #       vscodroid-codeoss-build:20.18.0 bash /build.sh
 #
-# This produces an unbranded, unpatched tree on purpose. Branding and the Android
-# adaptations are applied on top; keeping this stage clean is what makes it
-# possible to tell a build failure apart from a patch failure.
+# Branding is applied to the source before gulp runs, so the values are baked in
+# wherever the build inlines them rather than only where a later regex reaches.
+# The Android adaptations are still patched on afterwards; keeping those separate
+# is what makes a build failure distinguishable from a patch failure.
 
 VSCODE_VERSION="${VSCODE_VERSION:-1.96.4}"
 ARCH="${ARCH:-arm64}"
@@ -49,6 +51,46 @@ cd "$SRC"
 echo "  HEAD    : $(git rev-parse --short HEAD)"
 echo "  .nvmrc  : $(cat .nvmrc)"
 [ "v$(cat .nvmrc)" = "$(node --version)" ] || echo "  WARNING: node does not match .nvmrc"
+
+step "Branding"
+# Skippable so the stage can be run bare when isolating a build problem.
+BRANDING="${BRANDING:-/branding}"
+if [ -d "$BRANDING" ]; then
+    python3 - "$BRANDING/product.json" "$SRC/product.json" <<'PY'
+import json, sys
+
+overlay_path, product_path = sys.argv[1], sys.argv[2]
+overlay = json.load(open(overlay_path))
+product = json.load(open(product_path))
+
+removed = [k for k in overlay.get("remove", []) if product.pop(k, None) is not None]
+product.update(overlay.get("set", {}))
+
+# Two spaces and a trailing newline: this file is read by humans when a build
+# behaves oddly, and gulp only cares that it parses.
+with open(product_path, "w") as f:
+    json.dump(product, f, indent=2)
+    f.write("\n")
+
+print(f"  product.json: {len(overlay.get('set', {}))} set, {len(removed)} removed, {len(product)} keys")
+for key in ("nameLong", "applicationName", "urlProtocol"):
+    print(f"    {key} = {product[key]}")
+PY
+
+    # gulpfile.reh.js:343-351 copies these four into the reh-web package as they
+    # are. Upstream they are Microsoft's VS Code icon and name, which must not
+    # travel with this app. The filenames are fixed by that same gulp task.
+    for asset in manifest.json code-192.png code-512.png favicon.ico; do
+        if [ -f "$BRANDING/server/$asset" ]; then
+            cp "$BRANDING/server/$asset" "$SRC/resources/server/$asset"
+            echo "  resources/server/$asset"
+        else
+            echo "  WARNING: $BRANDING/server/$asset missing, keeping upstream" >&2
+        fi
+    done
+else
+    echo "  no branding at $BRANDING — building unbranded"
+fi
 
 step "Dependencies (npm ci)"
 t0=$SECONDS
@@ -98,6 +140,52 @@ if [ -e "$OUT/node_modules/vsda" ]; then
     fail=1
 else
     echo "  ok      no vsda"
+fi
+
+if [ -d "$BRANDING" ]; then
+    python3 - "$OUT/product.json" "$OUT/resources/server/manifest.json" \
+             "$BRANDING/product-keys.expected" <<'PY' || fail=1
+import json, sys
+
+product = json.load(open(sys.argv[1]))
+manifest = json.load(open(sys.argv[2]))
+expected_path = sys.argv[3]
+bad = False
+
+def check(label, ok, detail=""):
+    global bad
+    print(f"  {'ok     ' if ok else 'FAIL   '} {label}{'' if ok else '  ' + detail}")
+    if not ok:
+        bad = True
+
+check("product.json is branded", product.get("nameLong") == "VSCodroid",
+      f"nameLong = {product.get('nameLong')!r}")
+check("no vscode-cdn.net template", "webviewContentExternalBaseUrlTemplate" not in product)
+check("gallery points at Open VSX",
+      "open-vsx.org" in product.get("extensionsGallery", {}).get("serviceUrl", ""))
+check("manifest.json is branded", manifest.get("name") == "VSCodroid",
+      f"name = {manifest.get('name')!r}")
+
+# Locks the key set. A VS Code bump that adds, drops or renames a product.json
+# key has to be looked at deliberately — silently inheriting one is how a CDN
+# URL or a telemetry endpoint slips back in.
+keys = sorted(product)
+try:
+    with open(expected_path) as f:
+        want = [line.strip() for line in f if line.strip()]
+except FileNotFoundError:
+    print(f"  note    no {expected_path}; writing it from this build")
+    with open(expected_path, "w") as f:
+        f.write("\n".join(keys) + "\n")
+    want = keys
+
+added = [k for k in keys if k not in want]
+dropped = [k for k in want if k not in keys]
+check("product.json key set unchanged", not added and not dropped,
+      f"added={added} dropped={dropped}")
+
+sys.exit(1 if bad else 0)
+PY
 fi
 
 echo
