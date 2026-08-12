@@ -16,8 +16,12 @@ WORK_DIR="$ROOT_DIR/toolchains/extensions"
 
 # Extensions to bundle: publisher.name or publisher.name@version
 #
-# Every one is pinned, and the pin is the newest version whose engines.vscode is
-# satisfied by the VSCODE_VERSION file. Leaving one unpinned would resolve to
+# Every one is pinned to the newest STABLE version whose engines.vscode is
+# satisfied by the VSCODE_VERSION file. Stable matters as much as compatible:
+# GitLens publishes pre-release builds far more often than releases, so "newest
+# compatible" lands on one — and its pre-releases carry an expiry date. Picking
+# one ships an extension that works in testing and then puts an "this
+# pre-release has expired" error in front of every user some weeks later. Leaving one unpinned would resolve to
 # whatever is newest on the day of the build, and an extension needing a newer VS
 # Code than the server does not error — it simply never activates, so the feature
 # is missing with nothing in the log to explain it. The check after extraction
@@ -31,7 +35,7 @@ EXTENSIONS=(
     "ms-python.python@2026.4.0"
     "dbaeumer.vscode-eslint@3.0.34"
     "bradlc.vscode-tailwindcss@0.16.0"
-    "eamodio.gitlens@2026.3.1505"       # later builds need ^1.101.0
+    "eamodio.gitlens@17.11.1"           # newest STABLE for 1.96.4; 17.12+ needs ^1.101.0
 )
 
 OPENVSX_API="https://open-vsx.org/api"
@@ -70,6 +74,17 @@ for EXT_SPEC in "${EXTENSIONS[@]}"; do
             -H "Accept: application/json" \
             -o "$METADATA_FILE" \
             "$API_URL"
+    fi
+
+    # A pre-release build stops working on a date rather than on a version, so
+    # it passes every check here and every test on device, then expires weeks
+    # later in front of the user. Open VSX records which kind this is; the pin is
+    # required to name a release.
+    IS_PRERELEASE=$(python3 -c "import json; print(json.load(open('$METADATA_FILE')).get('preRelease'))")
+    if [ "$IS_PRERELEASE" = "True" ]; then
+        echo "  FAIL   $EXT_ID $PINNED_VERSION is a pre-release; pin a release instead." >&2
+        echo "         Pre-releases expire on a date and take the feature with them." >&2
+        exit 1
     fi
 
     # Extract version and download URL
