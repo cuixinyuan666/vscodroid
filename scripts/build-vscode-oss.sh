@@ -3,10 +3,20 @@ set -euo pipefail
 
 # Builds Code - OSS into a vscode-reh-web server tree.
 #
-# Runs inside the image from docker/codeoss-build.Dockerfile, which supplies the
-# Node from VS Code's .nvmrc and the native toolchain. Run it with a named volume
-# rather than a bind mount — npm ci writes on the order of 100k files, and a
-# Docker Desktop bind mount makes that pathologically slow:
+# Two ways in, and they are not interchangeable. build-vscode-oss.yml runs this
+# directly on an arm64 runner with nothing mounted, so every path here has to
+# resolve from the script's own location. Locally it runs inside the image from
+# docker/codeoss-build.Dockerfile, which supplies the Node from VS Code's .nvmrc
+# and the native toolchain.
+#
+# ⚠️ A reused work volume is faster and lies. It carries the previous run's
+# node_modules and output tree, so a build can pass on it while the same commit
+# fails from clean — which is how an unpatched CI build went unnoticed. Before
+# trusting a local green, `docker volume rm vscodroid-codeoss`.
+#
+# Run it with a named volume rather than a bind mount — npm ci writes on the
+# order of 100k files, and a Docker Desktop bind mount makes that pathologically
+# slow:
 #
 #   docker volume create vscodroid-codeoss
 #   docker volume create vscodroid-npm-cache
@@ -34,6 +44,16 @@ set -euo pipefail
 # a second copy here is a second thing to forget when the version moves.
 VSCODE_VERSION="${VSCODE_VERSION:?pass it in from the repo VSCODE_VERSION file}"
 ARCH="${ARCH:-arm64}"
+# Resolved here, before any stage runs, because the Source stage cd's into the
+# checkout and BASH_SOURCE is relative when CI invokes the script as
+# `bash scripts/build-vscode-oss.sh` -- computing it later resolves against the
+# wrong directory. Relative to the script rather than an absolute mount point so
+# it lands right in both places the build runs: /patches and /branding under
+# Docker, where the script is mounted at /scripts, and the repo's own directories
+# in a checkout. Hardcoding the mount paths is what let a CI run silently build a
+# tree with no patches and no branding applied.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 WORK="${WORK:-/work}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -77,7 +97,7 @@ step "Patches"
 # first is the one that is easy to miss: a patch that adds a file leaves it
 # staged, where neither checkout nor clean will touch it, and the next run dies
 # with "already exists in working directory".
-PATCHES="${PATCHES:-/patches}"
+PATCHES="${PATCHES:-$REPO_ROOT/patches}"
 if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
     # build/ as well as src/: patches reach the build tooling too, and a tree
     # reset that misses one of them fails the next run on an applied hunk.
@@ -88,13 +108,21 @@ if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
         git -C "$SRC" apply --verbose "$patch" 2>&1 | sed 's/^/  /'
         echo "  applied $(basename "$patch")"
     done
+elif [ -n "${ALLOW_UNADAPTED:-}" ]; then
+    echo "  no patches at $PATCHES — building unadapted (ALLOW_UNADAPTED set)"
 else
-    echo "  no patches at $PATCHES — building unadapted"
+    echo "  ERROR: no patches at $PATCHES" >&2
+    echo "  A tree without them is not this product: no Android platform" >&2
+    echo "  detection, no worker_thread hosts, no Open VSX target platform." >&2
+    echo "  Set ALLOW_UNADAPTED=1 to build one deliberately." >&2
+    exit 1
 fi
 
 step "Branding"
-# Skippable so the stage can be run bare when isolating a build problem.
-BRANDING="${BRANDING:-/branding}"
+# Skippable so the stage can be run bare when isolating a build problem, but only
+# on purpose: an unbranded tree carries Microsoft's product name and icons, which
+# is exactly what this build exists to avoid shipping.
+BRANDING="${BRANDING:-$REPO_ROOT/branding}"
 if [ -d "$BRANDING" ]; then
     # Restore what this stage overwrites before overwriting it. The overlay is
     # applied with update(), so on a reused work volume it merges into the
@@ -135,8 +163,13 @@ PY
             echo "  WARNING: $BRANDING/server/$asset missing, keeping upstream" >&2
         fi
     done
+elif [ -n "${ALLOW_UNADAPTED:-}" ]; then
+    echo "  no branding at $BRANDING — building unbranded (ALLOW_UNADAPTED set)"
 else
-    echo "  no branding at $BRANDING — building unbranded"
+    echo "  ERROR: no branding at $BRANDING" >&2
+    echo "  The tree would carry Microsoft's name and icons." >&2
+    echo "  Set ALLOW_UNADAPTED=1 to build one deliberately." >&2
+    exit 1
 fi
 
 step "Dependencies (npm ci)"
