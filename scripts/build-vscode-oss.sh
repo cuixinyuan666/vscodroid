@@ -187,6 +187,7 @@ if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
 0002 userDataPath|out/vs/platform/terminal/node/ptyHostMain.js|case"android"
 0003 ptyHost worker|out/server-main.js|__vsc_disconnect
 0004 extHost worker|out/server-main.js|worker_thread Extension Host
+0005 webview csp|out/vs/workbench/contrib/webview/browser/pre/index.html|script-src 'unsafe-inline'
 FINGERPRINTS
 fi
 
