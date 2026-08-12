@@ -186,9 +186,19 @@ print(f"  vsda bypass: {files_patched} file(s) patched")
 PYEOF
 
 # Disable Workspace Trust (Restricted Mode)
-# VS Code forces workspace trust for remote connections (remoteAuthority),
-# ignoring the security.workspace.trust.enabled setting. Since all workspaces
-# in VSCodroid are local/app-private, we patch the trust check to always return true.
+#
+# Superseded by --disable-workspace-trust in assets/server.js, which is a
+# supported server switch and needs no pattern matching. Kept as a fallback only
+# until the flag has been exercised against this tree as well; it has so far only
+# been verified on the Code - OSS build.
+#
+# The reason recorded here previously was wrong, and wrong in a way that sends the
+# next reader to the wrong place: VS Code does not force trust for remote
+# connections. isWorkspaceTrustEnabled() honours the setting. The setting is
+# registered ConfigurationScope.APPLICATION, and application-scoped settings are
+# not read from the remote side — so security.workspace.trust.enabled written into
+# the server's user-data-dir has never had any effect, while the CLI flag, checked
+# before the configuration is consulted at all, does.
 echo ""
 echo "Patching workspace trust (disable Restricted Mode)..."
 python3 - "$WORKBENCH_JS" <<'PYEOF'

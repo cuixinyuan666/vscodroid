@@ -107,12 +107,27 @@ if (!fs.existsSync(rehEntryPoint)) {
         '--port', String(PORT),
         '--without-connection-token',
         '--accept-server-license-terms',
-        // Workspace Trust is forced on for any remote window regardless of the
-        // security.workspace.trust.enabled setting, which leaves every folder in
-        // Restricted Mode and blocks most extensions from activating. The server
-        // has a supported switch for it — webClientServer sends the web client
-        // enableWorkspaceTrust: !args['disable-workspace-trust'] — so this needs
-        // no patching of the workbench.
+        // Without this every folder opens in Restricted Mode, which blocks most
+        // extensions from activating.
+        //
+        // The security.workspace.trust.enabled setting cannot do it. That setting
+        // is registered with ConfigurationScope.APPLICATION, and an
+        // application-scoped setting is not read from the remote side — our
+        // settings.json lives in the server's user-data-dir, which is exactly the
+        // side it is ignored from. It has therefore never had any effect here,
+        // despite being written since the first release.
+        // isWorkspaceTrustEnabled() checks environmentService.disableWorkspaceTrust
+        // before it consults the configuration at all, so the flag is the only
+        // route that works, and webClientServer passes it through to the web
+        // client as enableWorkspaceTrust.
+        //
+        // Deliberate trade-off, not an oversight: the default workspace is the
+        // user's own projects directory inside the app sandbox, where a trust
+        // prompt asks about files they created themselves on their own device.
+        // The exposure this accepts is a folder opened through the SAF picker
+        // from somewhere else, whose tasks.json can then run unprompted. Worth
+        // revisiting if opening external repositories becomes a normal thing to
+        // do here.
         '--disable-workspace-trust',
         '--log', LOG_LEVEL
     ];
