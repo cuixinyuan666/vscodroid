@@ -13,10 +13,11 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Matches .nvmrc at the VS Code tag being built. Not the Node that ends up on the
-# device — that is the cross-compiled libnode.so, pinned separately by
-# remote/.npmrc `target`.
-ARG NODE_VERSION=20.18.0
+# Matches .nvmrc at the VS Code tag being built — the Node this build host runs.
+# The Node that ends up on the device is a separate number, remote/.npmrc
+# `target`, satisfied by the Termux package download-node.sh fetches. For 1.133.0
+# both happen to be 24.18.0; do not assume that holds at the next tag.
+ARG NODE_VERSION=24.18.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \

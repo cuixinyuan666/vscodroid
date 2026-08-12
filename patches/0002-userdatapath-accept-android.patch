@@ -23,14 +23,14 @@ an explicit --user-data-dir; what matters is that the default arm no longer
 throws.
 
 diff --git a/src/vs/platform/environment/node/userDataPath.ts b/src/vs/platform/environment/node/userDataPath.ts
-index 27190b2..6450969 100644
+index 98b4411..0c8988e 100644
 --- a/src/vs/platform/environment/node/userDataPath.ts
 +++ b/src/vs/platform/environment/node/userDataPath.ts
-@@ -77,6 +77,7 @@ function doGetUserDataPath(cliArgs: NativeParsedArgs, productName: string): stri
- 			appDataPath = path.join(os.homedir(), 'Library', 'Application Support');
+@@ -96,6 +96,7 @@ export function getDefaultUserDataPath(productName: string): string {
+ 			appDataPath = join(homedir(), 'Library', 'Application Support');
  			break;
  		case 'linux':
 +		case 'android':
- 			appDataPath = process.env['XDG_CONFIG_HOME'] || path.join(os.homedir(), '.config');
+ 			appDataPath = process.env['XDG_CONFIG_HOME'] || join(homedir(), '.config');
  			break;
  		default:

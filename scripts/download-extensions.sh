@@ -31,11 +31,11 @@ WORK_DIR="$ROOT_DIR/toolchains/extensions"
 # holding one back.
 EXTENSIONS=(
     "PKief.material-icon-theme@5.37.0"
-    "esbenp.prettier-vscode@11.0.3"     # 12.x needs ^1.101.0, which needs Node 22
+    "esbenp.prettier-vscode@12.4.0"
     "ms-python.python@2026.4.0"
     "dbaeumer.vscode-eslint@3.0.34"
     "bradlc.vscode-tailwindcss@0.16.0"
-    "eamodio.gitlens@17.11.1"           # newest STABLE for 1.96.4; 17.12+ needs ^1.101.0
+    "eamodio.gitlens@18.3.0"            # newest stable; later builds are all pre-release
 )
 
 OPENVSX_API="https://open-vsx.org/api"

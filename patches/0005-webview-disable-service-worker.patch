@@ -26,7 +26,7 @@ caught on screen — the webviews rendered, but only because the policy had
 silently gone missing.
 
 diff --git a/src/vs/workbench/contrib/webview/browser/pre/index.html b/src/vs/workbench/contrib/webview/browser/pre/index.html
-index 6a1f3d4..2688462 100644
+index 42c7c01..b54597e 100644
 --- a/src/vs/workbench/contrib/webview/browser/pre/index.html
 +++ b/src/vs/workbench/contrib/webview/browser/pre/index.html
 @@ -4,8 +4,12 @@
@@ -38,12 +38,12 @@ index 6a1f3d4..2688462 100644
 +	     this value, verified by comparing source against packaged output, so leaving
 +	     the hash would block the script and blank every webview. -->
  	<meta http-equiv="Content-Security-Policy"
--		content="default-src 'none'; script-src 'sha256-DXeP32g8BdMsVuVabYTmznoTH59F7M7UtV0vXemEFqc=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+-		content="default-src 'none'; script-src 'sha256-FFQoOVVa2tOE3uqUvirwaMNT20TZmrHcL2aaOjJ8BUo=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
 +		content="default-src 'none'; script-src 'unsafe-inline' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
  
- 
  	<!-- Disable pinch zooming -->
-@@ -34,7 +38,12 @@
+ 	<meta name="viewport"
+@@ -33,7 +37,12 @@
  		const ID = searchParams.get('id');
  		const webviewOrigin = searchParams.get('origin');
  		const onElectron = searchParams.get('platform') === 'electron';

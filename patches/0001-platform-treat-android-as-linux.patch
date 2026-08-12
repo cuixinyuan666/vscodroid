@@ -17,7 +17,7 @@ minified output to a real source patch. `git apply` fails loudly when the contex
 shifts, which is the point: the regexes it replaces print SKIP and exit 0.
 
 diff --git a/src/vs/base/common/platform.ts b/src/vs/base/common/platform.ts
-index 4bc8f61..b4f5b0e 100644
+index d2072de..493253f 100644
 --- a/src/vs/base/common/platform.ts
 +++ b/src/vs/base/common/platform.ts
 @@ -74,7 +74,12 @@ declare const navigator: INavigator;
@@ -33,4 +33,4 @@ index 4bc8f61..b4f5b0e 100644
 +	_isLinux = (nodeProcess.platform === 'linux' || nodeProcess.platform === 'android');
  	_isLinuxSnap = _isLinux && !!nodeProcess.env['SNAP'] && !!nodeProcess.env['SNAP_REVISION'];
  	_isElectron = isElectronProcess;
- 	_isCI = !!nodeProcess.env['CI'] || !!nodeProcess.env['BUILD_ARTIFACTSTAGINGDIRECTORY'];
+ 	_isCI = !!nodeProcess.env['CI'] || !!nodeProcess.env['BUILD_ARTIFACTSTAGINGDIRECTORY'] || !!nodeProcess.env['GITHUB_WORKSPACE'];

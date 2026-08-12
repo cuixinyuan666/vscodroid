@@ -14,7 +14,7 @@ set -euo pipefail
 #       -v "$PWD/scripts:/scripts:ro" \
 #       -v "$PWD/branding:/branding" \
 #       -v "$PWD/patches:/patches:ro" \
-#       vscodroid-codeoss-build:20.18.0 bash /scripts/build-vscode-oss.sh
+#       vscodroid-codeoss-build:24.18.0 bash /scripts/build-vscode-oss.sh
 #
 # Run it on an arm64 host. Every native module in the tree is built for the build
 # host, and only two of them are overlaid afterwards by build-native-addons.sh —
