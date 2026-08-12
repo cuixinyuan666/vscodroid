@@ -14,9 +14,19 @@ object Environment {
         val cacheDir = context.cacheDir.absolutePath
         val homeDir = "$filesDir/home"
 
-        // Use bundled bash if available, otherwise fall back to system shell
+        // Use bundled bash if available, otherwise fall back to system shell.
+        //
+        // SHELL names the usr/bin/bash symlink rather than the .so it points at,
+        // and that indirection is what makes shell integration possible at all.
+        // VS Code never reads our terminal profile: profile settings are keyed
+        // `…profiles.linux`, and the remote reports its platform as "android", so
+        // the whole block is skipped and the terminal falls back to $SHELL with no
+        // arguments. It then decides whether to inject its bash integration by
+        // switching on the *basename* of whatever it launched — `libbash.so`
+        // matches nothing, `bash` matches. Verified on device: with the .so named
+        // here, no terminal ever received --init-file.
         val shell = if (File("$nativeLibDir/libbash.so").exists())
-            "$nativeLibDir/libbash.so"
+            getTerminalShellPath(context)
         else
             "/system/bin/sh"
 

@@ -402,39 +402,44 @@ class FirstRunSetup(private val context: Context) {
     }
 
     /**
-     * Replaces the prompt written by earlier releases, which printed straight out
-     * of PROMPT_COMMAND and left PS1 empty.
+     * Brings the .bashrc prompt block up to [PROMPT_VERSION], rewriting whatever
+     * older shape is there.
      *
-     * That shape dates from when the terminal was a pipe. On the real PTY node-pty
-     * gives us it costs the user two visible things: readline cannot measure a
-     * prompt it never emitted, so Ctrl+L and any wrapped line redraw over it, and
-     * VS Code's shell integration wraps `$PS1` — an empty string — so its command
-     * decorations have nothing to attach to.
+     * The block is fenced by versioned markers so that any future change to it is
+     * migratable. The first version had no markers at all — it printed straight
+     * out of PROMPT_COMMAND with PS1 left empty, dating from when the terminal was
+     * a pipe rather than the PTY node-pty now gives us — so that shape is also
+     * recognised, by its function name and its `PS1=''`.
      *
-     * Safe to call on every launch: the old shape stops matching once replaced,
-     * and a .bashrc whose prompt the user has rewritten no longer contains the
-     * anchors, so it is left alone.
+     * Safe to call on every launch: it returns immediately once the current marker
+     * is present, and a .bashrc whose prompt the user has rewritten matches no
+     * anchor at all, so it is left as they wrote it.
      */
     fun ensurePromptFix() {
         val bashrc = File(context.filesDir, "home/.bashrc")
         if (!bashrc.exists()) return
 
         val content = bashrc.readText()
-        val fnStart = content.indexOf(PROMPT_ANCHOR_START)
-        if (fnStart < 0) return
-        val end = content.indexOf(PROMPT_ANCHOR_END, fnStart)
-        if (end < 0) return
+        if (content.contains(PROMPT_MARKER_CURRENT)) return
 
-        // Swallow the old explanatory comment too, so the file is not left
-        // describing a mechanism it no longer uses.
-        val commentStart = content.indexOf(LEGACY_PROMPT_COMMENT)
-        val start = if (commentStart in 0 until fnStart) commentStart else fnStart
+        // Earliest anchor wins, so the old explanatory comment is swallowed too
+        // rather than left behind describing a mechanism the file no longer uses.
+        val start = listOf(PROMPT_BEGIN, LEGACY_PROMPT_COMMENT, PROMPT_ANCHOR_START)
+            .map { content.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull() ?: return
 
-        val updated = content.substring(0, start) +
-            PROMPT_BLOCK +
-            content.substring(end + PROMPT_ANCHOR_END.length)
-        bashrc.writeText(updated)
-        Logger.i(tag, "Replaced the legacy empty-PS1 prompt in .bashrc")
+        val fenced = content.indexOf(PROMPT_END, start)
+        val end = if (fenced >= 0) {
+            content.indexOf('\n', fenced).takeIf { it >= 0 } ?: content.length
+        } else {
+            val legacy = content.indexOf(PROMPT_ANCHOR_END, start)
+            if (legacy < 0) return
+            legacy + PROMPT_ANCHOR_END.length
+        }
+
+        bashrc.writeText(content.substring(0, start) + PROMPT_BLOCK + content.substring(end))
+        Logger.i(tag, "Rewrote the .bashrc prompt block ($PROMPT_VERSION)")
     }
 
     private fun isSymlink(file: File): Boolean = try {
@@ -568,11 +573,16 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
         settingsDir.mkdirs()
         val settingsFile = File(settingsDir, "settings.json")
         if (!settingsFile.exists()) {
-            // The terminal profile carries no args on purpose. VS Code only injects
-            // shell integration when the profile's args are empty or a known login
-            // form, and bash started on a real PTY with no args is interactive
-            // anyway — it still reads .bashrc, so "-i" bought nothing and cost the
-            // command decorations, cwd tracking, and exit codes.
+            // The terminal profile is inert today and is written for the day it is
+            // not. VS Code keys these settings `…profiles.linux`, the remote
+            // reports its platform as "android", so the whole block is skipped and
+            // terminals fall back to $SHELL — which is why Environment sets SHELL
+            // to the usr/bin/bash symlink rather than the .so. Verified on device:
+            // even an explicit --init-file placed in these args never reached the
+            // spawned shell. Fixing platform detection at source makes the profile
+            // live again, so it is kept correct: the path names the symlink so the
+            // basename is `bash`, and the args stay empty because VS Code only
+            // injects shell integration for empty or login args.
             settingsFile.writeText("""
                 {
                     "workbench.startupEditor": "none",
@@ -780,7 +790,13 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
  * The prompt block written into `.bashrc`, shared by the first-run write and by
  * [FirstRunSetup.ensurePromptFix], which replaces the legacy empty-PS1 prompt.
  */
+private const val PROMPT_VERSION = "v2"
+private const val PROMPT_BEGIN = "# >>> vscodroid prompt"
+private const val PROMPT_END = "# <<< vscodroid prompt"
+private const val PROMPT_MARKER_CURRENT = "$PROMPT_BEGIN $PROMPT_VERSION >>>"
+
 private val PROMPT_BLOCK = """
+    $PROMPT_MARKER_CURRENT
     # PROMPT_COMMAND computes the directory, PS1 renders it. The \[ \] markers tell
     # readline which bytes take no width; without them Ctrl+L and any wrapped line
     # redraw over the prompt. An earlier build printed the prompt straight out of
@@ -789,7 +805,11 @@ private val PROMPT_BLOCK = """
     # shell integration ended up wrapping an empty string.
     __vscodroid_prompt() {
         local dir="${'$'}PWD"
-        dir="${'$'}{dir/#${'$'}HOME/~}"
+        # The tilde must be escaped. bash expands tildes in a substitution's
+        # replacement text, so a bare one turns back into the home path and the
+        # whole substitution collapses into a no-op. bash 3.2 does not do this,
+        # so a macOS shell cannot reproduce it — only a device can.
+        dir="${'$'}{dir/#${'$'}HOME/\~}"
         [[ "${'$'}dir" == /* ]] && dir="${'$'}{dir/#${'$'}PROJECTS_DIR/projects}"
         # Abbreviate SAF mirror paths: /data/.../saf-mirrors/<hash>/... → [saf]/...
         # At the mirror root there is nothing after the hash, so stripping has to be
@@ -806,9 +826,13 @@ private val PROMPT_BLOCK = """
     }
     PROMPT_COMMAND=__vscodroid_prompt
     PS1='\[\033[32m\]${'$'}{__vscodroid_dir}\[\033[0m\] \${'$'} '
+    $PROMPT_END $PROMPT_VERSION <<<
 """.trimIndent()
 
-/** Anchors for the legacy prompt block. The replacement matches none of them. */
+/**
+ * Anchors for a prompt block written before the versioned markers existed — the
+ * shape shipped in v1.0.0, which printed from PROMPT_COMMAND with an empty PS1.
+ */
 private const val PROMPT_ANCHOR_START = "__vscodroid_prompt() {"
 private const val PROMPT_ANCHOR_END = "PS1=''"
 private const val LEGACY_PROMPT_COMMENT = "# Prompt via PROMPT_COMMAND"
