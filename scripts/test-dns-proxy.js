@@ -26,9 +26,30 @@ function listen(server) {
     return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 }
 
-/** An origin server that reports back exactly which headers reached it. */
+/**
+ * An origin that reports which headers reached it, and on /big streams a body
+ * far larger than any socket buffer so a client can abort mid-response.
+ */
 function originServer() {
     return http.createServer((req, res) => {
+        if (req.url === '/big') {
+            res.writeHead(200, { 'content-type': 'application/octet-stream' });
+            const chunk = Buffer.alloc(1 << 16, 0x61);
+            let sent = 0;
+            const pump = () => {
+                while (sent < 64) {
+                    sent++;
+                    if (!res.write(chunk)) {
+                        res.once('drain', pump);
+                        return;
+                    }
+                }
+                res.end();
+            };
+            res.on('error', () => {});
+            pump();
+            return;
+        }
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify(req.headers));
     });
@@ -116,7 +137,21 @@ async function main() {
 
     const origin = originServer();
     const originPort = await listen(origin);
-    const echo = net.createServer((socket) => socket.pipe(socket));
+    // The echo sockets need their own error handler: these tests deliberately
+    // RST the client, and a bare socket.pipe(socket) would die of the
+    // ECONNRESET that arrives here -- a crash in the harness, mistakable for a
+    // crash in the proxy.
+    // Tracked so teardown can close them: the abort tests deliberately leave the
+    // proxy's upstream leg open, and server.close() waits on live connections,
+    // which would hang this script after every assertion had already passed.
+    const echoSockets = new Set();
+    const echoHandler = (socket) => {
+        echoSockets.add(socket);
+        socket.on('close', () => echoSockets.delete(socket));
+        socket.on('error', () => {});
+        socket.pipe(socket);
+    };
+    const echo = net.createServer(echoHandler);
     const echoPort = await listen(echo);
 
     // The four env vars must agree; a client that reads http_proxy and one that
@@ -214,7 +249,7 @@ async function main() {
     // --- IPv6 literals ----------------------------------------------------
     // "[::1]:443".split(':') yields ["[", "", "1]", "443"], so the pre-parser
     // form dialled a host named "[". Skipped where the loopback has no IPv6.
-    const echo6 = net.createServer((socket) => socket.pipe(socket));
+    const echo6 = net.createServer(echoHandler);
     const echo6Port = await new Promise((resolve) => {
         echo6.once('error', () => resolve(null));
         echo6.listen(0, '::1', () => resolve(echo6.address().port));
@@ -231,6 +266,36 @@ async function main() {
         console.log('note -- no IPv6 loopback here, skipped the IPv6 CONNECT case');
     }
 
+    // A URL parser normalises away a port that matches the scheme default, so
+    // reading the port back from it turns "host:80" into an empty string and
+    // then, via `|| 443`, into a dial to the wrong port entirely. The port must
+    // come from the raw target text. Only 80 can trigger this, so the check
+    // needs port 80 to be closed here to be meaningful.
+    const port80Closed = await new Promise((resolve) => {
+        const probe = net.connect(80, '127.0.0.1');
+        probe.on('connect', () => {
+            probe.destroy();
+            resolve(false);
+        });
+        probe.on('error', () => resolve(true));
+    });
+    if (port80Closed) {
+        const before = logLines.length;
+        await rawExchange(
+            proxyPort,
+            `CONNECT 127.0.0.1:80 HTTP/1.1\r\nHost: 127.0.0.1:80\r\n` +
+                `Proxy-Authorization: Basic ${Buffer.from(goodCredentials).toString('base64')}\r\n\r\n`,
+        );
+        const logged = logLines.slice(before).join('\n');
+        assert.match(
+            logged,
+            /CONNECT 127\.0\.0\.1:80 failed/,
+            `a CONNECT to port 80 was not dialled on port 80: ${logged || '(nothing logged)'}`,
+        );
+    } else {
+        console.log('note -- something is listening on port 80 here, skipped the default-port case');
+    }
+
     // A port outside the valid range used to reach net.connect and throw
     // ERR_SOCKET_BAD_PORT synchronously, which took the whole bootstrap down.
     const badPort = await rawExchange(
@@ -242,26 +307,65 @@ async function main() {
 
     // --- a client that walks away mid-flight ------------------------------
     // The error listeners in both handlers exist so an aborted client cannot
-    // raise an unhandled 'error' and kill the bootstrap. Nothing exercised them.
-    await new Promise((resolve) => {
-        const socket = net.connect(proxyPort, '127.0.0.1', () => {
-            socket.write(`${connectHead}Proxy-Authorization: Basic ${Buffer.from(goodCredentials).toString('base64')}\r\n\r\n`);
-            socket.destroy();
-            resolve();
+    // raise an unhandled 'error' and take the bootstrap down with it.
+    //
+    // Aborting has to be done carefully to exercise them at all. A destroy()
+    // issued after the write has drained closes the connection cleanly, and a
+    // clean close reaches the proxy as 'end', never 'error' -- an earlier
+    // version of this test did exactly that and passed with every listener
+    // deleted. Leaving unread data in the receive buffer at close turns the
+    // FIN into an RST, which is what the proxy sees as an error on a socket it
+    // is still writing to.
+    const abortMidTunnel = () =>
+        new Promise((resolve) => {
+            const socket = net.connect(proxyPort, '127.0.0.1', () => {
+                socket.write(
+                    `${connectHead}Proxy-Authorization: Basic ${Buffer.from(goodCredentials).toString('base64')}\r\n\r\n`,
+                );
+            });
+            let armed = false;
+            socket.on('data', () => {
+                if (armed) return;
+                armed = true;
+                // Flood the echo server, then vanish without reading a byte of
+                // what comes back.
+                socket.write('x'.repeat(1 << 20));
+                setImmediate(() => {
+                    socket.resume = () => {};
+                    socket.destroy();
+                    resolve();
+                });
+            });
+            socket.on('error', resolve);
+            socket.setTimeout(3000, () => {
+                socket.destroy();
+                resolve();
+            });
         });
-        socket.on('error', resolve);
-    });
-    await new Promise((resolve) => {
-        const socket = net.connect(proxyPort, '127.0.0.1', () => {
-            socket.write(`GET http://127.0.0.1:${originPort}/ HTTP/1.1\r\nHost: x\r\n\r\n`);
-            socket.destroy();
-            resolve();
+
+    const abortMidResponse = () =>
+        new Promise((resolve) => {
+            const socket = net.connect(proxyPort, '127.0.0.1', () => {
+                socket.write(
+                    `GET http://127.0.0.1:${originPort}/big HTTP/1.1\r\nHost: x\r\n` +
+                        `Proxy-Authorization: Basic ${Buffer.from(goodCredentials).toString('base64')}\r\n\r\n`,
+                );
+            });
+            socket.on('data', () => socket.destroy());
+            socket.on('error', resolve);
+            socket.on('close', resolve);
+            socket.setTimeout(3000, () => {
+                socket.destroy();
+                resolve();
+            });
         });
-        socket.on('error', resolve);
-    });
+
+    await abortMidTunnel();
+    await abortMidResponse();
+
     // If either abort had killed the proxy, this would not answer.
     const stillAlive = await proxiedGet(proxyPort, `http://127.0.0.1:${originPort}/`, goodCredentials);
-    assert.strictEqual(stillAlive.status, 200, 'the proxy died after a client aborted mid-request');
+    assert.strictEqual(stillAlive.status, 200, 'the proxy died after a client aborted mid-transfer');
 
     // --- the token must not escape into any log ---------------------------
     const secret = decodeURIComponent(proxy.password);
@@ -269,12 +373,30 @@ async function main() {
         assert.ok(!line.includes(secret), `the token reached the log: ${line}`);
     }
 
+    echoSockets.forEach((socket) => socket.destroy());
     origin.close();
     echo.close();
     console.log(`ok -- ${logLines.length} log line(s), none carrying the token`);
 }
 
-main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-});
+main()
+    .then(() => {
+        // The abort cases above leave nothing behind only if the proxy tears
+        // down the far half of each connection. When it does not, every
+        // assertion still passes and the process simply never exits -- which is
+        // how that leak hid in the first place. This turns the hang into a named
+        // failure instead of a timeout someone has to interpret.
+        const bail = setTimeout(() => {
+            console.error(
+                'FAIL: assertions passed but the event loop is still busy.\n' +
+                    'Something the proxy opened was never closed -- most likely an upstream\n' +
+                    'leg left draining after a client went away.',
+            );
+            process.exit(1);
+        }, 2000);
+        bail.unref();
+    })
+    .catch((err) => {
+        console.error(err);
+        process.exit(1);
+    });
