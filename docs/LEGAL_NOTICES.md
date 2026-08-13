@@ -113,10 +113,25 @@ Node.js includes V8 (BSD-3-Clause), libuv (MIT), OpenSSL (Apache-2.0), ICU (Unic
 ### node-pty
 
 - **Project**: https://github.com/microsoft/node-pty
-- **Version**: 1.1.0-beta22 (cross-compiled for ARM64 Android)
+- **Version**: matches the `node-pty` the server tree ships (see `PTY_VERSION` in `scripts/build-native-addons.sh`; cross-compiled for ARM64 Android)
 - **License**: MIT License
 - **Copyright**: Copyright (c) 2012-2015 Christopher J. Brody, 2016 Daniel Imms
 - **Full license**: https://github.com/microsoft/node-pty/blob/main/LICENSE
+
+### @parcel/watcher
+
+- **Project**: https://github.com/parcel-bundler/watcher
+- **Version**: matches the `@parcel/watcher` the server tree ships (see `WATCHER_VERSION` in `scripts/build-native-addons.sh`; cross-compiled for ARM64 Android)
+- **License**: MIT License
+- **Copyright**: Copyright (c) 2017-present Devon Govett
+- **Full license**: https://github.com/parcel-bundler/watcher/blob/master/LICENSE
+
+### @vscode/sqlite3
+
+- **Project**: https://github.com/microsoft/vscode-node-sqlite3
+- **Version**: matches the `@vscode/sqlite3` the server tree ships (rebuilt for ARM64 Android with the bundled SQLite amalgamation)
+- **License**: BSD-3-Clause (fork of node-sqlite3, Copyright (c) MapBox); SQLite itself is public domain
+- **Full license**: https://github.com/microsoft/vscode-node-sqlite3/blob/main/LICENSE
 
 ### npm
 

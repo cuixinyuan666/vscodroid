@@ -109,7 +109,12 @@ fi
 
 cp "$src" "$JNILIBS_DIR/libnode.so"
 chmod +x "$JNILIBS_DIR/libnode.so"
-echo "  libnode : $(du -h "$JNILIBS_DIR/libnode.so" | cut -f1)"
+# The Termux version string ("24.18.0-1") with the package revision dropped.
+# build-native-addons.sh reads this marker to pair its headers against the
+# runtime actually installed - the binary itself is gitignored, so the marker
+# is what survives beside it for other scripts to check.
+echo "${version%%-*}" > "$JNILIBS_DIR/.libnode-version"
+echo "  libnode : $(du -h "$JNILIBS_DIR/libnode.so" | cut -f1) (v${version%%-*})"
 
 echo ""
 echo "=== Verify ==="

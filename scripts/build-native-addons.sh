@@ -88,28 +88,38 @@ fi
 # --- Build -----------------------------------------------------------------
 
 # The comment on NODE_VERSION above promises a check comparing these headers
-# against the runtime actually shipped; this is that check, previously promised
-# and absent. libnode.so embeds process.version as its own string, so a bundled
-# runtime that drifted from the headers fails here instead of rejecting every
-# addon at load time with NODE_MODULE_VERSION noise.
-BUNDLED_NODE="$ROOT_DIR/android/app/src/main/jniLibs/arm64-v8a/libnode.so"
-if [ -f "$BUNDLED_NODE" ]; then
-    bundled_version=$(strings -n 6 "$BUNDLED_NODE" 2>/dev/null \
-        | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
-    if [ -z "$bundled_version" ]; then
-        echo "  WARNING: could not read a version string out of libnode.so; header pairing unchecked" >&2
-    elif [ "$bundled_version" != "v$NODE_VERSION" ]; then
-        echo "ERROR: headers are for v$NODE_VERSION but the bundled libnode.so is $bundled_version" >&2
-        echo "  Addons built against the wrong headers change NODE_MODULE_VERSION and are" >&2
-        echo "  rejected at load with no useful message. Fix NODE_VERSION or re-run" >&2
-        echo "  scripts/download-node.sh before building addons." >&2
-        exit 1
-    else
-        echo "  runtime: libnode.so is $bundled_version (matches headers)"
-    fi
-else
-    echo "  WARNING: no bundled libnode.so yet; header/runtime pairing unchecked" >&2
+# against the runtime actually shipped; this is that check. Review found the
+# first version never ran in CI - both workflows built addons before fetching
+# the runtime, and the missing-binary branch was a warning - so this one fails
+# closed and reads the version marker download-node.sh writes next to the
+# binary (the binary itself is gitignored). The comparison is major-only on
+# purpose: NODE_MODULE_VERSION, which is what actually breaks addon loading,
+# moves with the major, and a full-triple match would fail builds over a
+# harmless patch bump.
+JNILIBS="$ROOT_DIR/android/app/src/main/jniLibs/arm64-v8a"
+runtime_version=""
+if [ -f "$JNILIBS/.libnode-version" ]; then
+    runtime_version=$(cat "$JNILIBS/.libnode-version")
+elif [ -f "$JNILIBS/libnode.so" ]; then
+    # A libnode.so from before the marker existed: read process.version out of
+    # the binary itself.
+    runtime_version=$(strings -n 6 "$JNILIBS/libnode.so" 2>/dev/null \
+        | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | tr -d v || true)
 fi
+if [ -z "$runtime_version" ]; then
+    echo "ERROR: no bundled Node runtime to pair against ($JNILIBS)." >&2
+    echo "  Run scripts/download-node.sh first - these addons must be built" >&2
+    echo "  against the headers of the runtime that will load them." >&2
+    exit 1
+fi
+if [ "${runtime_version%%.*}" != "${NODE_VERSION%%.*}" ]; then
+    echo "ERROR: headers are for v$NODE_VERSION but the bundled runtime is v$runtime_version" >&2
+    echo "  A major mismatch changes NODE_MODULE_VERSION and every addon here is" >&2
+    echo "  rejected at load with no useful message. Fix NODE_VERSION or re-run" >&2
+    echo "  scripts/download-node.sh before building addons." >&2
+    exit 1
+fi
+echo "  runtime: v$runtime_version (major matches v$NODE_VERSION headers)"
 
 # check_pair <name> <native-version> <package.json> — the .node built here must
 # ship beside the SAME JS the version was chosen for. Between prerelease
@@ -118,8 +128,11 @@ fi
 check_pair() {
     local name=$1 native=$2 pkg_json=$3
     if [ ! -f "$pkg_json" ]; then
-        echo "  WARNING: $name JS not present at $pkg_json; version pairing unchecked" >&2
-        return 0
+        # Fail closed: an addon built with no JS beside it is exactly the
+        # unpaired state this gate exists to prevent. Fetch the server tree
+        # first.
+        echo "ERROR: $name JS not present at $pkg_json; cannot verify pairing" >&2
+        return 1
     fi
     local js
     js=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['version'])" "$pkg_json")
@@ -187,21 +200,23 @@ failed=0
 # is not a degraded terminal, it is no terminal at all.
 echo ""
 echo "node-pty..."
-PTY_SRC=$(fetch node-pty 1.2.0-beta.15)
+PTY_VERSION=1.2.0-beta.15
+PTY_SRC=$(fetch node-pty "$PTY_VERSION")
 # Bionic has forkpty() in libc; binding.gyp's -lutil is for glibc only. Compiling
 # directly means simply not passing it, so binding.gyp needs no patching.
 compile "$PTY_SRC" "$OUTPUT_ROOT/node_modules/node-pty/build/Release/pty.node" \
     src/unix/pty.cc \
     -- -DNODE_ADDON_API_DISABLE_DEPRECATED -DNODE_GYP_MODULE_NAME=pty
 verify "$OUTPUT_ROOT/node_modules/node-pty/build/Release/pty.node" node-pty || failed=1
-check_pair node-pty 1.2.0-beta.15 "$OUTPUT_ROOT/node_modules/node-pty/package.json" || failed=1
+check_pair node-pty "$PTY_VERSION" "$OUTPUT_ROOT/node_modules/node-pty/package.json" || failed=1
 
 # @parcel/watcher — recursive file watching. watcherMain imports it statically
 # too, so without it recursive watching is dead rather than degraded, and an
 # extension is simply never told a file changed.
 echo ""
 echo "@parcel/watcher..."
-WATCHER_SRC=$(fetch @parcel/watcher 2.5.6)
+WATCHER_VERSION=2.5.6
+WATCHER_SRC=$(fetch @parcel/watcher "$WATCHER_VERSION")
 # Sources and defines are binding.gyp's OS=="linux" branch. Android has inotify,
 # so that backend is the one that matters; watchman stays compiled in and inert
 # because nothing serves its socket here.
@@ -212,7 +227,7 @@ compile "$WATCHER_SRC" "$OUTPUT_ROOT/node_modules/@parcel/watcher/build/Release/
     -- -fexceptions -DNAPI_DISABLE_CPP_EXCEPTIONS \
        -DWATCHMAN -DINOTIFY -DBRUTE_FORCE -DNODE_GYP_MODULE_NAME=watcher
 verify "$OUTPUT_ROOT/node_modules/@parcel/watcher/build/Release/watcher.node" @parcel/watcher || failed=1
-check_pair @parcel/watcher 2.5.6 "$OUTPUT_ROOT/node_modules/@parcel/watcher/package.json" || failed=1
+check_pair @parcel/watcher "$WATCHER_VERSION" "$OUTPUT_ROOT/node_modules/@parcel/watcher/package.json" || failed=1
 
 # @vscode/sqlite3 — the workbench's storage engine, and what the Copilot CLI
 # session store opens through the embedder. The glibc build fails dlopen on

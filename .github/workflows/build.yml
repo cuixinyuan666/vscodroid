@@ -130,6 +130,13 @@ jobs:
         if: steps.cache-assets.outputs.cache-hit != 'true'
         run: bash scripts/download-musl-loader.sh
 
+      # Before the native addons on purpose: build-native-addons.sh pairs its
+      # headers against the runtime this step installs, and fails closed when
+      # nothing is there to pair against. Review found the old order (addons
+      # first) meant that gate could never fire in CI.
+      - name: Fetch Node runtime
+        if: steps.cache-assets.outputs.cache-hit != 'true'
+        run: bash scripts/download-node.sh
       - name: Build native addons
         if: steps.cache-assets.outputs.cache-hit != 'true'
         run: bash scripts/build-native-addons.sh
@@ -154,10 +161,6 @@ jobs:
           bash scripts/build-glibc-shim.sh \
             --scan android/app/src/main/assets/vscode-reh \
             --scan android/app/src/main/assets/extensions
-      - name: Fetch Node runtime
-        if: steps.cache-assets.outputs.cache-hit != 'true'
-        run: bash scripts/download-node.sh
-
       - name: Verify assets
         run: |
           echo "=== Assets ==="
