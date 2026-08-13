@@ -537,6 +537,104 @@ struct glibc_addrinfo {
     struct glibc_addrinfo *ai_next;
 };
 
+/*
+ * The AI_ and EAI_ constants, which the two libcs number differently. Swapping
+ * the struct fields was only half the boundary: the flag word going in and the
+ * error code coming out are both plain ints that mean different things on each
+ * side, and forwarding them unchanged is not a near miss.
+ *
+ * The flags cross-collide rather than merely disagree. glibc's AI_V4MAPPED is
+ * 8, which is Bionic's AI_NUMERICSERV; glibc's AI_NUMERICSERV is 1024, which is
+ * Bionic's AI_ADDRCONFIG. glibc's AI_ALL (16) and AI_ADDRCONFIG (32) are bits
+ * Bionic assigns to nothing, and Bionic rejects a flag word carrying an unknown
+ * bit outright. So the common idiom AI_V4MAPPED|AI_ADDRCONFIG -- 8|32 -- arrived
+ * as "numeric service, plus one undefined bit" and the call failed with
+ * EAI_BADFLAGS, measured on device before this translation existed.
+ *
+ * Mapping each name to Bionic's number for the same name is still not enough,
+ * and this is the part a header cannot tell you. Bionic defines AI_ALL and
+ * AI_V4MAPPED but its getaddrinfo refuses them: AI_MASK is 1039, covering only
+ * PASSIVE, CANONNAME, NUMERICHOST, NUMERICSERV and ADDRCONFIG, and anything else
+ * is EAI_BADFLAGS. Offered to the device one at a time, those two are the two
+ * that fail. They are therefore dropped rather than translated -- the request
+ * loses a preference and still answers, where forwarding it fails outright.
+ *
+ * The error codes have no overlap at all: glibc's are negative, Bionic's are
+ * 1..14. An addon testing rc == EAI_AGAIN (-3) against Bionic's 2 never matched,
+ * so a retryable DNS failure read as an unrecognised one.
+ *
+ * Values on both sides were measured -- glibc 2.36 aarch64 under Debian, Bionic
+ * on an arm64 device -- rather than recalled.
+ *
+ * The ceiling: dropping AI_V4MAPPED and AI_ALL means an addon asking for
+ * IPv4-mapped results on an IPv6-only network gets Bionic's ordinary answer
+ * instead. AI_IDN and AI_CANONIDN (glibc 0x40, 0x80) go the same way, there
+ * being no IDN support here to ask for. And each returned node's ai_flags is
+ * left in Bionic's numbering: both libcs echo the hint word into every node, and
+ * translating it back would cost a second walk to serve a field POSIX leaves
+ * unspecified and callers do not read.
+ */
+#define G_AI_PASSIVE     0x0001
+#define G_AI_CANONNAME   0x0002
+#define G_AI_NUMERICHOST 0x0004
+#define G_AI_V4MAPPED    0x0008
+#define G_AI_ALL         0x0010
+#define G_AI_ADDRCONFIG  0x0020
+#define G_AI_NUMERICSERV 0x0400
+
+static int ai_flags_to_bionic(int g) {
+    int b = 0;
+    if (g & G_AI_PASSIVE)     b |= AI_PASSIVE;
+    if (g & G_AI_CANONNAME)   b |= AI_CANONNAME;
+    if (g & G_AI_NUMERICHOST) b |= AI_NUMERICHOST;
+    if (g & G_AI_NUMERICSERV) b |= AI_NUMERICSERV;
+    if (g & G_AI_ADDRCONFIG)  b |= AI_ADDRCONFIG;
+    /* G_AI_V4MAPPED and G_AI_ALL are deliberately absent: Bionic's AI_MASK
+     * refuses both, so translating them turns a working lookup into
+     * EAI_BADFLAGS. Everything else glibc can set is dropped for the same
+     * reason -- an unknown bit fails the whole call. */
+    return b;
+}
+
+/* Bionic's codes run 1..14 with no gaps, so one table answers both directions.
+ * Index 0 is never reached: 0 is success. */
+static const int eai_glibc_for_bionic[] = {
+    0,    /* unused          */
+    -9,   /* EAI_ADDRFAMILY  */
+    -3,   /* EAI_AGAIN       */
+    -1,   /* EAI_BADFLAGS    */
+    -4,   /* EAI_FAIL        */
+    -6,   /* EAI_FAMILY      */
+    -10,  /* EAI_MEMORY      */
+    -5,   /* EAI_NODATA      */
+    -2,   /* EAI_NONAME      */
+    -8,   /* EAI_SERVICE     */
+    -7,   /* EAI_SOCKTYPE    */
+    -11,  /* EAI_SYSTEM      */
+    -4,   /* EAI_BADHINTS -- no glibc spelling; a permanent failure either way */
+    -4,   /* EAI_PROTOCOL -- likewise                                          */
+    -12,  /* EAI_OVERFLOW    */
+};
+#define EAI_TABLE_LEN ((int)(sizeof(eai_glibc_for_bionic) / sizeof(*eai_glibc_for_bionic)))
+
+static int eai_to_glibc(int rc) {
+    if (rc < 1 || rc >= EAI_TABLE_LEN) return -4;  /* EAI_FAIL */
+    return eai_glibc_for_bionic[rc];
+}
+
+/* The reverse, for handing a code back to Bionic's gai_strerror. -4 appears
+ * three times above; the search finds EAI_FAIL first, which is the right one. */
+static int eai_to_bionic(int rc) {
+    for (int i = 1; i < EAI_TABLE_LEN; i++)
+        if (eai_glibc_for_bionic[i] == rc) return i;
+    return EAI_FAIL;
+}
+
+/* An addon passes back the glibc-numbered code it was given, so it has to be
+ * put into Bionic's numbering before Bionic can name it. Forwarded unchanged,
+ * every code named the wrong error. */
+const char *__shim_gai_strerror(int code) { return gai_strerror(eai_to_bionic(code)); }
+
 int __shim_getaddrinfo(const char *node, const char *service,
                        const struct glibc_addrinfo *hints,
                        struct glibc_addrinfo **res) {
@@ -545,14 +643,14 @@ int __shim_getaddrinfo(const char *node, const char *service,
 
     if (hints) {
         memset(&b_hints, 0, sizeof(b_hints));
-        b_hints.ai_flags = hints->ai_flags;
+        b_hints.ai_flags = ai_flags_to_bionic(hints->ai_flags);
         b_hints.ai_family = hints->ai_family;
         b_hints.ai_socktype = hints->ai_socktype;
         b_hints.ai_protocol = hints->ai_protocol;
     }
 
     int rc = getaddrinfo(node, service, hints ? &b_hints : 0, &b_res);
-    if (rc != 0) return rc;
+    if (rc != 0) return eai_to_glibc(rc);
 
     /* Same size, swapped middle: rewriting each node in place keeps the
      * allocation Bionic's, so freeaddrinfo still owns it. */

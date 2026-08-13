@@ -103,15 +103,20 @@ LINKER_PROVIDED = {
 # nothing to connect it back. These point at translating wrappers in
 # glibc-shim.c instead of at Bionic.
 #
-# Both entries here were verified against the NDK headers on arm64, not inherited
-# from a list:
-#   sigaction   Bionic puts sa_flags first and uses an 8-byte mask; glibc puts
-#               the handler first and uses 128 bytes (bits/signal_types.h)
-#   addrinfo    Bionic orders ai_canonname before ai_addr; glibc is the other
-#               way round, so an unconverted caller reads a name as a socket
-#               address (netdb.h)
+# Every entry here was measured on both sides -- glibc 2.36 on aarch64 Debian and
+# Bionic on an arm64 device -- rather than inherited from a list:
+#   sigaction     Bionic puts sa_flags first and uses an 8-byte mask; glibc puts
+#                 the handler first and uses 128 bytes (bits/signal_types.h)
+#   addrinfo      Bionic orders ai_canonname before ai_addr; glibc is the other
+#                 way round, so an unconverted caller reads a name as a socket
+#                 address (netdb.h)
+#   gai_strerror  not a struct at all: the two libcs number the EAI_ codes
+#                 differently, glibc negative and Bionic 1..14, with no value in
+#                 common. A code handed back unconverted names a different error
 # The sigset_t helpers come with sigaction: they operate on the 128-byte set its
-# callers pass.
+# callers pass. getaddrinfo's wrapper carries the AI_/EAI_ translation for the
+# same reason gai_strerror needs one -- a differing constant is as wrong as a
+# differing offset, and neither announces itself.
 TRANSLATED = {
     "sigaction": "__shim_sigaction",
     "sigemptyset": "__shim_sigemptyset",
@@ -123,6 +128,7 @@ TRANSLATED = {
     "pthread_sigmask": "__shim_pthread_sigmask",
     "getaddrinfo": "__shim_getaddrinfo",
     "freeaddrinfo": "__shim_freeaddrinfo",
+    "gai_strerror": "__shim_gai_strerror",
 }
 
 # The same hazard, without a wrapper written yet: these abort by name on first
