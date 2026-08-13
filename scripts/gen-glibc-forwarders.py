@@ -138,15 +138,34 @@ TRANSLATED = {
 # The list is empty, and that is a finding rather than an oversight. A published
 # glibc-compatibility shim for FreeBSD refuses to auto-forward seventeen structs
 # (sigaction, stat, statfs, dirent, termios, sockaddr, msghdr, passwd, utsname,
-# rlimit and more), and that list was the starting point here. Checked one by one
-# against the NDK headers on arm64, all but two turned out to be identical:
-# Bionic and glibc both follow the same Linux kernel ABI, where FreeBSD does not.
-# struct msghdr, struct passwd (LP64), struct statfs and stack_t all match field
-# for field.
+# rlimit and more), and that list was the starting point here. Each was then
+# printed by a program compiled twice -- glibc 2.36 on aarch64 Debian, Bionic on
+# an arm64 device -- and the two outputs diffed: struct stat, dirent, statfs,
+# msghdr, passwd, utsname, rlimit, sockaddr and stack_t agree on size and on
+# every field offset. Bionic and glibc both follow the same Linux kernel ABI,
+# where FreeBSD does not.
 #
-# So blocking them would have broken working code to prevent a problem that is
+# struct termios is the exception, and an earlier version of this comment put it
+# on the identical side, which was wrong. glibc's is 60 bytes with NCCS 32 and
+# carries c_ispeed and c_ospeed at offsets 52 and 56; Bionic's is the bare kernel
+# structure, 36 bytes with NCCS 19 and no speed fields. It still needs no wrapper,
+# and that is the part the size difference hides: every field the two share sits
+# at the same offset -- c_iflag 0, c_oflag 4, c_cflag 8, c_lflag 12, c_line 16,
+# c_cc 17 -- so Bionic reads and writes a correct 36-byte prefix of the caller's
+# larger structure and never touches the remainder. Confirmed on device through
+# the shim: an addon with the 60-byte layout called tcgetattr on a real pty and
+# read back the right c_cc[VMIN] and c_cc[VTIME]. Nothing in the tree imports
+# tcgetattr or tcsetattr in any case.
+#
+# The ceiling worth knowing: after tcgetattr the tail of a glibc caller's struct
+# -- c_cc[19..31], c_ispeed, c_ospeed -- holds whatever it held before the call,
+# because Bionic does not write there. Round-tripping through tcsetattr is still
+# safe, since Bionic reads only the same prefix. Code that compares two whole
+# termios structures byte for byte would be comparing that uninitialised tail.
+#
+# So blocking these would have broken working code to prevent a problem that is
 # not there. Only what was verified different gets a wrapper -- see TRANSLATED --
-# and only what is verified different belongs here.
+# and only what is verified different, and dangerous, belongs here.
 #
 # Before adding a name: read the struct in
 #   $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/*/sysroot/usr/include
