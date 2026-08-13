@@ -2,26 +2,33 @@
 
 VSCodroid includes and/or distributes the following third-party software. We are grateful to the authors and communities behind these projects.
 
+Versions are deliberately not listed unless pinned in this repository: most components come from the Termux or Alpine package index at build time, so the version a given release shipped is recorded by that release's build, not by this file.
+
 ## Core Components
 
-| Software | Version | License | URL |
-|----------|---------|---------|-----|
-| Visual Studio Code Server | 1.96.4 | Microsoft proprietary — see `assets/vscode-reh/LICENSE` | https://update.code.visualstudio.com |
-| Node.js | 20.18.1 | MIT | https://github.com/nodejs/node |
-| npm | 10.8.2 | Artistic License 2.0 | https://github.com/npm/cli |
-| Python | 3.12.12 | PSF License | https://www.python.org |
-| Git | 2.53.0 | GPL v2 | https://git-scm.com |
-| Bash | 5.3.9 | GPL v3 | https://www.gnu.org/software/bash |
-| ripgrep | 14.x | MIT / Unlicense (dual) | https://github.com/BurntSushi/ripgrep |
-| tmux | 3.6a | ISC | https://github.com/tmux/tmux |
-| GNU Make | 4.4.1 | GPL v3 | https://www.gnu.org/software/make |
-| OpenSSH | latest | BSD | https://www.openssh.com |
-| node-pty | 1.1.0-beta22 | MIT | https://github.com/nickcernis/nickcernis-node-pty |
+| Software | License | Source |
+|----------|---------|--------|
+| Code - OSS (VS Code Server + Web) | MIT — `LICENSE.txt` and `ThirdPartyNotices.txt` ship inside the server tree | Built from https://github.com/microsoft/vscode at the tag pinned in `VSCODE_VERSION`, with the patches in `patches/` and the branding in `branding/` applied before the build |
+| GitHub Copilot Chat extension | See the license files inside `extensions/copilot/` in the server tree; its `@github/copilot` SDK dependency carries GitHub, Inc.'s own `LICENSE.md` | Produced by the same Code - OSS build |
+| Node.js | MIT | Termux build of `nodejs-lts`, https://github.com/nodejs/node |
+| npm | Artistic License 2.0 | https://github.com/npm/cli |
+| Python | PSF License | Termux build, https://www.python.org |
+| Git | GPL v2 | Termux build, https://git-scm.com |
+| Bash | GPL v3 | Termux build, https://www.gnu.org/software/bash |
+| ripgrep | MIT / Unlicense (dual) | Bundled by the Code - OSS build (`@vscode/ripgrep-universal`), https://github.com/BurntSushi/ripgrep |
+| tmux | ISC | Termux build, https://github.com/tmux/tmux |
+| GNU Make | GPL v3 | Termux build, https://www.gnu.org/software/make |
+| OpenSSH | BSD | Termux build, https://www.openssh.com |
+| node-pty | MIT | https://github.com/microsoft/node-pty — native addon rebuilt for Android/Bionic |
+| @parcel/watcher | MIT | https://github.com/parcel-bundler/watcher — native addon rebuilt for Android/Bionic |
+| musl (dynamic loader) | MIT | Alpine Linux package, https://musl.libc.org — bundled so the Claude Code CLI can run; the CLI itself is installed by the user and is not redistributed here |
 
 ## Shared Libraries (from Termux)
 
 | Library | License | Purpose |
 |---------|---------|---------|
+| ICU (libicu*) | Unicode License | Internationalization for Node.js |
+| c-ares | MIT | DNS resolution for Node.js |
 | readline | GPL v3 | Line editing for Bash |
 | ncurses | MIT | Terminal interface for Bash/tmux |
 | libevent | BSD 3-Clause | Event loop for tmux |
@@ -60,14 +67,17 @@ VSCodroid includes and/or distributes the following third-party software. We are
 
 ## Bundled VS Code Extensions
 
+Downloaded from Open VSX at build time (`scripts/download-extensions.sh`):
+
 | Extension | License |
 |-----------|---------|
-| One Dark Pro | MIT |
-| ESLint | MIT |
+| Material Icon Theme | MIT |
 | Prettier | MIT |
-| Tailwind CSS IntelliSense | MIT |
-| GitLens | EUL (free tier) |
 | Python (ms-python) | MIT |
+| ESLint | MIT |
+| Tailwind CSS IntelliSense | MIT |
+
+VSCodroid's own bundled extensions (`vscodroid.*`) are covered by this repository's MIT `LICENSE`.
 
 ## Termux Project
 
