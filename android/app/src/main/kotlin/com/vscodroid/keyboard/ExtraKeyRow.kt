@@ -97,8 +97,9 @@ class ExtraKeyRow @JvmOverloads constructor(
             val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
 
             // Pad container: top for status bar, bottom for max(nav bar, keyboard).
-            // This ensures the WebView content area shrinks when the keyboard opens,
-            // and ExtraKeyRow (gravity=bottom) sits right above it.
+            // This ensures the WebView content area shrinks when the keyboard opens.
+            // The container is a vertical LinearLayout, so this row then takes its
+            // own height out of the WebView rather than covering the page.
             val bottomInset = maxOf(systemBars.bottom, ime.bottom)
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, bottomInset)
 

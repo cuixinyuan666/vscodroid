@@ -1012,13 +1012,23 @@ class MainActivity : AppCompatActivity() {
         val wv = webView ?: return
         // Read the open folder off the dying WebView before it goes away
         val lastUrl = wv.url
-        val container = findViewById<android.widget.FrameLayout>(R.id.webViewContainer)
+        val container = findViewById<android.widget.LinearLayout>(R.id.webViewContainer)
         container.removeView(wv)
         wv.destroy()
 
         val newWebView = WebView(this)
         newWebView.id = R.id.webView
-        container.addView(newWebView, 0)
+        // Weight, not the default wrap_content: the replacement has to claim the
+        // height the key row leaves, the same as the one declared in the layout.
+        container.addView(
+            newWebView,
+            0,
+            android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
         webView = newWebView
 
         // Reset bridge so initBridge() re-registers on the new WebView
