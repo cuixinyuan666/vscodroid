@@ -450,10 +450,11 @@ else
 fi
 
 # Test 22: settings_json
-# settings.json is created by FirstRunSetup, not by VS Code server, and it
-# lands in User/ — data/Machine/ is where VS Code would put machine settings
-# and nothing writes there, so the old path could only ever fail.
-SETTINGS_CHECK=$($ADB shell "run-as $PKG sh -c 'test -f files/home/.vscodroid/User/settings.json && echo EXISTS'" 2>/dev/null)
+# FirstRunSetup writes settings to data/Machine/ (Environment.getMachineSettingsPath)
+# because the workbench never reads a server-side User/ file, and
+# migrateSettingsToMachinePath() deletes any legacy User/ copy on every launch —
+# so probing User/ fails on exactly the healthy devices.
+SETTINGS_CHECK=$($ADB shell "run-as $PKG sh -c 'test -f files/home/.vscodroid/data/Machine/settings.json && echo EXISTS'" 2>/dev/null)
 if echo "$SETTINGS_CHECK" | grep -q "EXISTS"; then
     pass "settings_json"
 else
