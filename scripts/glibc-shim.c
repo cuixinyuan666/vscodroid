@@ -760,6 +760,55 @@ int __shim_getaddrinfo(const char *node, const char *service,
     return 0;
 }
 
+/*
+ * getnameinfo, the same boundary and the quieter half of it.
+ *
+ * Its NI_ flags cross-collide exactly the way the AI_ ones do -- glibc's
+ * NI_NUMERICHOST is 1, which is Bionic's NI_NOFQDN; glibc's NI_NUMERICSERV is 2,
+ * which is Bionic's NI_NUMERICHOST; NOFQDN and NAMEREQD trade 4 and 8 the same
+ * way -- but Bionic validates nothing here, so nothing fails and the call just
+ * answers a different question. Measured on device against the loopback address:
+ * asking for NI_NUMERICHOST alone, which is the flag that means "give me an
+ * address, do not look anything up", returned "localhost" -- Bionic read bit 1
+ * as NOFQDN and performed exactly the reverse lookup the caller had asked to
+ * avoid. Asking for NI_NUMERICSERV returned "http" where the caller wanted "80".
+ * Through the wrapper the same three calls answer 127.0.0.1 and 80.
+ *
+ * The lengths differ too, and only in type: glibc declares hostlen and servlen
+ * socklen_t, Bionic size_t. AArch64 zeroes the upper half of an X register on
+ * any W write, so in practice the value survives -- but converting here says so
+ * rather than relying on it.
+ *
+ * Nothing in the tree imports this today. It is written now because the
+ * getaddrinfo half of the same boundary was, and a wrapper for one of them
+ * leaves the other looking checked.
+ */
+#define G_NI_NUMERICHOST 0x01
+#define G_NI_NUMERICSERV 0x02
+#define G_NI_NOFQDN      0x04
+#define G_NI_NAMEREQD    0x08
+#define G_NI_DGRAM       0x10
+
+static int ni_flags_to_bionic(int g) {
+    int b = 0;
+    if (g & G_NI_NUMERICHOST) b |= NI_NUMERICHOST;
+    if (g & G_NI_NUMERICSERV) b |= NI_NUMERICSERV;
+    if (g & G_NI_NOFQDN)      b |= NI_NOFQDN;
+    if (g & G_NI_NAMEREQD)    b |= NI_NAMEREQD;
+    if (g & G_NI_DGRAM)       b |= NI_DGRAM;
+    /* glibc's NI_IDN (32) and its companions are dropped: there is no IDN
+     * support here to ask for. */
+    return b;
+}
+
+int __shim_getnameinfo(const struct sockaddr *sa, socklen_t salen,
+                       char *host, socklen_t hostlen,
+                       char *serv, socklen_t servlen, int flags) {
+    int rc = getnameinfo(sa, salen, host, (size_t)hostlen, serv, (size_t)servlen,
+                         ni_flags_to_bionic(flags));
+    return rc == 0 ? 0 : eai_to_glibc(rc);
+}
+
 void __shim_freeaddrinfo(struct glibc_addrinfo *res) {
     /* Swap back before handing it to Bionic, which will read its own layout. */
     for (struct glibc_addrinfo *g = res; g; g = g->ai_next) {

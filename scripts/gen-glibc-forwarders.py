@@ -129,6 +129,7 @@ TRANSLATED = {
     "getaddrinfo": "__shim_getaddrinfo",
     "freeaddrinfo": "__shim_freeaddrinfo",
     "gai_strerror": "__shim_gai_strerror",
+    "getnameinfo": "__shim_getnameinfo",
 }
 
 # The same hazard, without a wrapper written yet: these abort by name on first
