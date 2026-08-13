@@ -316,8 +316,13 @@ for pkg in "${LIB_PACKAGES[@]}"; do
             cp -L "$src" "$ASSETS_DIR/usr/lib/$soname"
             echo "  $soname ($(du -sh "$ASSETS_DIR/usr/lib/$soname" | cut -f1))"
         else
-            echo "  WARNING: $soname not found in $pkg (looked in $pkg_lib_dir)"
+            # Fatal, not a warning: a library missing here ships an APK where
+            # bash or git dies at dlopen on a user's device - the exact class
+            # of quiet breakage the ELF verification exists to prevent. This
+            # printed WARNING and exited 0 until review caught it.
+            echo "  ERROR: $soname not found in $pkg (looked in $pkg_lib_dir)" >&2
             [ -d "$pkg_lib_dir" ] && ls "$pkg_lib_dir"/*.so* 2>/dev/null | head -5 || true
+            exit 1
         fi
     done
 done

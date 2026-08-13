@@ -87,6 +87,50 @@ fi
 
 # --- Build -----------------------------------------------------------------
 
+# The comment on NODE_VERSION above promises a check comparing these headers
+# against the runtime actually shipped; this is that check, previously promised
+# and absent. libnode.so embeds process.version as its own string, so a bundled
+# runtime that drifted from the headers fails here instead of rejecting every
+# addon at load time with NODE_MODULE_VERSION noise.
+BUNDLED_NODE="$ROOT_DIR/android/app/src/main/jniLibs/arm64-v8a/libnode.so"
+if [ -f "$BUNDLED_NODE" ]; then
+    bundled_version=$(strings -n 6 "$BUNDLED_NODE" 2>/dev/null \
+        | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+    if [ -z "$bundled_version" ]; then
+        echo "  WARNING: could not read a version string out of libnode.so; header pairing unchecked" >&2
+    elif [ "$bundled_version" != "v$NODE_VERSION" ]; then
+        echo "ERROR: headers are for v$NODE_VERSION but the bundled libnode.so is $bundled_version" >&2
+        echo "  Addons built against the wrong headers change NODE_MODULE_VERSION and are" >&2
+        echo "  rejected at load with no useful message. Fix NODE_VERSION or re-run" >&2
+        echo "  scripts/download-node.sh before building addons." >&2
+        exit 1
+    else
+        echo "  runtime: libnode.so is $bundled_version (matches headers)"
+    fi
+else
+    echo "  WARNING: no bundled libnode.so yet; header/runtime pairing unchecked" >&2
+fi
+
+# check_pair <name> <native-version> <package.json> — the .node built here must
+# ship beside the SAME JS the version was chosen for. Between prerelease
+# versions the private binding surface moves, so a silent mismatch is a
+# runtime failure on device, not a build failure here.
+check_pair() {
+    local name=$1 native=$2 pkg_json=$3
+    if [ ! -f "$pkg_json" ]; then
+        echo "  WARNING: $name JS not present at $pkg_json; version pairing unchecked" >&2
+        return 0
+    fi
+    local js
+    js=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['version'])" "$pkg_json")
+    if [ "$js" != "$native" ]; then
+        echo "ERROR: $name native is built from $native but the shipped JS is $js" >&2
+        echo "  Align the fetch version in this script with the tree before shipping." >&2
+        return 1
+    fi
+    echo "  pairing: $name JS matches native ($js)"
+}
+
 # fetch <package> <version> -> echoes the unpacked source directory
 fetch() {
     local pkg=$1 version=$2
@@ -143,20 +187,21 @@ failed=0
 # is not a degraded terminal, it is no terminal at all.
 echo ""
 echo "node-pty..."
-PTY_SRC=$(fetch node-pty 1.1.0-beta22)
+PTY_SRC=$(fetch node-pty 1.2.0-beta.15)
 # Bionic has forkpty() in libc; binding.gyp's -lutil is for glibc only. Compiling
 # directly means simply not passing it, so binding.gyp needs no patching.
 compile "$PTY_SRC" "$OUTPUT_ROOT/node_modules/node-pty/build/Release/pty.node" \
     src/unix/pty.cc \
     -- -DNODE_ADDON_API_DISABLE_DEPRECATED -DNODE_GYP_MODULE_NAME=pty
 verify "$OUTPUT_ROOT/node_modules/node-pty/build/Release/pty.node" node-pty || failed=1
+check_pair node-pty 1.2.0-beta.15 "$OUTPUT_ROOT/node_modules/node-pty/package.json" || failed=1
 
 # @parcel/watcher — recursive file watching. watcherMain imports it statically
 # too, so without it recursive watching is dead rather than degraded, and an
 # extension is simply never told a file changed.
 echo ""
 echo "@parcel/watcher..."
-WATCHER_SRC=$(fetch @parcel/watcher 2.1.0)
+WATCHER_SRC=$(fetch @parcel/watcher 2.5.6)
 # Sources and defines are binding.gyp's OS=="linux" branch. Android has inotify,
 # so that backend is the one that matters; watchman stays compiled in and inert
 # because nothing serves its socket here.
@@ -167,6 +212,7 @@ compile "$WATCHER_SRC" "$OUTPUT_ROOT/node_modules/@parcel/watcher/build/Release/
     -- -fexceptions -DNAPI_DISABLE_CPP_EXCEPTIONS \
        -DWATCHMAN -DINOTIFY -DBRUTE_FORCE -DNODE_GYP_MODULE_NAME=watcher
 verify "$OUTPUT_ROOT/node_modules/@parcel/watcher/build/Release/watcher.node" @parcel/watcher || failed=1
+check_pair @parcel/watcher 2.5.6 "$OUTPUT_ROOT/node_modules/@parcel/watcher/package.json" || failed=1
 
 # @vscode/sqlite3 — the workbench's storage engine, and what the Copilot CLI
 # session store opens through the embedder. The glibc build fails dlopen on
