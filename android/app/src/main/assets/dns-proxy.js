@@ -28,6 +28,17 @@ const net = require('net');
 const { URL } = require('url');
 
 /**
+ * AggregateError -- what a failed Happy Eyeballs connect throws -- carries an
+ * empty message, so the reason survives only in `errors`.
+ *
+ * @param {Error & {errors?: Error[]}} err
+ * @returns {string}
+ */
+function reason(err) {
+    return err.errors ? err.errors.map((e) => e.message).join('; ') : err.message;
+}
+
+/**
  * Binds the proxy and resolves with the environment the child should inherit.
  *
  * Never rejects. A proxy that cannot bind must not take the workbench down with
@@ -39,6 +50,16 @@ const { URL } = require('url');
  * @returns {Promise<Record<string, string>>}
  */
 function start(log) {
+    // Node gives each address 250ms before it abandons that attempt and tries
+    // the next family. api.anthropic.com handshakes in 227-500ms from here and
+    // the IPv6 route is absent (EHOSTUNREACH), so the default lost roughly
+    // three connects in five -- reported as an AggregateError whose message is
+    // the empty string, which is why the warnings below could only ever say
+    // "failed: ". Widening the window costs nothing when the first address
+    // answers promptly. Process-wide on purpose: the plain-HTTP path here and
+    // every other outbound connect in this process share the exposure.
+    net.setDefaultAutoSelectFamilyAttemptTimeout(1000);
+
     return new Promise((resolve) => {
         let settled = false;
         const done = (env) => {
@@ -71,7 +92,7 @@ function start(log) {
                 },
             );
             upstream.on('error', (err) => {
-                log('warn', `dns-proxy: ${target.hostname} failed: ${err.message}`);
+                log('warn', `dns-proxy: ${target.hostname} failed: ${reason(err)}`);
                 res.writeHead(502).end();
             });
             req.pipe(upstream);
@@ -90,7 +111,7 @@ function start(log) {
                 clientSocket.pipe(upstream);
             });
             upstream.on('error', (err) => {
-                log('warn', `dns-proxy: CONNECT ${host} failed: ${err.message}`);
+                log('warn', `dns-proxy: CONNECT ${host} failed: ${reason(err)}`);
                 clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
             });
             clientSocket.on('error', () => upstream.destroy());
