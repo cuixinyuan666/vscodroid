@@ -184,7 +184,80 @@ class FirstRunSetup(private val context: Context) {
         }
     }
 
-    private fun setupGitCore() {
+    /**
+     * Builds the single-file CA bundle git's curl insists on having.
+     *
+     * The bundled libcurl comes from Termux and carries Termux's compiled-in
+     * bundle path, /data/data/com.termux/files/usr/etc/tls/cert.pem, which does
+     * not exist in this sandbox. Every HTTPS request therefore died with "error
+     * adding trust anchors from file", before any certificate was checked.
+     *
+     * Pointing GIT_SSL_CAPATH at Android's trust store does not answer it, and
+     * that is the part worth recording: measured on device, a clone with CAPATH
+     * set and nothing else still failed on the missing file, and clearing
+     * sslCAInfo only changed the message to name an empty path. What works is a
+     * bundle file -- with one, the clone succeeds whether CAPATH is set or not,
+     * so curl was never reading the directory.
+     *
+     * The bundle is concatenated from the device's own trust store rather than
+     * shipped, so it reflects what this device actually trusts and does not age
+     * inside the APK. Rebuilt when the store's directory is newer than the file,
+     * which is one stat rather than 143.
+     */
+    fun setupGitCaBundle() {
+        val caDir = listOf("/apex/com.android.conscrypt/cacerts", "/system/etc/security/cacerts")
+            .map { File(it) }
+            .firstOrNull { it.isDirectory } ?: return
+
+        val bundle = File(context.filesDir, "usr/etc/tls/cert.pem")
+        if (bundle.exists() && bundle.length() > 0 && bundle.lastModified() >= caDir.lastModified()) {
+            return
+        }
+
+        try {
+            bundle.parentFile?.mkdirs()
+            val certs = caDir.listFiles()?.sortedBy { it.name } ?: return
+            bundle.outputStream().use { out ->
+                for (cert in certs) {
+                    if (cert.isFile) cert.inputStream().use { it.copyTo(out) }
+                }
+            }
+            Logger.i(tag, "CA bundle: ${certs.size} certificates from ${caDir.path}")
+        } catch (e: Exception) {
+            Logger.e(tag, "Failed to build CA bundle", e)
+        }
+    }
+
+    /**
+     * Points git-core's entries at binaries the app is actually allowed to run.
+     *
+     * Two kinds live there. Builtin subcommands are the same binary as git, so
+     * they become symlinks to libgit.so. The remote helpers -- git-remote-http,
+     * -https, -ftp and -ftps, one identical binary under four names -- are a
+     * different program, shipped as libgit-remote-curl.so, and they are the ones
+     * git genuinely has to exec: everything over HTTPS goes through one.
+     *
+     * Both have to resolve into nativeLibraryDir for the same reason ripgrep
+     * does. SELinux refuses execve on anything under filesDir for targetSdk >=
+     * 29, so the extracted copy of a helper is a file that installs, chmods and
+     * then fails at the moment it is needed -- measured on an API 36 device,
+     * "cannot exec 'git-remote-https': Permission denied" and a clone that dies
+     * with "remote helper 'https' aborted session". A symlink works because
+     * execve resolves it and checks the target.
+     *
+     * Links are repaired, not merely created, and that is the second half of the
+     * fix. Android hands the app a new nativeLibraryDir on every reinstall, so
+     * absolute links written by an earlier install point at a path that is gone
+     * -- measured on the same device, where all 146 of them did, and where
+     * git-clone reported "not found" rather than "permission denied" as a
+     * result. File.exists() follows a link and reports false for exactly that
+     * case, which is why staleness is read with Os.lstat and the recorded target
+     * compared, the way setupToolSymlinks already does it.
+     *
+     * Safe to call on every launch, and called there so a reinstall cannot leave
+     * git pointing into an install that no longer exists.
+     */
+    fun setupGitCore() {
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
         val gitCorePath = File(context.filesDir, "usr/lib/git-core")
         val manifestFile = File(gitCorePath, "gitcore-symlinks")
@@ -194,19 +267,36 @@ class FirstRunSetup(private val context: Context) {
             return
         }
 
-        val gitBinary = "$nativeLibDir/libgit.so"
-        var symlinksCreated = 0
+        // git-core entry name -> the library in nativeLibraryDir it must resolve to
+        val links = mutableMapOf<String, String>()
+        manifestFile.readLines().filter { it.isNotBlank() }.forEach { links[it] = "libgit.so" }
+        for (protocol in listOf("http", "https", "ftp", "ftps")) {
+            links["git-remote-$protocol"] = "libgit-remote-curl.so"
+        }
 
-        // Create symlinks for git subcommands that point to the main git binary
-        manifestFile.readLines().filter { it.isNotBlank() }.forEach { name ->
-            val linkPath = File(gitCorePath, name)
-            if (!linkPath.exists()) {
-                try {
-                    Os.symlink(gitBinary, linkPath.absolutePath)
-                    symlinksCreated++
-                } catch (e: Exception) {
-                    Logger.d(tag, "Failed to create symlink for $name: ${e.message}")
-                }
+        var created = 0
+        var repaired = 0
+
+        for ((name, soName) in links) {
+            val target = "$nativeLibDir/$soName"
+            if (!File(target).exists()) continue
+            val link = File(gitCorePath, name)
+
+            val present = try { Os.lstat(link.absolutePath); true } catch (e: Exception) { false }
+            if (present) {
+                // readlink throws on a regular file, which is what the extracted
+                // copy of a remote helper is -- that too has to be replaced.
+                val current = try { Os.readlink(link.absolutePath) } catch (e: Exception) { null }
+                if (current == target) continue
+                link.delete()
+                repaired++
+            }
+
+            try {
+                Os.symlink(target, link.absolutePath)
+                if (!present) created++
+            } catch (e: Exception) {
+                Logger.d(tag, "Failed to link $name -> $soName: ${e.message}")
             }
         }
 
@@ -217,7 +307,7 @@ class FirstRunSetup(private val context: Context) {
             }
         }
 
-        Logger.i(tag, "git-core setup: $symlinksCreated symlinks created")
+        Logger.i(tag, "git-core: $created links created, $repaired repaired")
     }
 
     /**
