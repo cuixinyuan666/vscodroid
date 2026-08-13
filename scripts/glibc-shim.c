@@ -718,8 +718,16 @@ static int eai_to_glibc(int rc) {
 }
 
 /* The reverse, for handing a code back to Bionic's gai_strerror. -4 appears
- * three times above; the search finds EAI_FAIL first, which is the right one. */
+ * three times above; the search finds EAI_FAIL first, which is the right one.
+ *
+ * Zero is passed through rather than searched for. Callers do print
+ * gai_strerror(rc) unconditionally, and mapping success onto EAI_FAIL would have
+ * this name a failure that did not happen. Bionic answers "Success" there;
+ * glibc's own answer is "Unknown error", so passing through is if anything the
+ * more useful of the two. A code that is neither zero nor in the table is
+ * reported as EAI_FAIL, which is what an unrecognised permanent failure is. */
 static int eai_to_bionic(int rc) {
+    if (rc == 0) return 0;
     for (int i = 1; i < EAI_TABLE_LEN; i++)
         if (eai_glibc_for_bionic[i] == rc) return i;
     return EAI_FAIL;
