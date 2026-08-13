@@ -60,8 +60,11 @@ jobs:
           fi
 
           # versionCode is what migrations threshold against; a repeat means a
-          # migration written for this release runs for nobody.
-          previous=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || echo "")
+          # migration written for this release runs for nobody. --match keeps
+          # build-vscode-oss.yml's server-* tags out of "previous": those land on
+          # arbitrary commits, and comparing against one either fails a
+          # legitimate tag or lets a repeated versionCode through.
+          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$TAG^" 2>/dev/null || echo "")
           if [ -n "$previous" ]; then
             previous_code=$(git show "$previous:$gradle_file" 2>/dev/null \
               | grep -m1 'versionCode = ' | sed 's/[^0-9]*//g' || echo "")
