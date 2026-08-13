@@ -43,6 +43,27 @@ mkdir -p "$ROOT_DIR/server"
 
 # Kept under server/ so CI's existing server/*.tar.gz cache path covers it, and a
 # rerun on a warm cache skips the download entirely.
+#
+# A cached file only counts as the artifact while it still matches the digest
+# the release carries NOW. The server tarball is rebuilt in place when a patch
+# changes, without the version moving, and CI's restore-keys will happily hand
+# back the pre-rebuild bytes — which is exactly how a stale 190M tarball met the
+# verify gate that its own commit had introduced, and lost. VSCODE_OSS_URL has
+# no digest to compare against, so that path trusts its cache as before.
+if [ -f "$TARBALL" ] && [ -z "${VSCODE_OSS_URL:-}" ]; then
+    expected="$(gh release view "server-$VSCODE_VERSION" --repo "$REPO" \
+        --json assets \
+        -q ".assets[] | select(.name==\"$TARBALL_NAME\") | .digest" 2>/dev/null || true)"
+    if [ -n "$expected" ] && [ "$expected" != "null" ]; then
+        actual="sha256:$( (sha256sum "$TARBALL" 2>/dev/null || shasum -a 256 "$TARBALL") | cut -d' ' -f1)"
+        if [ "$actual" != "$expected" ]; then
+            echo "  stale   : cached tarball digest $actual"
+            echo "            release now carries  $expected — refetching"
+            rm -f "$TARBALL"
+        fi
+    fi
+fi
+
 if [ -f "$TARBALL" ]; then
     echo "  cached  : $(du -h "$TARBALL" | cut -f1)"
 elif [ -n "${VSCODE_OSS_URL:-}" ]; then
