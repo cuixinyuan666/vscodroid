@@ -130,7 +130,9 @@ if [ -d "$BRANDING" ]; then
     # the file forever, and the stage silently stops matching what it declares.
     # That cost three build attempts: extensionsGallery was dropped from the
     # overlay and the build kept downloading builtin extensions from Open VSX.
-    git -C "$SRC" checkout -- product.json resources/server/ 2>/dev/null || true
+    git -C "$SRC" checkout -- product.json resources/server/ \
+        src/vs/workbench/browser/media/code-icon.svg \
+        src/vs/workbench/browser/parts/editor/media/ 2>/dev/null || true
     python3 - "$BRANDING/product.json" "$SRC/product.json" <<'PY'
 import json, sys
 
@@ -163,6 +165,22 @@ PY
             echo "  WARNING: $BRANDING/server/$asset missing, keeping upstream" >&2
         fi
     done
+
+    # Two more marks live outside resources/server, inside the workbench bundle:
+    # the titlebar app icon and the empty-editor watermark. One theme-agnostic
+    # letterpress stands in for upstream's four themed variants.
+    if [ -f "$BRANDING/workbench/code-icon.svg" ] && [ -f "$BRANDING/workbench/letterpress.svg" ]; then
+        cp "$BRANDING/workbench/code-icon.svg" \
+            "$SRC/src/vs/workbench/browser/media/code-icon.svg"
+        echo "  src/vs/workbench/browser/media/code-icon.svg"
+        for variant in dark hcDark hcLight light; do
+            cp "$BRANDING/workbench/letterpress.svg" \
+                "$SRC/src/vs/workbench/browser/parts/editor/media/letterpress-$variant.svg"
+        done
+        echo "  src/vs/workbench/browser/parts/editor/media/letterpress-{dark,hcDark,hcLight,light}.svg"
+    else
+        echo "  WARNING: $BRANDING/workbench incomplete, keeping upstream workbench artwork" >&2
+    fi
 elif [ -n "${ALLOW_UNADAPTED:-}" ]; then
     echo "  no branding at $BRANDING — building unbranded (ALLOW_UNADAPTED set)"
 else
