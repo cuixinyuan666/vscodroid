@@ -91,6 +91,43 @@ class PortFinderTest {
         }
 
         @Test
+        fun `does not remember a port from the ephemeral range`() {
+            // Exhaust the scan range so allocation has to fall through to
+            // ServerSocket(0). That port comes out of the kernel's volatile range,
+            // where an unrelated outbound socket can be holding it by the next
+            // launch -- remembering it would re-arm the very storage loss the fixed
+            // scan base exists to avoid, and it would never migrate back once the
+            // congestion clears.
+            val held = (13337 until 13337 + 64).mapNotNull {
+                runCatching { ServerSocket(it) }.getOrNull()
+            }
+            try {
+                val port = PortFinder.getOrAllocatePort(context)
+                assertTrue(port >= 32768, "precondition failed: the scan range was not exhausted")
+                assertEquals(0, stored, "an ephemeral port must not be persisted")
+            } finally {
+                held.forEach { it.close() }
+            }
+        }
+
+        @Test
+        fun `keeps the previously remembered port when it falls back to an ephemeral one`() {
+            // The old value is worth more than the emergency port: if the range was
+            // only briefly full, the next cold start returns to the origin this
+            // install has been using, with its IndexedDB intact.
+            stored = 13350
+            val held = (13337 until 13337 + 64).mapNotNull {
+                runCatching { ServerSocket(it) }.getOrNull()
+            }
+            try {
+                PortFinder.getOrAllocatePort(context)
+                assertEquals(13350, stored, "the remembered port must survive an ephemeral fallback")
+            } finally {
+                held.forEach { it.close() }
+            }
+        }
+
+        @Test
         fun `returns the same port on the next cold start`() {
             // The workbench keys IndexedDB by origin, and the port is part of the
             // origin: a different port here empties secret storage and every

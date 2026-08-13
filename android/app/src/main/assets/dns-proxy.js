@@ -183,6 +183,12 @@ function start(log) {
             // CONNECT handler below.
             req.on('error', () => upstream.destroy());
             res.on('error', () => upstream.destroy());
+            // 'error' is not enough on its own. A client that simply goes away
+            // mid-response produces no failed write, so Node reports it as
+            // 'close' and nothing else -- leaving this leg to drain the origin
+            // into a socket nobody is reading. Firing on normal completion too
+            // is harmless: the request is finished by then.
+            res.on('close', () => upstream.destroy());
             req.pipe(upstream);
         });
 
@@ -194,6 +200,10 @@ function start(log) {
             // uncaught 'error' on a socket takes the whole bootstrap down.
             let upstream = null;
             clientSocket.on('error', () => upstream && upstream.destroy());
+            // Same reason as the plain-HTTP leg: an abrupt client is a 'close'
+            // here, not an 'error', and without this the tunnel's far half stays
+            // open with nothing on the near end.
+            clientSocket.on('close', () => upstream && upstream.destroy());
 
             if (!authorized(req)) {
                 // "Connection: close" is load-bearing, not decoration. git does
@@ -218,8 +228,48 @@ function start(log) {
                 return;
             }
 
-            const [host, rawPort] = req.url.split(':');
-            upstream = net.connect(Number(rawPort) || 443, host, () => {
+            // Parsed rather than split on ':' because a CONNECT target may be an
+            // IPv6 literal: "[::1]:443".split(':') yields ["[", "", "1]", "443"],
+            // so the old form dialled a host named "[". The WHATWG parser gets
+            // this right and rejects a malformed authority outright, which also
+            // closes a second hole -- "host:99999999" used to reach net.connect
+            // and throw ERR_SOCKET_BAD_PORT synchronously, taking the bootstrap
+            // down with it. It keeps the brackets on an IPv6 hostname; net.connect
+            // wants the bare address.
+            let host;
+            let port;
+            try {
+                const authority = req.url;
+                // The port is read from the raw text, never from the parser. A
+                // WHATWG URL normalises away a port that equals the scheme
+                // default, so `host:80` parses to an empty .port and would then
+                // be dialled as 443 -- a wrong dial for a valid target. The
+                // authority-form of CONNECT always carries an explicit port
+                // (RFC 7231 4.3.6), so the last colon is the separator, and it
+                // has to fall outside any bracketed IPv6 address.
+                const sep = authority.lastIndexOf(':');
+                if (sep === -1 || sep < authority.lastIndexOf(']')) {
+                    throw new Error('no port in CONNECT target');
+                }
+                port = Number(authority.slice(sep + 1));
+                if (!Number.isInteger(port) || port < 1 || port > 65535) {
+                    throw new Error('port out of range');
+                }
+                // The host still comes from the parser, which is the part that
+                // gets the bracketed IPv6 form right; it keeps the brackets and
+                // net.connect wants them off.
+                host = new URL(`http://${authority}`).hostname;
+                if (host.startsWith('[')) {
+                    host = host.slice(1, -1);
+                }
+                if (!host) {
+                    throw new Error('no host in CONNECT target');
+                }
+            } catch {
+                clientSocket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+                return;
+            }
+            upstream = net.connect(port, host, () => {
                 clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
                 if (head && head.length) {
                     upstream.write(head);
@@ -228,7 +278,7 @@ function start(log) {
                 clientSocket.pipe(upstream);
             });
             upstream.on('error', (err) => {
-                log('warn', `dns-proxy: CONNECT ${host} failed: ${reason(err)}`);
+                log('warn', `dns-proxy: CONNECT ${host}:${port} failed: ${reason(err)}`);
                 clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
             });
         });

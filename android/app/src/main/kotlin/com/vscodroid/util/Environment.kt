@@ -176,20 +176,6 @@ object Environment {
     fun getTerminalShellPath(context: Context): String =
         "${context.filesDir}/usr/bin/bash"
 
-    /**
-     * The node the Claude Code extension launches its CLI with.
-     *
-     * Names the symlink rather than nativeLibraryDir/libnode.so, and the
-     * difference matters twice. Android hands out a new nativeLibraryDir on every
-     * reinstall, so a path recorded in settings.json goes stale — the symlink
-     * lives under filesDir, which does not move, and setupToolSymlinks() re-points
-     * it at every launch. And SELinux denies execve on app_data_file, so the
-     * script could not be made executable itself; execve resolves the symlink and
-     * checks the target, which is in nativeLibraryDir and allowed.
-     */
-    fun getNodeSymlinkPath(context: Context): String =
-        "${context.filesDir}/usr/bin/node"
-
     fun getGitPath(context: Context): String =
         "${context.applicationInfo.nativeLibraryDir}/libgit.so"
 

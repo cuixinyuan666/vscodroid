@@ -49,7 +49,23 @@ object PortFinder {
                     "Workbench storage keyed to the old origin is lost.",
             )
         }
-        prefs.edit().putInt(KEY_PORT, port).apply()
+        // Only a port from the scan range is worth remembering. The fallback in
+        // findAvailablePort() returns one from the kernel's ephemeral range, and
+        // the comment on DEFAULT_PORT explains why that is the wrong thing to
+        // write here: an unrelated outbound socket can be holding such a port at
+        // the moment of the next launch, which sends the workbench to a new
+        // origin and drops the IndexedDB behind the old one. Persisting it would
+        // also be one-way -- once remembered, the port never migrates back to the
+        // stable range even after the congestion that forced it has cleared.
+        //
+        // Leaving the previous value in place is deliberate: the next cold start
+        // retries the port this install has been using, which is exactly right if
+        // the range was only briefly full. This is persistence only; the port is
+        // still returned and still reused for the whole process lifetime through
+        // ProcessManager's cached _port.
+        if (port in DEFAULT_PORT until DEFAULT_PORT + SCAN_RANGE) {
+            prefs.edit().putInt(KEY_PORT, port).apply()
+        }
         return port
     }
 

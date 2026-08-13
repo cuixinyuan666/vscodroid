@@ -16,6 +16,8 @@ VSCodroid uses the **Open VSX** extension registry (https://open-vsx.org), not t
 
 VSCodroid incorporates the following open source projects. We are grateful to the developers and communities behind each of them.
 
+Versions are given only where this repository actually pins one. Most bundled tools are installed from the Termux package index at build time, so the version a given release shipped is a property of that build, not of this file — stating a number here would only go stale silently. Where a version is pinned, the entry names the file that pins it.
+
 ### Code - OSS (VS Code)
 
 - **Project**: https://github.com/microsoft/vscode
@@ -47,7 +49,7 @@ SOFTWARE.
 ### Node.js
 
 - **Project**: https://nodejs.org
-- **Version**: 20.18.1 (cross-compiled for ARM64 Android using Termux patches)
+- **Version**: not pinned here — the `nodejs-lts` package from the Termux index, installed by `scripts/download-node.sh`. The line it must track is set by `remote/.npmrc` at the VS Code tag in `VSCODE_VERSION`, since that is what the server's native modules are built against
 - **License**: MIT License (Node.js core), with additional licenses for bundled dependencies
 - **Copyright**: Copyright Node.js contributors. All rights reserved.
 - **Full license**: https://github.com/nodejs/node/blob/main/LICENSE
@@ -57,7 +59,7 @@ Node.js includes V8 (BSD-3-Clause), libuv (MIT), OpenSSL (Apache-2.0), ICU (Unic
 ### Python
 
 - **Project**: https://www.python.org
-- **Version**: 3.12.12 (from Termux packages)
+- **Version**: not pinned here — resolved from the Termux package index at build time by `scripts/download-python.sh`
 - **License**: Python Software Foundation License (PSF-2.0)
 - **Copyright**: Copyright (c) 2001-2024 Python Software Foundation. All rights reserved.
 - **Full license**: https://docs.python.org/3/license.html
@@ -73,7 +75,7 @@ Node.js includes V8 (BSD-3-Clause), libuv (MIT), OpenSSL (Apache-2.0), ICU (Unic
 ### Bash
 
 - **Project**: https://www.gnu.org/software/bash/
-- **Version**: 5.3.9 (from Termux packages)
+- **Version**: not pinned here — from the Termux package index at build time (`scripts/download-termux-tools.sh`)
 - **License**: GNU General Public License v3.0 (GPL-3.0-or-later)
 - **Copyright**: Copyright (c) Free Software Foundation, Inc.
 - **Full license**: https://www.gnu.org/licenses/gpl-3.0.html
@@ -89,7 +91,7 @@ Node.js includes V8 (BSD-3-Clause), libuv (MIT), OpenSSL (Apache-2.0), ICU (Unic
 ### tmux
 
 - **Project**: https://github.com/tmux/tmux
-- **Version**: 3.6a (from Termux packages)
+- **Version**: not pinned here — from the Termux package index at build time (`scripts/download-termux-tools.sh`)
 - **License**: ISC License
 - **Copyright**: Copyright (c) Nicholas Marriott and contributors
 - **Full license**: https://github.com/tmux/tmux/blob/master/COPYING
@@ -97,7 +99,7 @@ Node.js includes V8 (BSD-3-Clause), libuv (MIT), OpenSSL (Apache-2.0), ICU (Unic
 ### GNU Make
 
 - **Project**: https://www.gnu.org/software/make/
-- **Version**: 4.4.1 (from Termux packages)
+- **Version**: not pinned here — from the Termux package index at build time (`scripts/download-termux-tools.sh`)
 - **License**: GNU General Public License v3.0 (GPL-3.0-or-later)
 - **Copyright**: Copyright (c) Free Software Foundation, Inc.
 - **Full license**: https://www.gnu.org/licenses/gpl-3.0.html
@@ -136,7 +138,7 @@ Node.js includes V8 (BSD-3-Clause), libuv (MIT), OpenSSL (Apache-2.0), ICU (Unic
 ### npm
 
 - **Project**: https://www.npmjs.com
-- **Version**: 10.8.2
+- **Version**: 10.8.2 — pinned as `NPM_VERSION` in `scripts/download-npm.sh`, extracted from the nodejs.org tarball named there
 - **License**: Artistic License 2.0
 - **Copyright**: Copyright (c) npm, Inc. and Contributors
 - **Full license**: https://github.com/npm/cli/blob/latest/LICENSE
