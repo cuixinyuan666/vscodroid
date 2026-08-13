@@ -93,8 +93,20 @@ function start(log) {
             );
             upstream.on('error', (err) => {
                 log('warn', `dns-proxy: ${target.hostname} failed: ${reason(err)}`);
-                res.writeHead(502).end();
+                // An upstream that dies mid-response has already had its status
+                // relayed; writeHead would then throw ERR_HTTP_HEADERS_SENT,
+                // and an uncaught throw here takes the whole bootstrap down and
+                // orphans the forked server on its port.
+                if (!res.headersSent) {
+                    res.writeHead(502);
+                }
+                res.end();
             });
+            // A client that vanishes mid-transfer must tear down the upstream
+            // leg, not surface as an unhandled 'error' -- same contract as the
+            // CONNECT handler below.
+            req.on('error', () => upstream.destroy());
+            res.on('error', () => upstream.destroy());
             req.pipe(upstream);
         });
 

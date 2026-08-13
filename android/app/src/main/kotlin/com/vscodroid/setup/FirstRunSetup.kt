@@ -74,6 +74,11 @@ class FirstRunSetup(private val context: Context) {
             reportProgress("Setting up tools...", 85)
             setupToolSymlinks()
             setupRipgrepVscodeSymlink()
+            // Also here, not only in SplashActivity's always-run block: that
+            // block runs before this extraction on a fresh install, when the
+            // server tree does not exist yet, so the aliases it would build
+            // no-op and Copilot would stay dead until the second cold start.
+            setupCopilotAndroidAliases()
             setupSshDefaults()
             createBashrc()
             createBashProfile()
