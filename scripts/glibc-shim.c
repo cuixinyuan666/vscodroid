@@ -298,6 +298,42 @@ FILE *__shim_stderr(void) { return stderr; }
 int bcmp(const void *a, const void *b, size_t n) { return memcmp(a, b, n); }
 
 /*
+ * The scanf family under the names glibc actually links against.
+ *
+ * glibc's stdio.h redirects sscanf, fscanf, scanf and their v- forms to
+ * __isoc99_ spellings whenever C99 conversion rules apply, which is every build
+ * that has not asked for the older ones. So an addon whose source says sscanf
+ * imports a name Bionic has never had at any API level, and the forwarder for it
+ * aborts on first call. Compiling all six calls against glibc 2.36 on aarch64
+ * emits exactly these six undefined symbols, which is where the list comes from.
+ *
+ * The C99 behaviour the redirect selects -- %a as a conversion rather than the
+ * GNU allocation modifier -- is already what Bionic implements, so each of these
+ * is the plain function and nothing more.
+ */
+int __isoc99_sscanf(const char *s, const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    int rc = vsscanf(s, fmt, ap);
+    va_end(ap);
+    return rc;
+}
+int __isoc99_fscanf(FILE *f, const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    int rc = vfscanf(f, fmt, ap);
+    va_end(ap);
+    return rc;
+}
+int __isoc99_scanf(const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    int rc = vfscanf(stdin, fmt, ap);
+    va_end(ap);
+    return rc;
+}
+int __isoc99_vsscanf(const char *s, const char *fmt, va_list ap) { return vsscanf(s, fmt, ap); }
+int __isoc99_vfscanf(FILE *f, const char *fmt, va_list ap) { return vfscanf(f, fmt, ap); }
+int __isoc99_vscanf(const char *fmt, va_list ap) { return vfscanf(stdin, fmt, ap); }
+
+/*
  * pidfd helpers, glibc 2.36 and later. Bionic has the syscalls but not these
  * wrappers. Reporting "not implemented" is honest and is a case callers of these
  * already handle -- they exist precisely because older kernels lack them.
