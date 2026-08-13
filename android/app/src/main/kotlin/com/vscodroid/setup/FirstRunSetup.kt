@@ -879,12 +879,18 @@ claude() {
             }
         }
 
-        // Generate extensions.json only if it doesn't exist (first run).
-        // VS Code Server manages this file for marketplace-installed extensions,
-        // so we only write it once for bundled extensions.
+        // The server manages this file for marketplace installs, so it is never
+        // regenerated wholesale. But it is the default profile's manifest — the
+        // scanner shows only what is listed in it — and bundled extensions
+        // change with app upgrades while the file survives them. Reconcile:
+        // entries whose directory is gone are unloadable and dropped, freshly
+        // extracted bundled versions gain an entry, everything else stays
+        // exactly as the server wrote it.
         val manifestFile = File(extensionsDir, "extensions.json")
         if (!manifestFile.exists()) {
             generateExtensionsManifest(extensionsDir, bundled)
+        } else {
+            reconcileExtensionsManifest(manifestFile, extensionsDir, bundled)
         }
 
         Logger.i(tag, "Bundled extensions: $extracted extracted, " +
@@ -893,48 +899,101 @@ claude() {
 
     private fun generateExtensionsManifest(extensionsDir: File, bundledDirs: Array<String>) {
         val entries = JSONArray()
-
         for (dirName in bundledDirs) {
-            val extDir = File(extensionsDir, dirName)
-            val pkgFile = File(extDir, "package.json")
-            if (!pkgFile.exists()) {
-                Logger.d(tag, "No package.json in $dirName, skipping manifest entry")
-                continue
-            }
-
-            try {
-                val pkg = JSONObject(pkgFile.readText())
-                val publisher = pkg.optString("publisher", "")
-                val name = pkg.optString("name", "")
-                val version = pkg.optString("version", "")
-
-                if (publisher.isEmpty() || name.isEmpty()) continue
-
-                val id = "${publisher.lowercase()}.${name.lowercase()}"
-
-                val entry = JSONObject().apply {
-                    put("identifier", JSONObject().put("id", id))
-                    put("version", version)
-                    put("location", JSONObject().apply {
-                        put("\$mid", 1)
-                        put("path", extDir.absolutePath)
-                        put("scheme", "file")
-                    })
-                    put("relativeLocation", dirName)
-                    put("metadata", JSONObject().apply {
-                        put("installedTimestamp", System.currentTimeMillis())
-                        put("source", "bundled")
-                    })
-                }
-                entries.put(entry)
-            } catch (e: Exception) {
-                Logger.d(tag, "Failed to parse $dirName/package.json: ${e.message}")
-            }
+            manifestEntryFor(extensionsDir, dirName)?.let { entries.put(it) }
         }
 
         val manifestFile = File(extensionsDir, "extensions.json")
         manifestFile.writeText(entries.toString(2))
         Logger.i(tag, "Generated extensions.json with ${entries.length()} entries")
+    }
+
+    private fun manifestEntryFor(extensionsDir: File, dirName: String): JSONObject? {
+        val extDir = File(extensionsDir, dirName)
+        val pkgFile = File(extDir, "package.json")
+        if (!pkgFile.exists()) {
+            Logger.d(tag, "No package.json in $dirName, skipping manifest entry")
+            return null
+        }
+
+        return try {
+            val pkg = JSONObject(pkgFile.readText())
+            val publisher = pkg.optString("publisher", "")
+            val name = pkg.optString("name", "")
+            val version = pkg.optString("version", "")
+
+            if (publisher.isEmpty() || name.isEmpty()) return null
+
+            JSONObject().apply {
+                put("identifier", JSONObject().put("id", "${publisher.lowercase()}.${name.lowercase()}"))
+                put("version", version)
+                put("location", JSONObject().apply {
+                    put("\$mid", 1)
+                    put("path", extDir.absolutePath)
+                    put("scheme", "file")
+                })
+                put("relativeLocation", dirName)
+                put("metadata", JSONObject().apply {
+                    put("installedTimestamp", System.currentTimeMillis())
+                    put("source", "bundled")
+                })
+            }
+        } catch (e: Exception) {
+            Logger.d(tag, "Failed to parse $dirName/package.json: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Brings the manifest back in line with the directories after an upgrade
+     * swapped bundled extension versions underneath it. Conservative on
+     * purpose: an entry survives unless its directory is verifiably gone, and a
+     * bundled directory is only added when no entry — bundled or marketplace —
+     * already claims its identifier, so a user's own newer install keeps
+     * winning over the bundled copy.
+     */
+    private fun reconcileExtensionsManifest(
+        manifestFile: File,
+        extensionsDir: File,
+        bundledDirs: Array<String>,
+    ) {
+        try {
+            val entries = JSONArray(manifestFile.readText())
+            val kept = JSONArray()
+            val keptIds = mutableSetOf<String>()
+            var dropped = 0
+
+            for (i in 0 until entries.length()) {
+                val entry = entries.getJSONObject(i)
+                val path = entry.optJSONObject("location")?.optString("path").orEmpty()
+                val dirName = entry.optString("relativeLocation")
+                    .ifEmpty { if (path.isEmpty()) "" else File(path).name }
+                if (dirName.isNotEmpty() && !File(extensionsDir, dirName).exists()) {
+                    dropped++
+                    continue
+                }
+                kept.put(entry)
+                entry.optJSONObject("identifier")?.optString("id")?.let { keptIds.add(it) }
+            }
+
+            var added = 0
+            for (dirName in bundledDirs) {
+                val entry = manifestEntryFor(extensionsDir, dirName) ?: continue
+                if (entry.getJSONObject("identifier").getString("id") in keptIds) continue
+                kept.put(entry)
+                added++
+            }
+
+            if (dropped > 0 || added > 0) {
+                manifestFile.writeText(kept.toString(2))
+                Logger.i(tag, "Reconciled extensions.json: $dropped stale dropped, $added bundled added")
+            }
+        } catch (e: Exception) {
+            // A manifest this code cannot parse is one the server wrote in a
+            // shape it understands; leave it alone rather than risk the user's
+            // installed-extensions list.
+            Logger.e(tag, "Could not reconcile extensions.json", e)
+        }
     }
 
     /**
