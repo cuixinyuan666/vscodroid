@@ -1,0 +1,26 @@
+Keep @github/copilot's sdk/index.js in the built-in copilot extension.
+
+Upstream strips it because desktop VS Code restores platform-specific SDK
+files at packaging time and the file is dead weight in the VSIX they ship.
+This build has no such later stage for the extension host side: the file is
+what the package.json exports map points at ("./sdk" -> "./sdk/index.js",
+written by the extension's postinstall), and it is the version-matched SDK
+entry the extension resolves when no platform package matches at runtime.
+Without it the copilotcli session provider dies with "Cannot find module
+.../@github/copilot/sdk/index.js" on device, three renames away from the
+line removed here.
+
+The SDK entry is plain JavaScript (its native-addon lookups key off
+os.type(), which reports "Linux" on Android, and are lazy per addon), so
+shipping it costs 2.6 MB and unlocks the whole session path.
+
+--- a/build/.moduleignore
++++ b/build/.moduleignore
+@@ -222,7 +222,6 @@
+ @xterm/xterm-addon-*/out-test/**
+
+ # @github/copilot - strip unneeded binaries and files
+-@github/copilot/sdk/index.js
+ @github/copilot/prebuilds/**
+ @github/copilot/clipboard/**
+ @github/copilot/ripgrep/**

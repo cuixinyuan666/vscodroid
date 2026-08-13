@@ -55,11 +55,14 @@ Before you can build the APK, the `android/app/src/main/assets/` and `android/ap
 Run the download scripts in this order:
 
 ```bash
-# 1. Download VS Code Server (vscode-reh + vscode-web) and apply patches
-./scripts/download-vscode-server.sh
+# 1. Fetch the Code - OSS server tree built by the build-vscode-oss workflow
+./scripts/fetch-vscode-oss.sh
 
-# 2. Download Termux tools (bash, git, tmux, make, openssh)
+# 2. Download Termux tools (bash, git, tmux, make, openssh) and Node's libraries
 ./scripts/download-termux-tools.sh
+
+# 2b. The Node runtime. After step 2, which places the libraries it links against
+./scripts/download-node.sh
 
 # 3. Download npm
 ./scripts/download-npm.sh
@@ -70,8 +73,8 @@ Run the download scripts in this order:
 # 5. Download pre-bundled extensions
 ./scripts/download-extensions.sh
 
-# 6. Build node-pty native module (requires NDK)
-./scripts/build-node-pty.sh
+# 6. Build the Bionic native addons (requires NDK)
+./scripts/build-native-addons.sh
 
 # 7. (Optional) Download on-demand toolchains
 ./scripts/download-go.sh
@@ -144,12 +147,14 @@ VSCodroid/
 │   ├── toolchain_java/            # Java on-demand asset pack
 │   └── settings.gradle.kts
 ├── scripts/                       # Download and build scripts
-│   ├── download-vscode-server.sh     # Download + patch VS Code Server
-│   ├── download-termux-tools.sh      # Download bash, git, tmux, make, openssh
+│   ├── fetch-vscode-oss.sh           # Fetch the built Code - OSS server tree
+│   ├── build-vscode-oss.sh           # Build it from source (CI / Docker only)
+│   ├── download-termux-tools.sh      # Download bash, git, tmux, make, openssh + libs
+│   ├── download-node.sh              # Termux nodejs-lts -> libnode.so
 │   ├── download-npm.sh               # Download npm from Node.js tarball
 │   ├── download-python.sh            # Download Python 3 from Termux
 │   ├── download-extensions.sh        # Download pre-bundled extensions
-│   ├── build-node-pty.sh             # Cross-compile node-pty for ARM64
+│   ├── build-native-addons.sh        # Cross-compile node-pty + @parcel/watcher for Bionic
 │   ├── download-go.sh                # Download Go toolchain
 │   ├── download-ruby.sh              # Download Ruby toolchain
 │   ├── download-java.sh              # Download Java (OpenJDK 17) toolchain
@@ -192,19 +197,23 @@ Each script downloads pre-built binaries and places them in the correct location
 
 | Script | What it does | Output location |
 | ------ | ------------ | --------------- |
-| `download-vscode-server.sh` | Downloads VS Code Server (vscode-reh + vscode-web) from Microsoft CDN, applies branding patches, patches workbench.js (vsda bypass, platform fixes, workspace trust, etc.) | `assets/vscode-reh/`, `assets/vscode-web/` |
-| `download-termux-tools.sh` | Downloads bash, git, tmux, make, openssh from Termux APT repo, extracts .deb packages | `jniLibs/arm64-v8a/`, `assets/usr/` |
+| `fetch-vscode-oss.sh` | Downloads the Code - OSS server tree from the `server-<version>` release, verifies it, and installs ripgrep as `libripgrep.so` | `server/vscode-reh/`, `jniLibs/arm64-v8a/libripgrep.so` |
+| `build-vscode-oss.sh` | Builds that tree from the MIT source with `patches/` and `branding/` applied. Run by the build-vscode-oss workflow on an arm64 runner, or locally in Docker; not needed for a normal build | a `.tar.gz` published as a release asset |
+| `verify-server-tree.py` | Checks a server tree: required paths, no vsda, no bundled GNU/Linux node, every native binary aarch64, branding applied. Run by both scripts above | exit status |
+| `download-termux-tools.sh` | Downloads bash, git, tmux, make, openssh and every shared library the bundled binaries link against, including Node's | `jniLibs/arm64-v8a/`, `assets/usr/` |
+| `download-node.sh` | Installs Termux's `nodejs-lts` as `libnode.so`. Run after `download-termux-tools.sh`, which places the libraries it links against | `jniLibs/arm64-v8a/libnode.so` |
+| `verify-android-elf.py` | Checks a binary can load on Android: aarch64, no unbundled dependency, 16 KB-aligned segments. Used by the two scripts above | exit status |
 | `download-npm.sh` | Extracts npm from Node.js linux-arm64 tarball | `assets/usr/lib/node_modules/npm/` |
 | `download-python.sh` | Downloads Python 3.12 + deps from Termux | `jniLibs/arm64-v8a/`, `assets/usr/lib/python3.12/` |
 | `download-extensions.sh` | Downloads marketplace extensions from Open VSX (supports `publisher.name@version` pinning) | `assets/extensions/` |
-| `build-node-pty.sh` | Cross-compiles node-pty v1.1.0-beta22 for ARM64 using NDK (no node-gyp) | `assets/vscode-reh/node_modules/node-pty/build/Release/pty.node` |
+| `build-native-addons.sh` | Cross-compiles node-pty and `@parcel/watcher` for Bionic using the NDK, with 16 KB page alignment | `assets/vscode-reh/node_modules/{node-pty,@parcel/watcher}/build/Release/*.node` |
 | `download-go.sh` | Downloads Go toolchain from Termux | `toolchain_go/src/main/assets/` |
 | `download-ruby.sh` | Downloads Ruby + deps from Termux | `toolchain_ruby/src/main/assets/` |
 | `download-java.sh` | Downloads OpenJDK 17 + deps from Termux | `toolchain_java/src/main/assets/` |
 
 **Important notes:**
 - Scripts are designed for macOS and Linux (macOS uses `bsdtar` for `.deb` extraction).
-- `download-vscode-server.sh` uses `python3` for in-place regex edits (`sed -i` is not cross-platform).
+- `fetch-vscode-oss.sh` needs the `gh` CLI authenticated, or `VSCODE_OSS_URL` pointing at a tarball.
 - The Node.js binary (`libnode.so`) is cross-compiled separately and checked in or provided as a release artifact. See CLAUDE.md for cross-compilation details.
 
 ## Building
@@ -335,44 +344,39 @@ If you add new standalone files to `assets/` (not inside existing extracted dire
 
 ## How to Add a New Patch
 
-VS Code Server's JavaScript is minified. Patches are applied by `scripts/download-vscode-server.sh` using Python regex replacements.
+Patches are unified diffs in `patches/`, applied to the VS Code source with `git apply` before gulp
+builds it. They used to be Python regex replacements against minified JS; that method matched on
+generated identifiers, broke on every version bump, and printed `SKIP` on a miss while still exiting
+0, so a patch could stop applying without failing anything.
 
-### Understanding the Patch System
+### Steps
 
-The download script modifies three key files:
-- `workbench.js` -- the VS Code Web Client (UI)
-- `server-main.js` (or the server entry point) -- the VS Code Server
-- `extensionHostProcess.js` -- the Extension Host
+1. **Get a source tree.** `scripts/build-vscode-oss.sh` clones one into its work volume; the same
+   clone is what you edit against.
 
-Patches are applied as Python one-liners or inline scripts. Example from the download script:
-
-```python
-python3 -c "
-import re, sys
-with open('path/to/workbench.js', 'r') as f:
-    content = f.read()
-content = re.sub(r'pattern_to_find', 'replacement', content)
-with open('path/to/workbench.js', 'w') as f:
-    f.write(content)
-"
-```
-
-### Steps to Add a New Patch
-
-1. **Identify the code to patch.** Use Chrome DevTools to inspect the minified source and find the pattern. Connect DevTools via `adb forward` (see Testing section above).
-
-2. **Write a regex pattern** that matches the minified code. Minified variable names change between VS Code versions, so use `\w+` for variable names and match on structural patterns.
-
-3. **Add the patch to `scripts/download-vscode-server.sh`** in the appropriate section (workbench patches, server patches, or extension host patches).
-
-4. **Test the patch** by running the download script and deploying to device:
+2. **Make the change in readable source** and produce the diff:
    ```bash
-   ./scripts/download-vscode-server.sh
+   git -C /path/to/vscode diff > patches/0009-short-description.patch
+   ```
+   Number it after the last existing patch. Order matters — they are applied in filename order.
+
+3. **Leave a fingerprint if you can.** The build's Verify stage greps the packaged bundles for a
+   string from each patch, because a patch applying cleanly proves nothing about whether the file was
+   in this target's graph. Add a row to the `FINGERPRINTS` block in `build-vscode-oss.sh` naming the
+   bundle it must reach and a string that survives minification — an identifier or a literal, never a
+   comment.
+
+4. **Build and test:**
+   ```bash
+   # in CI: run the "Build Code - OSS server" workflow
+   # locally: see the header of scripts/build-vscode-oss.sh for the docker invocation
+   ./scripts/fetch-vscode-oss.sh
    cd android && ./gradlew assembleDebug
-   # Install and test
    ```
 
-5. **Document the patch** in the script with a comment explaining what it fixes and why.
+5. **Explain why in the patch's own commit message.** A diff shows what changed; the reason it is
+   needed on Android is what the next person will not be able to reconstruct.
+
 
 ### Tips for Patching Minified Code
 

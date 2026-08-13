@@ -1,0 +1,66 @@
+Treat Android as Linux in platform detection.
+
+Node on Android reports process.platform === 'android'. VS Code only ever
+compares against 'linux', so on device isLinux, isWindows and isMacintosh are all
+false at once and every Linux-shaped decision falls through to an untested
+default. Nothing errors; the behaviour is just quietly wrong.
+
+The one that is easiest to observe: terminal profiles are stored under
+`terminal.integrated.profiles.linux`, and the workbench picks that suffix from
+the platform the remote reports. With none matching, the whole profile block is
+skipped and terminals fall back to $SHELL with no arguments -- measured on an API
+36 emulator, where an explicit --init-file placed in the profile args never
+reached the spawned shell.
+
+isAndroidPlatform is exported alongside it because collapsing the two is wrong in
+exactly one place: which target platform the extension marketplace is asked for.
+Patch 0009 uses it there; everything else wants isLinux. It is deliberately not
+called isAndroid -- that name is already taken further down the same file by a
+user-agent test asking whether the browser showing the workbench is Android,
+which on a phone is also true and is a different question.
+
+This is the first of the Android adaptations to move from a regex against
+minified output to a real source patch. `git apply` fails loudly when the context
+shifts, which is the point: the regexes it replaces print SKIP and exit 0.
+
+diff --git a/src/vs/base/common/platform.ts b/src/vs/base/common/platform.ts
+index d2072de..c211d65 100644
+--- a/src/vs/base/common/platform.ts
++++ b/src/vs/base/common/platform.ts
+@@ -11,6 +11,7 @@ let _isWindows = false;
+ let _isMacintosh = false;
+ let _isLinux = false;
+ let _isLinuxSnap = false;
++let _isAndroidPlatform = false;
+ let _isNative = false;
+ let _isWeb = false;
+ let _isElectron = false;
+@@ -74,7 +75,15 @@ declare const navigator: INavigator;
+ if (typeof nodeProcess === 'object') {
+ 	_isWindows = (nodeProcess.platform === 'win32');
+ 	_isMacintosh = (nodeProcess.platform === 'darwin');
+-	_isLinux = (nodeProcess.platform === 'linux');
++	// Android reports its platform as 'android', not 'linux'. This single line
++	// decides isLinux, Platform, OS and getTargetPlatform for the whole product,
++	// and everything downstream that asks "is this a Linux-shaped system" -- path
++	// separators, shell selection, the platform-suffixed settings keys -- is
++	// answered from here. Bionic is close enough to Linux for all of them.
++	_isLinux = (nodeProcess.platform === 'linux' || nodeProcess.platform === 'android');
++	// Kept apart from isLinux because one decision does have to tell the two
++	// apart: which target platform the extension marketplace is asked for.
++	_isAndroidPlatform = (nodeProcess.platform === 'android');
+ 	_isLinuxSnap = _isLinux && !!nodeProcess.env['SNAP'] && !!nodeProcess.env['SNAP_REVISION'];
+ 	_isElectron = isElectronProcess;
+ 	_isCI = !!nodeProcess.env['CI'] || !!nodeProcess.env['BUILD_ARTIFACTSTAGINGDIRECTORY'] || !!nodeProcess.env['GITHUB_WORKSPACE'];
+@@ -143,6 +152,11 @@ export const isWindows = _isWindows;
+ export const isMacintosh = _isMacintosh;
+ export const isLinux = _isLinux;
+ export const isLinuxSnap = _isLinuxSnap;
++// The OS this process runs on. Not to be merged with the isAndroid further
++// down, which asks whether the *browser* showing the workbench is Android --
++// on a phone both are true, but they answer different questions and only
++// this one may decide anything about the server.
++export const isAndroidPlatform = _isAndroidPlatform;
+ export const isNative = _isNative;
+ export const isElectron = _isElectron;
+ export const isWeb = _isWeb;

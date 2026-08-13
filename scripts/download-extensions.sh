@@ -15,14 +15,30 @@ ASSETS_DIR="$ROOT_DIR/android/app/src/main/assets/extensions"
 WORK_DIR="$ROOT_DIR/toolchains/extensions"
 
 # Extensions to bundle: publisher.name or publisher.name@version
-# Pin versions to ensure compatibility with VS Code 1.96.4
+#
+# Every one is pinned to the newest STABLE version whose engines.vscode is
+# satisfied by the VSCODE_VERSION file. Stable matters as much as compatible:
+# GitLens publishes pre-release builds far more often than releases, so "newest
+# compatible" lands on one — and its pre-releases carry an expiry date. Picking
+# one ships an extension that works in testing and then puts an "this
+# pre-release has expired" error in front of every user some weeks later. Leaving one unpinned would resolve to
+# whatever is newest on the day of the build, and an extension needing a newer VS
+# Code than the server does not error — it simply never activates, so the feature
+# is missing with nothing in the log to explain it. The check after extraction
+# below turns that into a failed build instead.
+#
+# Re-derive the pins after bumping VSCODE_VERSION; the comments say what is
+# holding one back.
+#
+# GitLens is deliberately absent. VS Code's own SCM view, inline blame and diff
+# editor cover what this app needs, and GitLens is 22 MB plus a walkthrough and
+# a welcome view on first run. Anyone who wants it can install it from Open VSX.
 EXTENSIONS=(
-    "PKief.material-icon-theme@5.31.0"
-    "esbenp.prettier-vscode@11.0.3"
-    "ms-python.python@2024.22.1"
-    "dbaeumer.vscode-eslint@3.0.20"
-    "bradlc.vscode-tailwindcss@0.14.28"
-    "eamodio.gitlens@2026.2.1114"
+    "PKief.material-icon-theme@5.37.0"
+    "esbenp.prettier-vscode@12.4.0"
+    "ms-python.python@2026.4.0"
+    "dbaeumer.vscode-eslint@3.0.34"
+    "bradlc.vscode-tailwindcss@0.16.0"
 )
 
 OPENVSX_API="https://open-vsx.org/api"
@@ -63,6 +79,17 @@ for EXT_SPEC in "${EXTENSIONS[@]}"; do
             "$API_URL"
     fi
 
+    # A pre-release build stops working on a date rather than on a version, so
+    # it passes every check here and every test on device, then expires weeks
+    # later in front of the user. Open VSX records which kind this is; the pin is
+    # required to name a release.
+    IS_PRERELEASE=$(python3 -c "import json; print(json.load(open('$METADATA_FILE')).get('preRelease'))")
+    if [ "$IS_PRERELEASE" = "True" ]; then
+        echo "  FAIL   $EXT_ID $PINNED_VERSION is a pre-release; pin a release instead." >&2
+        echo "         Pre-releases expire on a date and take the feature with them." >&2
+        exit 1
+    fi
+
     # Extract version and download URL
     VERSION=$(python3 -c "import json; print(json.load(open('$METADATA_FILE'))['version'])")
     DOWNLOAD_URL=$(python3 -c "import json; d=json.load(open('$METADATA_FILE')); print(d['files']['download'])")
@@ -86,6 +113,27 @@ for EXT_SPEC in "${EXTENSIONS[@]}"; do
         curl -sL --fail --show-error -o "$VSIX_FILE" "$DOWNLOAD_URL"
         echo "  Downloaded: $(du -sh "$VSIX_FILE" | cut -f1)"
     fi
+
+    # files.sha256 sits right next to files.download in the same metadata this
+    # loop already parses. These are executable payloads bundled into the APK,
+    # so they get the same bar as every other download script: fail closed,
+    # cached files included. (An earlier revision claimed Open VSX publishes no
+    # digests; review disproved that with a live fetch.)
+    SHA256_URL=$(python3 -c "import json; print(json.load(open('$METADATA_FILE'))['files'].get('sha256', ''))")
+    if [ -z "$SHA256_URL" ]; then
+        echo "  FAIL   $EXT_ID: metadata carries no files.sha256" >&2
+        exit 1
+    fi
+    EXPECTED=$(curl -sL --fail --show-error "$SHA256_URL" | awk '{print $1}')
+    ACTUAL=$( (sha256sum "$VSIX_FILE" 2>/dev/null || shasum -a 256 "$VSIX_FILE") | cut -d' ' -f1)
+    if [ -z "$EXPECTED" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
+        echo "  FAIL   $EXT_ID: VSIX does not match files.sha256" >&2
+        echo "         published : ${EXPECTED:-(empty)}" >&2
+        echo "         file      : $ACTUAL" >&2
+        rm -f "$VSIX_FILE"
+        exit 1
+    fi
+    echo "  sha256: verified"
 
     # Extract extension/ contents from VSIX (it's a ZIP)
     echo "  Extracting..."
@@ -123,6 +171,10 @@ for EXT_SPEC in "${EXTENSIONS[@]}"; do
     if [ "$DOTFILES_FOUND" -eq 0 ]; then
         echo "  No dotfiles found (OK)"
     fi
+
+    # An extension whose engines.vscode is newer than the server fails silently:
+    # it is registered, never activates, and nothing is logged.
+    python3 "$SCRIPT_DIR/check-extension.py" "$DEST_DIR" "$ROOT_DIR/VSCODE_VERSION"
 
     echo "  Extracted: $(du -sh "$DEST_DIR" | cut -f1) -> $DIR_NAME"
 done

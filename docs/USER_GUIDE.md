@@ -505,7 +505,13 @@ VSCodroid typically uses 400-700 MB of RAM. On devices with 4 GB or less, you ma
 
 ### @parcel/watcher Error
 
-You may see a warning about `@parcel/watcher` not having a native build for Android. This is harmless. VS Code falls back to a JavaScript-based file watcher automatically.
+You may see a warning about `@parcel/watcher` not having a native build for Android.
+
+The shipped `@parcel/watcher/build/Release/watcher.node` is a glibc ARM64 binary, which Android's Bionic loader cannot load, and `watcherMain.js` imports the module with a static ESM import. Treat automatic recursive file watching as **not working**, rather than degraded: an extension that expects to be told when a file changes somewhere below the workspace root may simply never hear about it.
+
+Saving and editing in the editor is unaffected. If something looks stale, reload the window.
+
+This is on the list to fix by cross-compiling the addon for Bionic. The exact runtime behaviour after the load fails has not been confirmed on a device — this note describes what the binary and the import site show, not an observed failure mode.
 
 ### Microsoft-only Extensions
 

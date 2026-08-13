@@ -14,9 +14,19 @@ object Environment {
         val cacheDir = context.cacheDir.absolutePath
         val homeDir = "$filesDir/home"
 
-        // Use bundled bash if available, otherwise fall back to system shell
+        // Use bundled bash if available, otherwise fall back to system shell.
+        //
+        // SHELL names the usr/bin/bash symlink rather than the .so it points at,
+        // and that indirection is what makes shell integration possible at all.
+        // VS Code never reads our terminal profile: profile settings are keyed
+        // `…profiles.linux`, and the remote reports its platform as "android", so
+        // the whole block is skipped and the terminal falls back to $SHELL with no
+        // arguments. It then decides whether to inject its bash integration by
+        // switching on the *basename* of whatever it launched — `libbash.so`
+        // matches nothing, `bash` matches. Verified on device: with the .so named
+        // here, no terminal ever received --init-file.
         val shell = if (File("$nativeLibDir/libbash.so").exists())
-            "$nativeLibDir/libbash.so"
+            getTerminalShellPath(context)
         else
             "/system/bin/sh"
 
@@ -42,9 +52,15 @@ object Environment {
         val platformFixPath = "$filesDir/server/platform-fix.js"
         val nodeOptions = "--require=$platformFixPath"
 
+        // The Termux tmux searches "$TMUX_TMPDIR:/data/data/com.termux/files/usr/var/run"
+        // for its socket. That second path belongs to Termux's sandbox, not ours, so
+        // without the variable every session dies with "no suitable socket path".
+        val tmpDir = "$cacheDir/tmp"
+
         val base = mapOf(
             "HOME" to homeDir,
-            "TMPDIR" to "$cacheDir/tmp",
+            "TMPDIR" to tmpDir,
+            "TMUX_TMPDIR" to tmpDir,
             "PATH" to path,
             "LD_LIBRARY_PATH" to "$nativeLibDir:$filesDir/usr/lib",
             "NODE_PATH" to "$filesDir/server/vscode-reh/node_modules",
@@ -64,6 +80,13 @@ object Environment {
             "NPM_CONFIG_PREFIX" to "$filesDir/usr",
             "NPM_CONFIG_CACHE" to "$cacheDir/npm-cache",
             "PROJECTS_DIR" to getProjectsDir(context),
+            // The Claude Code CLI otherwise looks for a ripgrep under its own
+            // vendor/<arch>-<platform>/ — a directory that cannot exist here,
+            // since process.platform reports "android" and the builds shipped
+            // are for glibc and musl. Unset, it finds nothing and searching
+            // fails with no explanation. Falsy sends it to `rg` on PATH, which
+            // is the Bionic build already bundled as libripgrep.so.
+            "USE_BUILTIN_RIPGREP" to "0",
             "VSCODROID_PORT" to port.toString(),
             "VSCODROID_VERSION" to getVersionName(context),
         )
@@ -104,6 +127,30 @@ object Environment {
     fun getUserDataDir(context: Context): String =
         "${context.filesDir}/home/.vscodroid"
 
+    /**
+     * The settings file the workbench actually reads from this side.
+     *
+     * Not `<user-data-dir>/User/settings.json`, which is what this app wrote for
+     * its first year and which nothing has ever read. The path is derived in three
+     * steps, none of them where you would look first:
+     * `server.main.ts:39-40` sets `USER_DATA_PATH = <server-data-dir>/data`,
+     * ignoring `--user-data-dir` entirely; `environmentService.ts:86` puts machine
+     * settings at `<USER_DATA_PATH>/Machine/settings.json`; and
+     * `remoteAgentEnvironmentImpl.ts:112` hands exactly that to the client as the
+     * remote `settingsPath`.
+     *
+     * Only REMOTE_MACHINE_SCOPES are taken from it — MACHINE, WINDOW, RESOURCE,
+     * LANGUAGE_OVERRIDABLE, MACHINE_OVERRIDABLE (`configuration.ts:387`). An
+     * APPLICATION-scoped setting is still ignored here no matter how correct the
+     * path is, which is why Workspace Trust needs the server's CLI flag.
+     *
+     * Settings the user edits in the workbench go to IndexedDB in the WebView
+     * instead, and take precedence over this file. That is the right order: these
+     * are defaults, not overrides.
+     */
+    fun getMachineSettingsPath(context: Context): String =
+        "${getUserDataDir(context)}/data/Machine/settings.json"
+
     fun getExtensionsDir(context: Context): String =
         "${context.filesDir}/home/.vscodroid/extensions"
 
@@ -116,8 +163,55 @@ object Environment {
     fun getBashPath(context: Context): String =
         "${context.applicationInfo.nativeLibraryDir}/libbash.so"
 
+    /**
+     * The shell to name in the terminal profile — the maintained symlink, never
+     * the `nativeLibraryDir` binary it points at.
+     *
+     * VS Code decides whether it can inject shell integration by switching on the
+     * *basename* of the profile's executable. `libbash.so` matches no case and the
+     * injection is skipped in silence; `bash` matches. The indirection pays twice,
+     * because `setupToolSymlinks()` re-points this link on every launch, so the
+     * profile no longer goes stale when a reinstall moves `nativeLibraryDir`.
+     */
+    fun getTerminalShellPath(context: Context): String =
+        "${context.filesDir}/usr/bin/bash"
+
+    /**
+     * The node the Claude Code extension launches its CLI with.
+     *
+     * Names the symlink rather than nativeLibraryDir/libnode.so, and the
+     * difference matters twice. Android hands out a new nativeLibraryDir on every
+     * reinstall, so a path recorded in settings.json goes stale — the symlink
+     * lives under filesDir, which does not move, and setupToolSymlinks() re-points
+     * it at every launch. And SELinux denies execve on app_data_file, so the
+     * script could not be made executable itself; execve resolves the symlink and
+     * checks the target, which is in nativeLibraryDir and allowed.
+     */
+    fun getNodeSymlinkPath(context: Context): String =
+        "${context.filesDir}/usr/bin/node"
+
     fun getGitPath(context: Context): String =
         "${context.applicationInfo.nativeLibraryDir}/libgit.so"
+
+    /**
+     * musl's loader, and the only way the Claude Code CLI starts here.
+     *
+     * The CLI is a musl binary the user's extension brings with it, sitting under
+     * filesDir where SELinux refuses execve() for targetSdk >= 29. It does allow
+     * map and execute, which is all a loader needs, so the loader is execve'd
+     * from nativeLibraryDir -- the one directory an app may execute from -- and
+     * mmaps the CLI out of filesDir itself.
+     *
+     * It is named as claudeCode.claudeProcessWrapper directly rather than through
+     * a shim, because resolveClaudeBinary() passes the resolved binary path as the
+     * wrapper's first argument, which is already how a loader expects to be
+     * called. The glibc build the marketplace would otherwise serve cannot be
+     * loaded at all: its startup calls set_robust_list and rseq, and Android's
+     * app seccomp filter kills the process for either. Patch 0009 is what makes
+     * the marketplace hand over the musl build instead.
+     */
+    fun getMuslLoaderPath(context: Context): String =
+        "${context.applicationInfo.nativeLibraryDir}/libldmusl.so"
 
     private fun getSystemCaCertsPath(): String =
         // Android 14+ (APEX module), fallback to legacy path

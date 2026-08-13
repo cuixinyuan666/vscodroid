@@ -33,7 +33,7 @@ class ServerHealthTest {
         // The server can't start without server-main.js.
         val serverMainJs = File(context.filesDir, "server/vscode-reh/out/server-main.js")
         assumeTrue(
-            "Skipping: vscode-reh assets not bundled (run download-vscode-server.sh)",
+            "Skipping: vscode-reh assets not bundled (run fetch-vscode-oss.sh)",
             serverMainJs.exists()
         )
     }

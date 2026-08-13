@@ -52,11 +52,18 @@ jobs:
             toolchains/termux-packages/Packages
             toolchains/build/npm/
             toolchains/extensions/
-          key: downloads-${{ hashFiles('scripts/download-vscode-server.sh', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh') }}
+            toolchains/musl/
+          key: downloads-${{ hashFiles('VSCODE_VERSION', 'patches/**', 'branding/**', 'scripts/build-vscode-oss.sh', '.github/workflows/build-vscode-oss.yml', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-musl-loader.sh') }}
           restore-keys: |
             downloads-
 
-      # Cache the generated assets directory (extracted, patched VS Code server + tools)
+      # Cache the generated assets directory (extracted, patched VS Code server + tools).
+      # patches/, branding/ and build-vscode-oss.sh are in the key even though no
+      # step here reads them: they shape the server tarball, which is republished
+      # under the same server-<version> name when they change. On an assets cache
+      # hit the fetch step - and its digest check against the release - never
+      # runs, so this key is the only thing standing between a republished server
+      # and a stale cached tree going into the APK.
       - name: Cache generated assets
         id: cache-assets
         uses: actions/cache@v4
@@ -67,7 +74,7 @@ jobs:
             android/app/src/main/assets/extensions/
             android/app/src/main/jniLibs/arm64-v8a/
             server/vscode-reh/
-          key: assets-${{ hashFiles('scripts/download-vscode-server.sh', 'scripts/download-termux-tools.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/build-node-pty.sh') }}
+          key: assets-${{ hashFiles('VSCODE_VERSION', 'patches/**', 'branding/**', 'scripts/build-vscode-oss.sh', '.github/workflows/build-vscode-oss.yml', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-musl-loader.sh', 'scripts/build-native-addons.sh', 'scripts/build-glibc-shim.sh', 'scripts/glibc-shim.c', 'scripts/gen-glibc-forwarders.py') }}
           restore-keys: |
             assets-
 
@@ -81,11 +88,18 @@ jobs:
           sudo apt-get install -y --no-install-recommends libarchive-tools
 
       # Download and prepare all assets (only if not cached)
-      - name: Download VS Code Server
+      # Built from the MIT source by build-vscode-oss.yml and published as a
+      # server-<version> release; this only downloads and checks it. Before the
+      # pivot the tree came pre-built from Microsoft's update CDN, which is
+      # covered by the Microsoft pre-release licence rather than MIT and so could
+      # not be modified and redistributed inside an APK.
+      - name: Fetch Code - OSS server
         if: steps.cache-assets.outputs.cache-hit != 'true'
-        run: bash scripts/download-vscode-server.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/fetch-vscode-oss.sh
 
-      - name: Copy VS Code Server to assets
+      - name: Copy the server into assets
         if: steps.cache-assets.outputs.cache-hit != 'true'
         run: |
           mkdir -p android/app/src/main/assets/
@@ -108,37 +122,45 @@ jobs:
         if: steps.cache-assets.outputs.cache-hit != 'true'
         run: bash scripts/download-extensions.sh
 
-      - name: Build node-pty
+      # Claude Code is no longer bundled: the user installs the extension from
+      # the marketplace and the CLI comes inside it, so nothing of Anthropic's is
+      # redistributed here and the version is theirs to update. What this ships
+      # is musl's loader, which is the only way that CLI starts on Android.
+      - name: Download musl loader
         if: steps.cache-assets.outputs.cache-hit != 'true'
-        run: bash scripts/build-node-pty.sh
+        run: bash scripts/download-musl-loader.sh
 
-      # libnode.so: Download pre-built binary from latest GitHub release.
-      # If no release exists yet, create a stub so Gradle can produce an APK
-      # (it will crash at runtime without a real binary).
-      - name: Fetch libnode.so
+      # Before the native addons on purpose: build-native-addons.sh pairs its
+      # headers against the runtime this step installs, and fails closed when
+      # nothing is there to pair against. Review found the old order (addons
+      # first) meant that gate could never fire in CI.
+      - name: Fetch Node runtime
+        if: steps.cache-assets.outputs.cache-hit != 'true'
+        run: bash scripts/download-node.sh
+      - name: Build native addons
+        if: steps.cache-assets.outputs.cache-hit != 'true'
+        run: bash scripts/build-native-addons.sh
+
+      # libnode.so is Termux's nodejs-lts, not a hand-cross-compiled binary kept
+      # as a release asset. The old one ran but segfaulted inside the Claude Code
+      # CLI's subcommands, and there was no way to debug a build we could not
+      # reproduce. Its version also decides which VS Code releases are reachable.
+      # After the server tree is in place and after download-termux-tools.sh,
+      # which wipes assets/usr/lib before repopulating it -- the stubs live there
+      # and would not survive being built first.
+      #
+      # Scans for addons that were built against glibc and generates stub
+      # libraries so Bionic's loader will accept them. Objects needing libstdc++
+      # are reported and skipped: Android ships libc++, and the two are not two
+      # spellings of the same library.
+      - name: Build the glibc compatibility shim
         if: steps.cache-assets.outputs.cache-hit != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
         run: |
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          LIBNODE="android/app/src/main/jniLibs/arm64-v8a/libnode.so"
-          if [ -f "$LIBNODE" ] && [ "$(wc -c < "$LIBNODE")" -gt 1000 ]; then
-            echo "libnode.so already exists ($(du -sh "$LIBNODE" | cut -f1))"
-            exit 0
-          fi
-          echo "Attempting to download libnode.so from latest GitHub release..."
-          if gh release download --repo "$REPO" \
-               --pattern "libnode.so" \
-               --dir android/app/src/main/jniLibs/arm64-v8a/ 2>/dev/null; then
-            echo "Downloaded libnode.so ($(du -sh "$LIBNODE" | cut -f1))"
-          else
-            echo "WARNING: libnode.so not found in releases. Creating stub."
-            echo "Build will succeed but APK will not run without a real libnode.so."
-            printf '\x7fELF' > "$LIBNODE"
-            dd if=/dev/zero bs=1 count=60 >> "$LIBNODE" 2>/dev/null
-          fi
-
+          bash scripts/build-glibc-shim.sh \
+            --scan android/app/src/main/assets/vscode-reh \
+            --scan android/app/src/main/assets/extensions
       - name: Verify assets
         run: |
           echo "=== Assets ==="

@@ -1,0 +1,246 @@
+Run the Pty Host as a worker_thread instead of a forked process.
+
+Android 12+ kills background child processes past a system-wide limit of 32, and
+every fork this product makes spends one for the lifetime of the window. Threads
+are not processes. Hosting the Pty Host as a worker_threads Worker takes it off
+that budget without rewriting it: bootstrap-fork installs process.send over
+parentPort on the child side, so the module inside still sees the IPC channel it
+was written against.
+
+Three parts.
+
+bootstrap-fork gains the bridge, before anything that gates on process.send. In a
+real fork isMainThread is true and none of it runs, so the same file serves both.
+The parent cannot close a Worker's channel the way it closes a fork's, so
+shutdown is asked for in-band with __vsc_disconnect and the module runs its
+normal teardown.
+
+workerAsChildProcess.ts is a new adaptor presenting the small part of the
+ChildProcess surface the IPC actually touches — send, connected, kill, pid, the
+message/error/exit events, and stdout/stderr for the Extension Host that follows.
+Nothing else is faked, so a new dependency on ChildProcess fails here rather than
+behaving oddly on a device. Two details are load-bearing: a Worker rejects
+--max-old-space-size in execArgv and wants it as resourceLimits instead, which
+otherwise throws ERR_WORKER_INVALID_EXEC_ARGV before the module loads; and an
+intentional kill is reported as (0, 'SIGTERM') because callers read a non-zero
+code without SIGTERM as a crash.
+
+ipc.cp.ts picks between them on serverName. Only the Pty Host moves in this
+change; the file watcher keeps forking, and the Extension Host is a separate step
+because it also has to stop passing sockets over its channel.
+
+  ipc.cp.ts: situs fork dikondisikan
+diff --git a/src/bootstrap-fork.ts b/src/bootstrap-fork.ts
+index a92290a..282873b 100644
+--- a/src/bootstrap-fork.ts
++++ b/src/bootstrap-fork.ts
+@@ -6,6 +6,36 @@
+ import * as performance from './vs/base/common/performance.js';
+ import { removeGlobalNodeJsModuleLookupPaths, devInjectNodeModuleLookupPath } from './bootstrap-node.js';
+ import { bootstrapESM } from './bootstrap-esm.js';
++import { isMainThread, parentPort } from 'worker_threads';
++
++// Running as a worker_threads Worker instead of a child_process fork, this
++// module still has to look like a forked child to everything below: the code
++// here gates on process.send, and the entry point it loads speaks the same IPC.
++// Installing the channel before any of that runs is what lets the Pty Host and
++// the Extension Host move off Android's 32-process budget unchanged.
++//
++// In a real fork isMainThread is true and none of this happens.
++if (!isMainThread && parentPort) {
++	const port = parentPort;
++	const proc = process as unknown as {
++		send?: (message: unknown) => boolean;
++		connected?: boolean;
++		disconnect?: () => void;
++	};
++	proc.send = (message: unknown) => { port.postMessage(message); return true; };
++	proc.connected = true;
++	proc.disconnect = () => { process.emit('disconnect' as never); };
++	port.on('message', (message: unknown) => {
++		// The parent cannot close a Worker's channel the way it closes a fork's, so
++		// it asks for shutdown in-band and the module runs its normal teardown.
++		if (message && typeof message === 'object' && '__vsc_disconnect' in message) {
++			proc.connected = false;
++			process.emit('disconnect' as never);
++			return;
++		}
++		process.emit('message' as never, message as never);
++	});
++}
+ 
+ performance.mark('code/fork/start');
+ 
+diff --git a/src/vs/base/node/workerAsChildProcess.ts b/src/vs/base/node/workerAsChildProcess.ts
+new file mode 100644
+index 0000000..5ffcd93
+--- /dev/null
++++ b/src/vs/base/node/workerAsChildProcess.ts
+@@ -0,0 +1,140 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { ChildProcess, ForkOptions } from 'child_process';
++import { EventEmitter } from 'events';
++import { Worker } from 'worker_threads';
++
++/**
++ * Runs a module that expects to be a `child_process.fork` child inside a
++ * `worker_threads` Worker, presenting the caller with the small part of the
++ * `ChildProcess` surface that VS Code's IPC actually touches.
++ *
++ * Android 12+ kills background child processes past a system-wide limit of 32,
++ * counting every fork this product makes. Threads are not processes, so hosting
++ * the Pty Host and the Extension Host as Workers keeps them off that budget
++ * without changing how they are written: `bootstrap-fork` installs `process.send`
++ * over `parentPort` on the child side, so the module inside sees the IPC channel
++ * it expects.
++ *
++ * Only what the callers use is implemented -- `send`, `connected`, `kill`, `pid`
++ * and the `message`/`error`/`exit` events, plus `stdout`/`stderr` for the
++ * Extension Host. Anything else is deliberately absent rather than faked, so a
++ * new dependency on `ChildProcess` fails loudly here instead of behaving oddly on
++ * a device.
++ */
++export class WorkerAsChildProcess extends EventEmitter {
++
++	private readonly _worker: Worker;
++	private _connected = true;
++
++	constructor(modulePath: string, args: string[], options: ForkOptions) {
++		super();
++
++		// A Worker rejects --max-old-space-size in execArgv and takes it as a
++		// resource limit instead. Passing the parent's execArgv through unfiltered
++		// throws ERR_WORKER_INVALID_EXEC_ARGV before the module ever loads.
++		const execArgv: string[] = [];
++		let maxOldGenerationSizeMb: number | undefined;
++		for (const arg of options.execArgv ?? []) {
++			const match = /^--max-old-space-size=(\d+)$/.exec(arg);
++			if (match) {
++				maxOldGenerationSizeMb = parseInt(match[1], 10);
++			} else {
++				execArgv.push(arg);
++			}
++		}
++
++		this._worker = new Worker(modulePath, {
++			argv: args,
++			env: options.env as NodeJS.ProcessEnv,
++			execArgv,
++			resourceLimits: maxOldGenerationSizeMb ? { maxOldGenerationSizeMb } : undefined,
++			stdout: true,
++			stderr: true
++		});
++
++		this._worker.on('message', (message: unknown) => this.emit('message', message));
++
++		this._worker.on('error', (err: Error) => {
++			this._connected = false;
++			this.emit('error', err);
++		});
++
++		this._worker.on('exit', (code: number) => {
++			this._connected = false;
++			// A fork reports (code, signal); a Worker only has a code, and reports 1
++			// for a terminate() we asked for. Callers treat a non-zero code without
++			// SIGTERM as a crash and log it, so an intentional shutdown is reported
++			// the way those callers already understand.
++			this.emit('exit', this._killed ? 0 : code, this._killed ? 'SIGTERM' : null);
++		});
++	}
++
++	private _killed = false;
++
++	get pid(): number {
++		return this._worker.threadId;
++	}
++
++	get connected(): boolean {
++		return this._connected;
++	}
++
++	get stdout(): NodeJS.ReadableStream {
++		return this._worker.stdout;
++	}
++
++	get stderr(): NodeJS.ReadableStream {
++		return this._worker.stderr;
++	}
++
++	send(message: unknown): boolean {
++		if (!this._connected) {
++			return false;
++		}
++		try {
++			this._worker.postMessage(message);
++			return true;
++		} catch (err) {
++			// postMessage throws on a structured-clone failure, where a fork would
++			// have serialised to JSON and succeeded. Reporting it as an error event
++			// keeps the caller on the path it already has for a broken channel.
++			this.emit('error', err);
++			return false;
++		}
++	}
++
++	kill(): void {
++		if (this._killed) {
++			return;
++		}
++		this._killed = true;
++		this._connected = false;
++
++		// Give the module the disconnect it would get from a closing IPC channel,
++		// so its own shutdown runs, then stop the thread. terminate() alone would
++		// drop pending work -- for the Pty Host that means orphaned shells.
++		try {
++			this._worker.postMessage({ __vsc_disconnect: true });
++		} catch {
++			// The thread may already be gone; terminate below covers it.
++		}
++		setTimeout(() => { this._worker.terminate(); }, 200);
++	}
++}
++
++/**
++ * Forks `modulePath`, or runs it as a Worker when `useWorker` is set.
++ *
++ * The cast is the point of the adaptor: callers keep their `ChildProcess` types
++ * and their existing code, and only the spawn site knows which it got.
++ */
++export function forkOrWorker(useWorker: boolean, fork: typeof import('child_process').fork, modulePath: string, args: string[], options: ForkOptions): ChildProcess {
++	if (useWorker) {
++		return new WorkerAsChildProcess(modulePath, args, options) as unknown as ChildProcess;
++	}
++	return fork(modulePath, args, options);
++}
+diff --git a/src/vs/base/parts/ipc/node/ipc.cp.ts b/src/vs/base/parts/ipc/node/ipc.cp.ts
+index 2c5ef50..1ec1754 100644
+--- a/src/vs/base/parts/ipc/node/ipc.cp.ts
++++ b/src/vs/base/parts/ipc/node/ipc.cp.ts
+@@ -4,6 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { ChildProcess, fork, ForkOptions } from 'child_process';
++import { forkOrWorker } from '../../../node/workerAsChildProcess.js';
+ import { createCancelablePromise, Delayer } from '../../../common/async.js';
+ import { VSBuffer } from '../../../common/buffer.js';
+ import { CancellationToken } from '../../../common/cancellation.js';
+@@ -203,7 +204,13 @@ export class Client implements IChannelClient, IDisposable {
+ 
+ 			removeDangerousEnvVariables(forkOpts.env);
+ 
+-			this.child = fork(this.modulePath, args, forkOpts);
++			// The Pty Host runs as a thread rather than a process. Android 12+ kills
++			// background child processes past a system-wide limit of 32, and a fork
++			// here spends one of them for the lifetime of the window; a Worker spends
++			// none. bootstrap-fork gives the module the same IPC either way, so
++			// nothing below this line has to know which it got.
++			const asWorker = this.options.serverName === 'Pty Host';
++			this.child = forkOrWorker(asWorker, fork, this.modulePath, args, forkOpts);
+ 
+ 			const onMessageEmitter = new Emitter<VSBuffer>();
+ 			const onRawMessage = Event.fromNodeEventEmitter(this.child, 'message', msg => msg);

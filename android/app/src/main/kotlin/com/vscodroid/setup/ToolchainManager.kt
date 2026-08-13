@@ -689,13 +689,14 @@ class ToolchainManager(private val context: Context) {
             sb.appendLine()
 
             // Script wrappers — bash functions for scripts that can't execute directly
-            // on Android (noexec /data). Invokes scripts via their interpreter instead.
+            // on Android: SELinux denies execute_no_trans under filesDir, so a shebang
+            // never runs. Invokes scripts via their interpreter instead.
             val scriptWrappers = tc.optJSONObject("scriptWrappers")
             if (scriptWrappers != null) {
                 val interpreter = scriptWrappers.optString("interpreter", "")
                 val scripts = scriptWrappers.optJSONObject("scripts")
                 if (interpreter.isNotEmpty() && scripts != null) {
-                    sb.appendLine("# $name script wrappers (Android noexec)")
+                    sb.appendLine("# $name script wrappers (SELinux blocks exec under filesDir)")
                     for (scriptName in scripts.keys()) {
                         val scriptPath = scripts.getString(scriptName)
                         sb.appendLine("$scriptName() { $interpreter \"\$PREFIX/../$scriptPath\" \"\$@\"; }")

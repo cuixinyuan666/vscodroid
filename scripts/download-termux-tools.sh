@@ -43,6 +43,14 @@ REQUIRED_PACKAGES=(
     krb5
     libdb
     libresolv-wrapper
+    # Node's own dependencies. It is fetched by download-node.sh, but its
+    # libraries belong here: step 5 wipes assets/usr/lib before repopulating it,
+    # so anything placed there by a later script would survive only by running
+    # after this one.
+    c-ares
+    libicu
+    libc++
+    libsqlite
 )
 
 # Soname mapping: returns space-separated soname(s) for a package.
@@ -69,6 +77,11 @@ get_sonames() {
         krb5)              echo "libgssapi_krb5.so.2 libkrb5.so.3 libk5crypto.so.3 libkrb5support.so.0 libcom_err.so.3" ;;
         libdb)             echo "libdb-18.1.so" ;;
         libresolv-wrapper) echo "libresolv_wrapper.so" ;;
+        c-ares)            echo "libcares.so" ;;
+        # libicudata is the 32 MB data blob the other two are useless without.
+        libicu)            echo "libicui18n.so.78 libicuuc.so.78 libicudata.so.78" ;;
+        libc++)            echo "libc++_shared.so" ;;
+        libsqlite)         echo "libsqlite3.so" ;;
         *)                 echo "" ;;
     esac
 }
@@ -80,6 +93,7 @@ LIB_PACKAGES=(
     libnghttp2 libnghttp3 libngtcp2 libssh2 zlib
     libevent libandroid-glob libedit ldns
     krb5 libdb libresolv-wrapper
+    c-ares libicu libc++ libsqlite
 )
 
 echo "=== Downloading Termux Tools (bash + git + tmux + make + ssh) ==="
@@ -105,22 +119,59 @@ PKG_MAP_FILE="$(mktemp)"
 trap "rm -f '$PKG_MAP_FILE'" EXIT
 
 for pkg in "${REQUIRED_PACKAGES[@]}"; do
-    filename=$(awk -v pkg="$pkg" '
-        /^Package: / { current = $2 }
-        /^Filename: / && current == pkg { print $2; exit }
+    # One pass, emitting when the stanza ends: the live index carries duplicate
+    # Package stanzas (gdk-pixbuf, neovim-nightly, ...), and two independent
+    # scans could pair stanza A's Filename with stanza B's SHA256.
+    pkg_line=$(awk -v pkg="$pkg" '
+        /^Package: / { if (fn != "" && current == pkg) exit; current = $2; fn = ""; sh = "" }
+        /^Filename: / && current == pkg { fn = $2 }
+        /^SHA256: / && current == pkg { sh = $2 }
+        END { if (fn != "") print fn, (sh == "" ? "-" : sh) }
     ' Packages)
+    filename=${pkg_line% *}
+    sha256=${pkg_line##* }
 
     if [ -z "$filename" ]; then
         echo "  ERROR: Package '$pkg' not found in index"
         exit 1
     fi
-    echo "$pkg $filename" >> "$PKG_MAP_FILE"
+    echo "$pkg $filename ${sha256:--}" >> "$PKG_MAP_FILE"
     echo "  $pkg -> $(basename "$filename")"
 done
 
 # Helper to look up filename for a package
 get_pkg_filename() {
     awk -v pkg="$1" '$1 == pkg { print $2; exit }' "$PKG_MAP_FILE"
+}
+
+# Helper to look up the index's SHA256 for a package ("-" when absent)
+get_pkg_sha256() {
+    awk -v pkg="$1" '$1 == pkg { print $3; exit }' "$PKG_MAP_FILE"
+}
+
+# Everything fetched here executes on user devices (bash, git, ssh) or is
+# loaded into every process (the shared libraries), and it arrives over a
+# third-party mirror. A file that does not match the index's SHA256 -- cached
+# or fresh -- must not be used.
+verify_pkg_sha256() {
+    local file="$1" expected="$2"
+    if [ "$expected" = "-" ] || [ -z "$expected" ]; then
+        # Fail closed: the index and the payload come from the same host, so a
+        # mirror that drops the SHA256 line could otherwise switch the check
+        # off silently. Every package in the real index carries one; its
+        # absence is an anomaly, not a pass.
+        echo "    ERROR: no SHA256 in index for $(basename "$file")" >&2
+        return 1
+    fi
+    local actual
+    actual=$( (sha256sum "$file" 2>/dev/null || shasum -a 256 "$file") | cut -d' ' -f1)
+    if [ "$actual" != "$expected" ]; then
+        echo "    ERROR: $(basename "$file") does not match the index" >&2
+        echo "      index : $expected" >&2
+        echo "      file  : $actual" >&2
+        rm -f "$file"
+        return 1
+    fi
 }
 
 # --- Step 2: Download .deb files ---
@@ -136,6 +187,7 @@ for pkg in "${REQUIRED_PACKAGES[@]}"; do
         curl -L --fail --show-error -o "debs/$debname" "$TERMUX_REPO/$filename"
         echo "  $debname ($(du -sh "debs/$debname" | cut -f1))"
     fi
+    verify_pkg_sha256 "debs/$debname" "$(get_pkg_sha256 "$pkg")"
 done
 
 # --- Step 3: Extract all .deb packages ---
@@ -248,9 +300,54 @@ echo "Placing shared libraries in assets/usr/lib/..."
 rm -f "$ASSETS_DIR/usr/lib"/*.so* 2>/dev/null || true
 mkdir -p "$ASSETS_DIR/usr/lib"
 
+# Reads DT_SONAME out of an ELF shared object. Used to catch the rename trap
+# below: the expected-soname list in get_sonames() is a snapshot, and when the
+# repo bumps a library's major (ICU 78 -> 79) the fallback used to grab the
+# unversioned symlink and cp -L would RENAME the new lib to the stale expected
+# name - shipping libicui18n.so.78 whose real SONAME says .79, beside fresh
+# binaries whose DT_NEEDED says .79. Death at dlopen on device, and the
+# missing-file gate never fired because a file was never missing.
+read_soname() {
+    python3 - "$1" <<'PY'
+import struct, sys
+data = open(sys.argv[1], "rb").read()
+if data[:4] != b"\x7fELF" or data[4] != 2:
+    sys.exit(0)
+e_shoff, = struct.unpack_from("<Q", data, 40)
+e_shentsize, e_shnum = struct.unpack_from("<HH", data, 58)
+dynstr_off = dyn_off = dyn_size = None
+sections = []
+for i in range(e_shnum):
+    off = e_shoff + i * e_shentsize
+    sh_type, = struct.unpack_from("<I", data, off + 4)
+    sh_offset, sh_size = struct.unpack_from("<QQ", data, off + 24)
+    sections.append((sh_type, sh_offset, sh_size, off))
+    if sh_type == 6:  # SHT_DYNAMIC
+        dyn_off, dyn_size = sh_offset, sh_size
+        sh_link, = struct.unpack_from("<I", data, off + 40)
+        link_hdr = e_shoff + sh_link * e_shentsize
+        dynstr_off, = struct.unpack_from("<Q", data, link_hdr + 24)
+if dyn_off is None:
+    sys.exit(0)
+i = dyn_off
+while i < dyn_off + dyn_size:
+    d_tag, d_val = struct.unpack_from("<qQ", data, i)
+    if d_tag == 14:  # DT_SONAME
+        end = data.index(b"\x00", dynstr_off + d_val)
+        print(data[dynstr_off + d_val:end].decode())
+        break
+    if d_tag == 0:
+        break
+    i += 16
+PY
+}
+
 for pkg in "${LIB_PACKAGES[@]}"; do
     sonames="$(get_sonames "$pkg")"
-    [ -z "$sonames" ] && continue
+    if [ -z "$sonames" ]; then
+        echo "  $pkg: no shared libraries expected (no get_sonames row)"
+        continue
+    fi
     pkg_lib_dir="extracted/$pkg/data/data/com.termux/files/usr/lib"
     for soname in $sonames; do
         # Find the actual file — try exact match, then unversioned name
@@ -267,12 +364,28 @@ for pkg in "${LIB_PACKAGES[@]}"; do
         fi
 
         if [ -n "$src" ] && ( [ -f "$src" ] || [ -L "$src" ] ); then
+            # The file's real SONAME must agree with the name we ship it under;
+            # see read_soname() above for the rename trap this closes. A library
+            # with no DT_SONAME at all is left to the ELF verification.
+            actual_soname="$(read_soname "$src")"
+            if [ -n "$actual_soname" ] && [ "$actual_soname" != "$soname" ]; then
+                echo "  ERROR: $pkg ships $(basename "$src") with SONAME $actual_soname," >&2
+                echo "         but this script expects $soname. The library moved a" >&2
+                echo "         major - update get_sonames() and rebuild everything" >&2
+                echo "         that links against it." >&2
+                exit 1
+            fi
             # Copy and rename to the soname the binaries expect
             cp -L "$src" "$ASSETS_DIR/usr/lib/$soname"
             echo "  $soname ($(du -sh "$ASSETS_DIR/usr/lib/$soname" | cut -f1))"
         else
-            echo "  WARNING: $soname not found in $pkg (looked in $pkg_lib_dir)"
+            # Fatal, not a warning: a library missing here ships an APK where
+            # bash or git dies at dlopen on a user's device - the exact class
+            # of quiet breakage the ELF verification exists to prevent. This
+            # printed WARNING and exited 0 until review caught it.
+            echo "  ERROR: $soname not found in $pkg (looked in $pkg_lib_dir)" >&2
             [ -d "$pkg_lib_dir" ] && ls "$pkg_lib_dir"/*.so* 2>/dev/null | head -5 || true
+            exit 1
         fi
     done
 done

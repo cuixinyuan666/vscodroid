@@ -22,7 +22,6 @@ const LOG_LEVEL = args.log || 'info';
 const HOME_DIR = process.env.HOME || '/data/data/com.vscodroid/files/home';
 const SERVER_DIR = path.dirname(__filename);
 const REH_DIR = path.join(SERVER_DIR, 'vscode-reh');
-const WEB_DIR = path.join(SERVER_DIR, 'vscode-web');
 
 // Product configuration override — port-dependent fields set at runtime below
 const productOverrides = {
@@ -108,6 +107,34 @@ if (!fs.existsSync(rehEntryPoint)) {
         '--port', String(PORT),
         '--without-connection-token',
         '--accept-server-license-terms',
+        // Without this every folder opens in Restricted Mode, which blocks most
+        // extensions from activating.
+        //
+        // The security.workspace.trust.enabled setting cannot do it, and for two
+        // reasons rather than one. The setting is registered with
+        // ConfigurationScope.APPLICATION, and the remote side contributes only
+        // REMOTE_MACHINE_SCOPES — MACHINE, WINDOW, RESOURCE, LANGUAGE_OVERRIDABLE,
+        // MACHINE_OVERRIDABLE (configuration.ts:387) — so an application-scoped
+        // setting is ignored here whatever file it is in. Separately, until
+        // 2026-08-12 the file this app wrote was not read at all: the workbench
+        // takes remote settings from <server-data-dir>/data/Machine/settings.json
+        // (server.main.ts:39-40, environmentService.ts:86,
+        // remoteAgentEnvironmentImpl.ts:112), and we were writing a sibling
+        // User/settings.json. Fixing the path made every other default take
+        // effect; it does not make this one work.
+        // isWorkspaceTrustEnabled() checks environmentService.disableWorkspaceTrust
+        // before it consults the configuration at all, so the flag is the only
+        // route that works, and webClientServer passes it through to the web
+        // client as enableWorkspaceTrust.
+        //
+        // Deliberate trade-off, not an oversight: the default workspace is the
+        // user's own projects directory inside the app sandbox, where a trust
+        // prompt asks about files they created themselves on their own device.
+        // The exposure this accepts is a folder opened through the SAF picker
+        // from somewhere else, whose tasks.json can then run unprompted. Worth
+        // revisiting if opening external repositories becomes a normal thing to
+        // do here.
+        '--disable-workspace-trust',
         '--log', LOG_LEVEL
     ];
 
@@ -118,31 +145,47 @@ if (!fs.existsSync(rehEntryPoint)) {
 
     // Launch server
     const { fork } = require('child_process');
-    const server = fork(serverArgs[0], serverArgs.slice(1), {
-        env: process.env,
-        stdio: 'inherit'
-    });
 
-    // Start process monitor (non-fatal if it fails)
+    // The proxy has to be listening before the child is forked, because the
+    // child inherits its address as HTTPS_PROXY and never asks again. It resolves
+    // to an empty environment if it could not bind, so a failure here costs musl
+    // clients their DNS and nothing else. See dns-proxy.js for why any of this
+    // is needed.
+    let startProxy;
     try {
-        const monitor = require(path.join(SERVER_DIR, 'process-monitor.js'));
-        monitor.start(server.pid);
+        startProxy = require(path.join(SERVER_DIR, 'dns-proxy.js')).start;
     } catch (e) {
-        log('warn', 'Process monitor failed to start: ' + e.message);
+        log('warn', 'dns-proxy not available: ' + e.message);
+        startProxy = () => Promise.resolve({});
     }
 
-    server.on('error', (err) => {
-        log('error', `Failed to start VS Code Server: ${err.message}`);
-        process.exit(1);
-    });
+    startProxy(log).then((proxyEnv) => {
+        const server = fork(serverArgs[0], serverArgs.slice(1), {
+            env: { ...process.env, ...proxyEnv },
+            stdio: 'inherit'
+        });
 
-    server.on('exit', (code) => {
-        log('info', `VS Code Server exited with code ${code}`);
-        process.exit(code || 0);
-    });
+        // Start process monitor (non-fatal if it fails)
+        try {
+            const monitor = require(path.join(SERVER_DIR, 'process-monitor.js'));
+            monitor.start(server.pid);
+        } catch (e) {
+            log('warn', 'Process monitor failed to start: ' + e.message);
+        }
 
-    process.on('SIGTERM', () => {
-        log('info', 'Received SIGTERM, shutting down...');
-        server.kill('SIGTERM');
+        server.on('error', (err) => {
+            log('error', `Failed to start VS Code Server: ${err.message}`);
+            process.exit(1);
+        });
+
+        server.on('exit', (code) => {
+            log('info', `VS Code Server exited with code ${code}`);
+            process.exit(code || 0);
+        });
+
+        process.on('SIGTERM', () => {
+            log('info', 'Received SIGTERM, shutting down...');
+            server.kill('SIGTERM');
+        });
     });
 }

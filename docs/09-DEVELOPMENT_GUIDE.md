@@ -4,6 +4,14 @@
 **Version**: 1.0-draft
 **Date**: 2026-02-10
 
+> **Historical document — describes the plan as of 2026-02-10, not the code.**
+> The server is built from the MIT Code - OSS source by `.github/workflows/build-vscode-oss.yml`,
+> with unified diffs in `patches/` applied before the build; app builds fetch the result with
+> `scripts/fetch-vscode-oss.sh`. Anything here about downloading a pre-built server from Microsoft's
+> CDN, or about inline regex patches in `download-vscode-server.sh`, describes a path that was
+> removed on 2026-08-12. Read `CLAUDE.md` for what the code actually does, and verify against the
+> code itself.
+
 ---
 
 ## 1. Prerequisites
@@ -62,13 +70,9 @@ flowchart TD
   ANDROID --> A4["app/src/main/jniLibs/ (.so binaries)"]
   ANDROID --> A5["app/build.gradle.kts, build.gradle.kts, settings.gradle.kts"]
 
-  ROOT --> SERVER["server/ (code-server fork submodule)"]
-  SERVER --> S1["lib/vscode/ (VS Code source)"]
-  SERVER --> S2["patches/"]
-
-  ROOT --> PATCH["patches/ (VSCodroid-specific patches)"]
-  PATCH --> P1["code-server/ (inherited patches)"]
-  PATCH --> P2["vscodroid/ (custom patches)"]
+  ROOT --> SERVER["server/ (download staging, not a submodule)"]
+  SERVER --> S1["vscode-reh/ (extracted reh-web download)"]
+  SERVER --> S2["vscode-server-linux-arm64-web.tar.gz"]
 
   ROOT --> TOOL["toolchains/ (cross-compilation scripts)"]
   TOOL --> T1["build-node.sh, build-node-pty.sh"]
@@ -76,7 +80,7 @@ flowchart TD
   TOOL --> T3["Dockerfile"]
 
   ROOT --> SCRIPT["scripts/ (development scripts)"]
-  SCRIPT --> SC1["setup.sh, build-all.sh, apply-patches.sh"]
+  SCRIPT --> SC1["setup.sh, build-all.sh, download-vscode-server.sh"]
   SCRIPT --> SC2["package-assets.sh, deploy.sh"]
 
   ROOT --> TEST["test/ (test suites)"]
@@ -143,8 +147,8 @@ cd android
 For VS Code server/client changes:
 
 ```bash
-# Rebuild VS Code, repackage, deploy
-./scripts/build-vscode.sh
+# Re-fetch and re-patch the server, repackage, deploy
+./scripts/download-vscode-server.sh
 ./scripts/package-assets.sh
 ./scripts/deploy.sh
 ```
@@ -221,14 +225,18 @@ docs: add testing strategy document
 
 ### 5.3 Patches
 
-- **code-server patches**: Standard `.diff` files in `patches/code-server/`, applied via `apply-patches.sh`
-- **VSCodroid patches**: Applied as **inline Python string replacements** in `scripts/download-vscode-server.sh` during the build process
+Every patch is an **inline Python string replacement** in `scripts/download-vscode-server.sh`,
+applied to the downloaded server. There are no `.diff` files anywhere in the build path.
+
   - Extension Host → `worker_thread` (3 patches)
   - ptyHost → `worker_thread` (2 patches)
   - IPC bridge injection for `worker_threads` compatibility
+
 - Include descriptive header comments for each patch section
-- `patches/vscodroid/` directory is reserved for future `.diff`-based patches
 - Keep patches as small and focused as possible
+- ⚠️ Most patches match **minified identifiers** and print `SKIP` without failing the script when
+  the pattern stops matching. Re-verify every one of them when raising `VSCODE_VERSION`; a green
+  CI run is not evidence that they applied.
 
 ---
 
@@ -342,8 +350,7 @@ yarn gulp vscode-web-min                 # Build web client
 yarn gulp vscode-reh-min                 # Build server
 
 # --- Patches ---
-# code-server patches: applied via apply-patches.sh
-# VSCodroid patches: applied inline in scripts/download-vscode-server.sh
+# All patches are applied inline in scripts/download-vscode-server.sh
 # Verify worker_thread patches applied:
 grep -q 'worker_threads' server/vscode-reh/out/vs/workbench/api/node/*.js && echo "ExtHost patch OK"
 ```

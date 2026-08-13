@@ -224,10 +224,10 @@ adb install android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 > [!WARNING]
-> **Cross-compilation required.** Building from source involves cross-compiling Node.js and
-> native modules for ARM64 Android. The steps above will build the Android shell, but the
-> full development setup (including server binaries) requires additional steps.
-> See the complete [Development Guide](docs/09-DEVELOPMENT_GUIDE.md) for detailed instructions.
+> **The steps above build the Android shell only.** A runnable app also needs the server tree,
+> the Node runtime and the bundled tools, which the `scripts/download-*.sh` scripts fetch.
+> Only the two native addons are cross-compiled, by `scripts/build-native-addons.sh`, and that
+> needs the Android NDK. See [CONTRIBUTING.md](CONTRIBUTING.md) for the order to run them in.
 
 ## 📦 Size Estimates
 
@@ -287,17 +287,20 @@ If you discover a security vulnerability, please **do not** open a public issue.
 
 ## ⚖️ Legal
 
-VSCodroid is built from the MIT-licensed [Code - OSS](https://github.com/microsoft/vscode) source code. It is **not affiliated with or endorsed by Microsoft Corporation**.
+VSCodroid is **not affiliated with or endorsed by Microsoft Corporation**.
+
+The bundled editor server is built from the MIT-licensed [Code - OSS](https://github.com/microsoft/vscode) source, with this project's Android patches and branding applied before the build. Its licence and third-party notices ship inside the tree, at `android/app/src/main/assets/vscode-reh/LICENSE.txt` and `ThirdPartyNotices.txt`. Earlier releases bundled Microsoft's pre-built Visual Studio Code Server distribution instead, which is covered by Microsoft's own proprietary terms rather than MIT.
 
 - "Visual Studio Code" and "VS Code" are trademarks of Microsoft.
 - Uses [Open VSX](https://open-vsx.org) extension registry, not Microsoft Marketplace.
-- See [LICENSE](LICENSE) for full license text.
 - See [NOTICE.md](NOTICE.md) for third-party attribution.
 - See [Privacy Policy](https://rmyndharis.github.io/VSCodroid/privacy-policy.html) for data practices.
 
 ## 📄 License
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+VSCodroid's **own** source — the Android app, the build scripts, and the bundled configuration — is licensed under the **MIT License**. See [LICENSE](LICENSE).
+
+That licence does not extend to the third-party components VSCodroid downloads or bundles; each carries its own terms, listed in [NOTICE.md](NOTICE.md).
 
 ---
 

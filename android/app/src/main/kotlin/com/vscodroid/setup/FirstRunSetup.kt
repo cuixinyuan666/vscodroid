@@ -5,6 +5,8 @@ import android.system.Os
 import com.vscodroid.util.Environment
 import com.vscodroid.util.Logger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -26,7 +28,18 @@ class FirstRunSetup(private val context: Context) {
         return installedVersion != currentVersion
     }
 
-    suspend fun runSetup(): SetupResult = withContext(Dispatchers.IO) {
+    suspend fun runSetup(): SetupResult = setupMutex.withLock {
+        // Two Splash instances can exist at once (noHistory + standard
+        // launchMode), each calling this from its own lifecycleScope. The body
+        // is blocking I/O that never checks for cancellation, so cancelling the
+        // loser does nothing — serialize instead, and let whoever waited find
+        // the work already done. The winner's markSetupComplete() flips
+        // isFirstRun() before the lock is released.
+        if (!isFirstRun()) return@withLock SetupResult.SUCCESS
+        runSetupLocked()
+    }
+
+    private suspend fun runSetupLocked(): SetupResult = withContext(Dispatchers.IO) {
         val previousVersionCode = getPreviousVersionCode()
         val currentVersionCode = getCurrentVersionCode()
         val isUpgrade = previousVersionCode > 0
@@ -50,16 +63,20 @@ class FirstRunSetup(private val context: Context) {
             reportProgress("Creating directories...", 2)
             createDirectories()
 
+            if (isUpgrade) {
+                runPreExtractionMigrations(previousVersionCode)
+            }
+
+            // The reh-web download carries the web client inside this same tree,
+            // so this one extraction is both the server and the workbench.
             reportProgress("Extracting server files...", 5)
             extractAssetDir("vscode-reh", "server/vscode-reh")
-
-            reportProgress("Extracting web client...", 40)
-            extractAssetDir("vscode-web", "server/vscode-web")
 
             reportProgress("Extracting server bootstrap...", 60)
             extractAssetFile("server.js", "server/server.js")
             extractAssetFile("process-monitor.js", "server/process-monitor.js")
             extractAssetFile("platform-fix.js", "server/platform-fix.js")
+            extractAssetFile("dns-proxy.js", "server/dns-proxy.js")
 
             reportProgress("Extracting tools...", 62)
             extractAssetDir("usr", "usr")
@@ -70,6 +87,11 @@ class FirstRunSetup(private val context: Context) {
             reportProgress("Setting up tools...", 85)
             setupToolSymlinks()
             setupRipgrepVscodeSymlink()
+            // Also here, not only in SplashActivity's always-run block: that
+            // block runs before this extraction on a fresh install, when the
+            // server tree does not exist yet, so the aliases it would build
+            // no-op and Copilot would stay dead until the second cold start.
+            setupCopilotAndroidAliases()
             setupSshDefaults()
             createBashrc()
             createBashProfile()
@@ -257,9 +279,18 @@ class FirstRunSetup(private val context: Context) {
     }
 
     /**
-     * Creates a symlink so VS Code's @vscode/ripgrep finds rg at its expected path.
-     * The rg binary lives in nativeLibraryDir as libripgrep.so, but VS Code looks for
-     * node_modules/@vscode/ripgrep/bin/rg inside the server directory.
+     * Creates a symlink so VS Code's ripgrep finds rg at its expected path.
+     *
+     * The binary lives in nativeLibraryDir as libripgrep.so, because SELinux will
+     * not exec anything under filesDir. VS Code looks for it inside the server
+     * tree instead, so the two are joined by a symlink -- execve resolves it and
+     * checks the target, which is where execution is allowed.
+     *
+     * The path it looks in moved in VS Code 1.133: @vscode/ripgrep with a single
+     * bin/rg became @vscode/ripgrep-universal with one directory per platform.
+     * Both are linked, so an install carrying either tree finds it; the older one
+     * costs a directory and a symlink.
+     *
      * Safe to call on every launch (recreates if stale, skips if current).
      */
     fun setupRipgrepVscodeSymlink() {
@@ -267,24 +298,117 @@ class FirstRunSetup(private val context: Context) {
         val rgBinary = File("$nativeLibDir/libripgrep.so")
         if (!rgBinary.exists()) return
 
-        val rgBinDir = File(context.filesDir, "server/vscode-reh/node_modules/@vscode/ripgrep/bin")
-        rgBinDir.mkdirs()
-        val rgLink = File(rgBinDir, "rg")
         val target = rgBinary.absolutePath
+        val serverDir = File(context.filesDir, "server/vscode-reh/node_modules")
+        val binDirs = listOf(
+            File(serverDir, "@vscode/ripgrep-universal/bin/linux-arm64"),
+            File(serverDir, "@vscode/ripgrep/bin"),
+        )
 
-        val linkExists = try { Os.lstat(rgLink.absolutePath); true } catch (e: Exception) { false }
-        if (linkExists) {
+        for (rgBinDir in binDirs) {
+            rgBinDir.mkdirs()
+            val rgLink = File(rgBinDir, "rg")
+
+            val linkExists = try { Os.lstat(rgLink.absolutePath); true } catch (e: Exception) { false }
+            if (linkExists) {
+                try {
+                    if (Os.readlink(rgLink.absolutePath) == target) continue
+                } catch (_: Exception) { }
+                rgLink.delete()
+            }
+
             try {
-                if (Os.readlink(rgLink.absolutePath) == target) return
-            } catch (_: Exception) { }
-            rgLink.delete()
+                Os.symlink(target, rgLink.absolutePath)
+                Logger.i(tag, "ripgrep symlink: ${rgLink.absolutePath} -> $target")
+            } catch (e: Exception) {
+                Logger.d(tag, "Failed to create ripgrep symlink: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Aliases the Copilot platform packages under the name Android resolves.
+     *
+     * Node here reports process.platform === "android", and the Copilot CLI SDK
+     * resolves its platform package as @github/copilot-<platform>-<arch> with no
+     * fallback, so everything the server tree ships for linux-arm64 is invisible
+     * on device: chat submit dies in ChatSessionsService before any request is
+     * made. The server tarball cannot carry these aliases itself because AAPT
+     * flattens asset symlinks into copies, so like the tool symlinks above they
+     * are rebuilt on every launch. Relative targets keep them valid across
+     * reinstalls. Three sites:
+     *
+     *  - REH node_modules: a link farm over copilot-linux-arm64 for the agent
+     *    host, which runs the newer CLI line the server tree carries.
+     *  - the built-in extension's node_modules: sdk -> ../copilot/sdk, whose
+     *    index.js patch 0010 keeps in the build; the manifest pins the version
+     *    the extension was compiled against.
+     *  - ripgrep-universal: bin/android-arm64 -> linux-arm64, whose rg is
+     *    already the Bionic binary via setupRipgrepVscodeSymlink().
+     */
+    fun setupCopilotAndroidAliases() {
+        val serverRoot = File(context.filesDir, "server/vscode-reh")
+
+        fun linkIfAbsent(link: File, target: String) {
+            val exists = try { Os.lstat(link.absolutePath); true } catch (e: Exception) { false }
+            if (exists) return
+            try {
+                Os.symlink(target, link.absolutePath)
+            } catch (e: Exception) {
+                Logger.d(tag, "copilot alias symlink failed for ${link.name}: ${e.message}")
+            }
         }
 
-        try {
-            Os.symlink(target, rgLink.absolutePath)
-            Logger.i(tag, "ripgrep symlink: ${rgLink.absolutePath} -> $target")
-        } catch (e: Exception) {
-            Logger.d(tag, "Failed to create ripgrep symlink: ${e.message}")
+        // REH side, for the agent host.
+        val gh = File(serverRoot, "node_modules/@github")
+        val linuxPkg = File(gh, "copilot-linux-arm64")
+        if (linuxPkg.isDirectory) {
+            val alias = File(gh, "copilot-android-arm64")
+            alias.mkdirs()
+            linuxPkg.listFiles()?.forEach { entry ->
+                if (entry.name != "package.json") {
+                    linkIfAbsent(File(alias, entry.name), "../copilot-linux-arm64/${entry.name}")
+                }
+            }
+            try {
+                val manifest = File(linuxPkg, "package.json").readText()
+                    .replace("copilot-linux-arm64", "copilot-android-arm64")
+                val aliasManifest = File(alias, "package.json")
+                if (!aliasManifest.exists() || aliasManifest.readText() != manifest) {
+                    aliasManifest.writeText(manifest)
+                    Logger.i(tag, "copilot alias: REH copilot-android-arm64 -> copilot-linux-arm64")
+                }
+            } catch (e: Exception) {
+                Logger.d(tag, "copilot REH alias manifest failed: ${e.message}")
+            }
+        }
+
+        // Extension side, for the copilotcli session provider. Only meaningful
+        // when the tree keeps sdk/index.js (patch 0010); without it the alias
+        // would resolve to a directory with no entry point.
+        val extCopilot = File(serverRoot, "extensions/copilot/node_modules/@github/copilot")
+        if (File(extCopilot, "sdk/index.js").exists()) {
+            try {
+                val version = org.json.JSONObject(File(extCopilot, "package.json").readText())
+                    .getString("version")
+                val alias = File(extCopilot.parentFile, "copilot-android-arm64")
+                alias.mkdirs()
+                linkIfAbsent(File(alias, "sdk"), "../copilot/sdk")
+                val manifest = """{"name":"@github/copilot-android-arm64","version":"$version","type":"module","exports":{"./sdk":{"import":"./sdk/index.js"}}}"""
+                val aliasManifest = File(alias, "package.json")
+                if (!aliasManifest.exists() || aliasManifest.readText() != manifest) {
+                    aliasManifest.writeText(manifest)
+                    Logger.i(tag, "copilot alias: extension copilot-android-arm64 pinned to $version")
+                }
+            } catch (e: Exception) {
+                Logger.d(tag, "copilot extension alias failed: ${e.message}")
+            }
+        }
+
+        // ripgrep-universal directory alias; its rg is the Bionic symlink.
+        val rgBin = File(serverRoot, "node_modules/@vscode/ripgrep-universal/bin")
+        if (File(rgBin, "linux-arm64").isDirectory) {
+            linkIfAbsent(File(rgBin, "android-arm64"), "linux-arm64")
         }
     }
 
@@ -332,8 +456,9 @@ class FirstRunSetup(private val context: Context) {
     /**
      * Ensures npm/npx shell functions exist in .bashrc and creates .npmrc.
      *
-     * Android mounts /data noexec, so shell script wrappers in usr/bin/ fail with
-     * "bad interpreter: Permission denied". Instead, npm/npx are defined as bash
+     * SELinux denies app_data_file:file execute_no_trans for targetSdk >= 29, so a
+     * script with a shebang under filesDir fails with "bad interpreter: Permission
+     * denied" no matter how it is chmod'ed. Instead, npm/npx are defined as bash
      * functions that invoke node with the cli entry point.
      *
      * Safe to call on every launch — only appends if functions are missing.
@@ -366,6 +491,14 @@ class FirstRunSetup(private val context: Context) {
             if (!content.contains("npm()")) {
                 bashrc.appendText(npmBashFunctions())
                 Logger.i(tag, "Appended npm/npx functions to .bashrc")
+            }
+            // Guarded separately from the npm block rather than added to it: an
+            // install that predates this already has npm(), so a shared guard
+            // would skip the new function forever, and a widened one would append
+            // npm() a second time.
+            if (!content.contains("claude()")) {
+                bashrc.appendText(claudeBashFunction())
+                Logger.i(tag, "Appended claude function to .bashrc")
             }
         }
 
@@ -401,6 +534,47 @@ class FirstRunSetup(private val context: Context) {
         }
     }
 
+    /**
+     * Brings the .bashrc prompt block up to [PROMPT_VERSION], rewriting whatever
+     * older shape is there.
+     *
+     * The block is fenced by versioned markers so that any future change to it is
+     * migratable. The first version had no markers at all — it printed straight
+     * out of PROMPT_COMMAND with PS1 left empty, dating from when the terminal was
+     * a pipe rather than the PTY node-pty now gives us — so that shape is also
+     * recognised, by its function name and its `PS1=''`.
+     *
+     * Safe to call on every launch: it returns immediately once the current marker
+     * is present, and a .bashrc whose prompt the user has rewritten matches no
+     * anchor at all, so it is left as they wrote it.
+     */
+    fun ensurePromptFix() {
+        val bashrc = File(context.filesDir, "home/.bashrc")
+        if (!bashrc.exists()) return
+
+        val content = bashrc.readText()
+        if (content.contains(PROMPT_MARKER_CURRENT)) return
+
+        // Earliest anchor wins, so the old explanatory comment is swallowed too
+        // rather than left behind describing a mechanism the file no longer uses.
+        val start = listOf(PROMPT_BEGIN, LEGACY_PROMPT_COMMENT, PROMPT_ANCHOR_START)
+            .map { content.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull() ?: return
+
+        val fenced = content.indexOf(PROMPT_END, start)
+        val end = if (fenced >= 0) {
+            content.indexOf('\n', fenced).takeIf { it >= 0 } ?: content.length
+        } else {
+            val legacy = content.indexOf(PROMPT_ANCHOR_END, start)
+            if (legacy < 0) return
+            legacy + PROMPT_ANCHOR_END.length
+        }
+
+        bashrc.writeText(content.substring(0, start) + PROMPT_BLOCK + content.substring(end))
+        Logger.i(tag, "Rewrote the .bashrc prompt block ($PROMPT_VERSION)")
+    }
+
     private fun isSymlink(file: File): Boolean = try {
         Os.lstat(file.absolutePath)
         file.canonicalPath != file.absolutePath
@@ -408,12 +582,46 @@ class FirstRunSetup(private val context: Context) {
 
     private fun npmBashFunctions(): String = """
 
-# npm/npx — shell functions (Android noexec prevents script wrappers)
+# npm/npx — shell functions (SELinux blocks exec of scripts under filesDir)
 # VSCODROID_PLATFORM_FIX=1: override process.platform to "linux" for npm only
 # (child processes like Rollup/esbuild see real "android" platform)
 # --prefer-offline: use local cache first, saves time on slow mobile connections
 npm() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npm-cli.js" --prefer-offline "${'$'}@"; }
 npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx-cli.js" "${'$'}@"; }
+"""
+
+    /**
+     * `claude` in the terminal, which the extension's own login screen suggests.
+     *
+     * A function for the same reason npm is one: SELinux denies exec of anything
+     * under filesDir, and the CLI lives there — it ships inside the extension the
+     * user installed. It runs that very file rather than a second copy, so the
+     * terminal and the extension are always on the same version, and the glob
+     * picks up whatever version is installed without this needing to change.
+     */
+    private fun claudeBashFunction(): String = """
+
+# claude — the CLI the Claude Code extension brings with it. Started through
+# musl's loader: the CLI is a musl binary under filesDir, which SELinux will not
+# execve but will let a loader map. libldmusl.so is found on PATH, which already
+# includes nativeLibraryDir.
+claude() {
+    local cli="" c
+    # An update can leave two versioned directories side by side, which made the
+    # old echo-glob expand to two space-joined paths and fail the -f test. Take
+    # the most recently installed candidate; -nt is a bash builtin, so this
+    # leans on nothing external. [Aa] covers a gallery serving the publisher
+    # name lowercased.
+    for c in "${'$'}HOME"/.vscodroid/extensions/[Aa]nthropic.claude-code-*/resources/native-binary/claude; do
+        [ -f "${'$'}c" ] || continue
+        if [ -z "${'$'}cli" ] || [ "${'$'}c" -nt "${'$'}cli" ]; then cli="${'$'}c"; fi
+    done
+    if [ ! -f "${'$'}cli" ]; then
+        echo "claude: install the Claude Code extension first" >&2
+        return 127
+    fi
+    libldmusl.so "${'$'}cli" "${'$'}@"
+}
 """
 
     /**
@@ -424,17 +632,47 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
      * reference this directory, so they must be refreshed on each launch.
      */
     fun updateSettingsNativeLibPaths() {
-        val settingsFile = File(context.filesDir, "home/.vscodroid/User/settings.json")
+        migrateSettingsToMachinePath()
+
+        val settingsFile = File(Environment.getMachineSettingsPath(context))
         if (!settingsFile.exists()) return
 
         val updated = refreshManagedPaths(
             settingsFile.readText(),
-            Environment.getBashPath(context),
+            Environment.getTerminalShellPath(context),
             Environment.getGitPath(context),
+            Environment.getMuslLoaderPath(context),
         ) ?: return
 
         settingsFile.writeText(updated)
         Logger.i(tag, "Refreshed managed paths in settings.json")
+    }
+
+    /**
+     * Moves settings.json from the path this app used to write to the one the
+     * workbench reads.
+     *
+     * Everything written to the old path was inert — the theme, the terminal
+     * profile, the Python interpreter, all of it — so the move is what makes those
+     * defaults take effect for the first time. It is a move rather than a fresh
+     * write because the old file is reachable from the terminal and may have been
+     * edited by hand.
+     *
+     * Runs on every launch and does nothing once the file is in place. If both
+     * exist the new one wins and the old is left alone, since only the new one has
+     * been in use.
+     */
+    private fun migrateSettingsToMachinePath() {
+        val legacy = File(context.filesDir, "home/.vscodroid/User/settings.json")
+        val current = File(Environment.getMachineSettingsPath(context))
+        if (current.exists() || !legacy.exists()) return
+
+        current.parentFile?.mkdirs()
+        if (legacy.copyTo(current, overwrite = false).exists() && legacy.delete()) {
+            Logger.i(tag, "Moved settings.json to the path the workbench reads")
+        } else {
+            Logger.e(tag, "Could not move settings.json to ${current.absolutePath}")
+        }
     }
 
     private fun createWelcomeProject() {
@@ -479,25 +717,7 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
         val safMirrorsDir = Environment.getSafMirrorsDir(context)
         val bashrc = File(context.filesDir, "home/.bashrc")
         if (!bashrc.exists()) {
-            bashrc.writeText("""
-                # VSCodroid bash configuration
-                # Prompt via PROMPT_COMMAND (readline can't show PS1 on pipe stdin)
-                __vscodroid_prompt() {
-                    local dir="${'$'}PWD"
-                    dir="${'$'}{dir/#${'$'}HOME/~}"
-                    [[ "${'$'}dir" == /* ]] && dir="${'$'}{dir/#${'$'}PROJECTS_DIR/projects}"
-                    # Abbreviate SAF mirror paths: /data/.../saf-mirrors/<hash>/... → [folder]/...
-                    if [[ "${'$'}dir" == *saf-mirrors/* ]]; then
-                        dir="${'$'}{dir#*saf-mirrors/}"
-                        dir="${'$'}{dir#*/}"  # strip hash dir
-                        [ -z "${'$'}dir" ] && dir="[saf]"
-                        dir="[saf]/${'$'}dir"
-                    fi
-                    printf '\033[32m%s\033[0m ${'$'} ' "${'$'}dir"
-                }
-                PROMPT_COMMAND=__vscodroid_prompt
-                PS1=''
-
+            bashrc.writeText("# VSCodroid bash configuration\n" + PROMPT_BLOCK + "\n\n" + """
                 export PROJECTS_DIR='$projectsDir'
                 export SAF_MIRRORS_DIR='$safMirrorsDir'
                 alias ls='ls --color=auto'
@@ -546,10 +766,21 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
 
     private fun createDefaultSettings() {
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
-        val settingsDir = File(context.filesDir, "home/.vscodroid/User")
-        settingsDir.mkdirs()
-        val settingsFile = File(settingsDir, "settings.json")
+        // Environment.getMachineSettingsPath explains why it is this path and not
+        // the `User/` one that looks like the obvious home for user settings.
+        val settingsFile = File(Environment.getMachineSettingsPath(context))
+        settingsFile.parentFile?.mkdirs()
         if (!settingsFile.exists()) {
+            // The terminal profile is inert today and is written for the day it is
+            // not. VS Code keys these settings `…profiles.linux`, the remote
+            // reports its platform as "android", so the whole block is skipped and
+            // terminals fall back to $SHELL — which is why Environment sets SHELL
+            // to the usr/bin/bash symlink rather than the .so. Verified on device:
+            // even an explicit --init-file placed in these args never reached the
+            // spawned shell. Fixing platform detection at source makes the profile
+            // live again, so it is kept correct: the path names the symlink so the
+            // basename is `bash`, and the args stay empty because VS Code only
+            // injects shell integration for empty or login args.
             settingsFile.writeText("""
                 {
                     "workbench.startupEditor": "none",
@@ -562,13 +793,14 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
                     "terminal.integrated.defaultProfile.linux": "bash",
                     "terminal.integrated.profiles.linux": {
                         "bash": {
-                            "path": "$nativeLibDir/libbash.so",
-                            "args": ["-i"],
+                            "path": "${Environment.getTerminalShellPath(context)}",
+                            "args": [],
                             "icon": "terminal-bash"
                         }
                     },
                     "git.path": "$nativeLibDir/libgit.so",
-                    "terminal.integrated.shellIntegration.enabled": false,
+                    "terminal.integrated.shellIntegration.enabled": true,
+                    "extensions.verifySignature": false,
                     "telemetry.telemetryLevel": "off",
                     "telemetry.enableTelemetry": false,
                     "update.mode": "none",
@@ -576,12 +808,7 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
                     "security.workspace.trust.enabled": false,
                     "python.languageServer": "Jedi",
                     "python.defaultInterpreterPath": "${context.filesDir.absolutePath}/usr/bin/python3",
-                    "gitlens.showWelcomeOnInstall": false,
-                    "gitlens.showWhatsNewAfterUpgrades": false,
-                    "gitlens.codeLens.enabled": false,
-                    "gitlens.currentLine.enabled": true,
-                    "gitlens.hovers.enabled": false,
-                    "gitlens.statusBar.enabled": false,
+                    "claudeCode.claudeProcessWrapper": "${Environment.getMuslLoaderPath(context)}",
                     "launch": {
                         "version": "0.2.0",
                         "configurations": [
@@ -642,56 +869,44 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
             }
         }
 
-        // Generate extensions.json only if it doesn't exist (first run).
-        // VS Code Server manages this file for marketplace-installed extensions,
-        // so we only write it once for bundled extensions.
+        val present = extensionsDir.list()?.toList() ?: emptyList()
+        val superseded = supersededExtensionDirs(present, bundled.toList())
+        for (name in superseded) {
+            if (File(extensionsDir, name).deleteRecursively()) {
+                Logger.i(tag, "Removed superseded bundled extension: $name")
+            }
+        }
+
+        // Disjoint from superseded by construction: that set is versions of ids
+        // still bundled, this one is our ids that stopped being bundled at all.
+        for (name in retiredOwnExtensionDirs(present, bundled.toList())) {
+            if (File(extensionsDir, name).deleteRecursively()) {
+                Logger.i(tag, "Removed retired bundled extension: $name")
+            }
+        }
+
+        // The server manages this file for marketplace installs, so it is never
+        // regenerated wholesale. But it is the default profile's manifest — the
+        // scanner shows only what is listed in it — and bundled extensions
+        // change with app upgrades while the file survives them. Reconcile:
+        // entries whose directory is gone are unloadable and dropped, freshly
+        // extracted bundled versions gain an entry, everything else stays
+        // exactly as the server wrote it.
         val manifestFile = File(extensionsDir, "extensions.json")
         if (!manifestFile.exists()) {
             generateExtensionsManifest(extensionsDir, bundled)
+        } else {
+            reconcileExtensionsManifest(manifestFile, extensionsDir, bundled)
         }
 
-        Logger.i(tag, "Bundled extensions: $extracted extracted, ${bundled.size} total")
+        Logger.i(tag, "Bundled extensions: $extracted extracted, " +
+            "${superseded.size} superseded removed, ${bundled.size} total")
     }
 
     private fun generateExtensionsManifest(extensionsDir: File, bundledDirs: Array<String>) {
         val entries = JSONArray()
-
         for (dirName in bundledDirs) {
-            val extDir = File(extensionsDir, dirName)
-            val pkgFile = File(extDir, "package.json")
-            if (!pkgFile.exists()) {
-                Logger.d(tag, "No package.json in $dirName, skipping manifest entry")
-                continue
-            }
-
-            try {
-                val pkg = JSONObject(pkgFile.readText())
-                val publisher = pkg.optString("publisher", "")
-                val name = pkg.optString("name", "")
-                val version = pkg.optString("version", "")
-
-                if (publisher.isEmpty() || name.isEmpty()) continue
-
-                val id = "${publisher.lowercase()}.${name.lowercase()}"
-
-                val entry = JSONObject().apply {
-                    put("identifier", JSONObject().put("id", id))
-                    put("version", version)
-                    put("location", JSONObject().apply {
-                        put("\$mid", 1)
-                        put("path", extDir.absolutePath)
-                        put("scheme", "file")
-                    })
-                    put("relativeLocation", dirName)
-                    put("metadata", JSONObject().apply {
-                        put("installedTimestamp", System.currentTimeMillis())
-                        put("source", "bundled")
-                    })
-                }
-                entries.put(entry)
-            } catch (e: Exception) {
-                Logger.d(tag, "Failed to parse $dirName/package.json: ${e.message}")
-            }
+            manifestEntryFor(extensionsDir, dirName)?.let { entries.put(it) }
         }
 
         val manifestFile = File(extensionsDir, "extensions.json")
@@ -699,15 +914,162 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
         Logger.i(tag, "Generated extensions.json with ${entries.length()} entries")
     }
 
+    private fun manifestEntryFor(extensionsDir: File, dirName: String): JSONObject? {
+        val extDir = File(extensionsDir, dirName)
+        val pkgFile = File(extDir, "package.json")
+        if (!pkgFile.exists()) {
+            Logger.d(tag, "No package.json in $dirName, skipping manifest entry")
+            return null
+        }
+
+        return try {
+            val pkg = JSONObject(pkgFile.readText())
+            val publisher = pkg.optString("publisher", "")
+            val name = pkg.optString("name", "")
+            val version = pkg.optString("version", "")
+
+            if (publisher.isEmpty() || name.isEmpty()) return null
+
+            JSONObject().apply {
+                put("identifier", JSONObject().put("id", "${publisher.lowercase()}.${name.lowercase()}"))
+                put("version", version)
+                put("location", JSONObject().apply {
+                    put("\$mid", 1)
+                    put("path", extDir.absolutePath)
+                    put("scheme", "file")
+                })
+                put("relativeLocation", dirName)
+                put("metadata", JSONObject().apply {
+                    put("installedTimestamp", System.currentTimeMillis())
+                    put("source", "bundled")
+                })
+            }
+        } catch (e: Exception) {
+            Logger.d(tag, "Failed to parse $dirName/package.json: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Brings the manifest back in line with the directories after an upgrade
+     * swapped bundled extension versions underneath it. Conservative on
+     * purpose: an entry survives unless its directory is verifiably gone, and a
+     * bundled directory is only added to replace an entry that was just
+     * dropped — never for an identifier with no entry at all, which is an
+     * extension the user uninstalled, nor over a surviving entry, so a user's
+     * own newer install keeps winning over the bundled copy.
+     */
+    private fun reconcileExtensionsManifest(
+        manifestFile: File,
+        extensionsDir: File,
+        bundledDirs: Array<String>,
+    ) {
+        try {
+            val entries = JSONArray(manifestFile.readText())
+            val kept = JSONArray()
+            val keptIds = mutableSetOf<String>()
+            val droppedIds = mutableSetOf<String>()
+            var dropped = 0
+
+            for (i in 0 until entries.length()) {
+                val entry = entries.getJSONObject(i)
+                val path = entry.optJSONObject("location")?.optString("path").orEmpty()
+                val dirName = entry.optString("relativeLocation")
+                    .ifEmpty { if (path.isEmpty()) "" else File(path).name }
+                if (dirName.isNotEmpty() && !File(extensionsDir, dirName).exists()) {
+                    dropped++
+                    entry.optJSONObject("identifier")?.optString("id")?.let { droppedIds.add(it) }
+                    continue
+                }
+                kept.put(entry)
+                entry.optJSONObject("identifier")?.optString("id")?.let { keptIds.add(it) }
+            }
+
+            var added = 0
+            for (dirName in bundledDirs) {
+                val entry = manifestEntryFor(extensionsDir, dirName) ?: continue
+                val id = entry.getJSONObject("identifier").getString("id")
+                // Only replace what was just dropped. An id with no entry at all
+                // is an extension the user uninstalled - re-adding it on every
+                // app upgrade would undo that choice each time - so the freshly
+                // extracted directory stays unlisted and inert instead.
+                if (id in keptIds || id !in droppedIds) continue
+                kept.put(entry)
+                added++
+            }
+
+            if (dropped > 0 || added > 0) {
+                manifestFile.writeText(kept.toString(2))
+                Logger.i(tag, "Reconciled extensions.json: $dropped stale dropped, $added bundled added")
+            }
+        } catch (e: Exception) {
+            // A manifest this code cannot parse is one the server wrote in a
+            // shape it understands; leave it alone rather than risk the user's
+            // installed-extensions list.
+            Logger.e(tag, "Could not reconcile extensions.json", e)
+        }
+    }
+
+    /**
+     * Migrations that have to run *before* the assets are unpacked.
+     *
+     * Kept separate from [runMigrations] because the ordering is not a detail:
+     * extraction merges into whatever is already on disk and never deletes, so
+     * anything that removes a stale tree has to happen first. Run afterwards it
+     * would delete what was just unpacked, and the app would come up with no
+     * server at all.
+     */
+    private fun runPreExtractionMigrations(fromVersionCode: Int) {
+        if (fromVersionCode < PIVOT_VERSION_CODE) {
+            // The server tree changed origin, not just version: what was there is a
+            // pre-built VS Code Server, and what replaces it is Code - OSS built
+            // from source. Their file sets differ — vsda and the bundled node are
+            // gone, several paths moved — and extractAssetDir only ever writes over
+            // what it recognises. Merging the two leaves orphans from the old tree
+            // that nothing overwrites and nothing loads, with no visible symptom
+            // beyond behaviour nobody can account for.
+            val serverTree = File(context.filesDir, "server/vscode-reh")
+            if (serverTree.exists()) {
+                val freed = serverTree.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+                if (serverTree.deleteRecursively()) {
+                    Logger.i(tag, "Removed the previous server tree (${freed / 1_048_576} MB)")
+                } else {
+                    // Not fatal on its own: extraction still writes the new tree over
+                    // it. Say so loudly, because what survives is the orphan case
+                    // above rather than a clean failure.
+                    Logger.e(tag, "Could not remove the previous server tree; " +
+                        "the new one will be merged into it")
+                }
+            }
+
+            // Every pre-pivot release also extracted a standalone web client here
+            // (the reh-web tree now carries it), and nothing writes or reads this
+            // path anymore — without this, tens of MB ride along on every phone
+            // forever, counted into the storage figure the app reports.
+            val webTree = File(context.filesDir, "server/vscode-web")
+            if (webTree.exists()) {
+                val freed = webTree.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+                if (webTree.deleteRecursively()) {
+                    Logger.i(tag, "Removed the orphaned web client tree (${freed / 1_048_576} MB)")
+                } else {
+                    Logger.e(tag, "Could not remove the orphaned web client tree at $webTree")
+                }
+            }
+        }
+    }
+
     private fun runMigrations(fromVersionCode: Int) {
         Logger.i(tag, "Running migrations from versionCode $fromVersionCode")
 
-        // Add new migrations at the bottom with the next versionCode.
-        // Each block runs for users upgrading FROM a version before the threshold.
-        // Example:
-        // if (fromVersionCode < 3) {
-        //     migrateToV3()  // e.g., add new .bashrc entries
-        // }
+        // Post-extraction migrations go here; anything that deletes belongs in
+        // runPreExtractionMigrations instead.
+        //
+        // Note that files owned by the user are not migrated from this method at
+        // all. settings.json and .bashrc are both written only when absent, so a
+        // change to their defaults reaches nobody who already has them — the
+        // anchored rewrites in updateSettingsNativeLibPaths() and
+        // ensurePromptFix() handle that, and they run on every launch rather than
+        // only on a version change.
 
         Logger.i(tag, "Migrations complete")
     }
@@ -750,8 +1112,74 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
     companion object {
         private const val KEY_VERSION = "setup_version"
         private const val KEY_VERSION_CODE = "setup_version_code"
+
+        // Process-wide: each Splash instance builds its own FirstRunSetup, so an
+        // instance field would serialize nothing.
+        private val setupMutex = Mutex()
+
+        /**
+         * The release that replaces the pre-built VS Code Server with Code - OSS
+         * built from source. Upgrades from anything earlier need the old server
+         * tree removed rather than merged into.
+         *
+         * Must match versionCode in app/build.gradle.kts for the release that
+         * ships the new tree; a mismatch means the migration either never runs or
+         * runs for users who do not need it.
+         */
+        private const val PIVOT_VERSION_CODE = 11
     }
 }
+
+/**
+ * The prompt block written into `.bashrc`, shared by the first-run write and by
+ * [FirstRunSetup.ensurePromptFix], which replaces the legacy empty-PS1 prompt.
+ */
+private const val PROMPT_VERSION = "v2"
+private const val PROMPT_BEGIN = "# >>> vscodroid prompt"
+private const val PROMPT_END = "# <<< vscodroid prompt"
+private const val PROMPT_MARKER_CURRENT = "$PROMPT_BEGIN $PROMPT_VERSION >>>"
+
+private val PROMPT_BLOCK = """
+    $PROMPT_MARKER_CURRENT
+    # PROMPT_COMMAND computes the directory, PS1 renders it. The \[ \] markers tell
+    # readline which bytes take no width; without them Ctrl+L and any wrapped line
+    # redraw over the prompt. An earlier build printed the prompt straight out of
+    # PROMPT_COMMAND with an empty PS1, dating from when the terminal was a pipe
+    # rather than a PTY — readline could not measure that at all, and VS Code's
+    # shell integration ended up wrapping an empty string.
+    __vscodroid_prompt() {
+        local dir="${'$'}PWD"
+        # The tilde must be escaped. bash expands tildes in a substitution's
+        # replacement text, so a bare one turns back into the home path and the
+        # whole substitution collapses into a no-op. bash 3.2 does not do this,
+        # so a macOS shell cannot reproduce it — only a device can.
+        dir="${'$'}{dir/#${'$'}HOME/\~}"
+        [[ "${'$'}dir" == /* ]] && dir="${'$'}{dir/#${'$'}PROJECTS_DIR/projects}"
+        # Abbreviate SAF mirror paths: /data/.../saf-mirrors/<hash>/... → [saf]/...
+        # At the mirror root there is nothing after the hash, so stripping has to be
+        # conditional — stripping unconditionally leaves the hash itself standing,
+        # which is the one thing this abbreviation exists to hide.
+        if [[ "${'$'}dir" == *saf-mirrors/* ]]; then
+            dir="${'$'}{dir#*saf-mirrors/}"
+            case "${'$'}dir" in
+                */*) dir="[saf]/${'$'}{dir#*/}" ;;
+                *)   dir="[saf]" ;;
+            esac
+        fi
+        __vscodroid_dir="${'$'}dir"
+    }
+    PROMPT_COMMAND=__vscodroid_prompt
+    PS1='\[\033[32m\]${'$'}{__vscodroid_dir}\[\033[0m\] \${'$'} '
+    $PROMPT_END $PROMPT_VERSION <<<
+""".trimIndent()
+
+/**
+ * Anchors for a prompt block written before the versioned markers existed — the
+ * shape shipped in v1.0.0, which printed from PROMPT_COMMAND with an empty PS1.
+ */
+private const val PROMPT_ANCHOR_START = "__vscodroid_prompt() {"
+private const val PROMPT_ANCHOR_END = "PS1=''"
+private const val LEGACY_PROMPT_COMMENT = "# Prompt via PROMPT_COMMAND"
 
 /**
  * The bundled bash inside the terminal profile, and the bundled git. Both are
@@ -764,17 +1192,56 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
  * directory (issue #3). Every quantifier here is fenced by the delimiter it
  * must not cross.
  */
-private val BASH_PROFILE_PATH = Regex(
+private val LEGACY_BASH_PROFILE_PATH = Regex(
     """("terminal\.integrated\.profiles\.linux"\s*:\s*\{\s*"bash"\s*:\s*\{[^{}]*?"path"\s*:\s*)"/data/app/[^"]*["]"""
 )
 private val GIT_PATH = Regex("""("git\.path"\s*:\s*)"/data/app/[^"]*["]""")
 
 /**
- * Points the two settings.json values that embed nativeLibraryDir back at the
- * current install, returning the updated document or `null` when nothing needed
- * changing.
+ * The two settings that shipped alongside the old profile path and blocked shell
+ * integration with it. Matched only in the exact shape this app wrote, so a
+ * profile the user has since edited is left as they wrote it.
+ */
+private val LEGACY_PROFILE_ARGS = Regex(
+    """("terminal\.integrated\.profiles\.linux"\s*:\s*\{\s*"bash"\s*:\s*\{[^{}]*?"args"\s*:\s*)\["-i"\]"""
+)
+private val SHELL_INTEGRATION_OFF = Regex(
+    """("terminal\.integrated\.shellIntegration\.enabled"\s*:\s*)false"""
+)
+
+private val CLAUDE_WRAPPER = Regex("""("claudeCode\.claudeProcessWrapper"\s*:\s*)"[^"]*"""")
+
+/**
+ * Whether the user's settings already mention extension signature verification.
  *
- * Substitutes the two values in place and leaves every other byte untouched.
+ * Only its presence matters, either value: someone who turned it back on meant to.
+ */
+private val VERIFY_SIGNATURE = Regex(""""extensions\.verifySignature"\s*:""")
+
+/**
+ * The first property in the document, with the indentation it sits at.
+ *
+ * Anchored to the opening brace so it cannot match a property nested inside some
+ * other object further down, which would put the inserted line in the wrong scope.
+ */
+private val FIRST_PROPERTY = Regex("""(?<=\{)\s*\n([ \t]*)(?=")""")
+
+/**
+ * Reconciles the settings.json values this app manages, returning the updated
+ * document or `null` when nothing needed changing.
+ *
+ * Two jobs. `git.path` still embeds `nativeLibraryDir`, which a reinstall moves,
+ * so it is re-pointed whenever it has gone stale. The terminal profile is instead
+ * migrated *off* `nativeLibraryDir` and onto the `usr/bin/bash` symlink, which
+ * `setupToolSymlinks()` already repairs on every launch — after that move the
+ * pattern no longer matches and the profile never goes stale again.
+ *
+ * The move carries the other two halves of the shell-integration fix with it,
+ * because all three were written by the same release. Bundling them keeps the
+ * migration one-shot: once the path is off `/data/app/`, nothing here fires
+ * again, so a user who later turns shell integration back off keeps it off.
+ *
+ * Substitutes values in place and leaves every other byte untouched.
  * settings.json is JSONC: comments and trailing commas are legal there, so
  * parsing the document to re-serialise it would strip the user's comments,
  * escape every slash, and turn `["-i",]` into `["-i", null]`.
@@ -782,8 +1249,139 @@ private val GIT_PATH = Regex("""("git\.path"\s*:\s*)"/data/app/[^"]*["]""")
  * A pattern that does not match changes nothing, so a file the user has
  * restructured is left as they wrote it rather than mangled.
  */
-internal fun refreshManagedPaths(content: String, bashPath: String, gitPath: String): String? {
-    var updated = BASH_PROFILE_PATH.replace(content) { "${it.groupValues[1]}\"$bashPath\"" }
-    updated = GIT_PATH.replace(updated) { "${it.groupValues[1]}\"$gitPath\"" }
+/**
+ * Names the extension directories left behind by an earlier bundled version.
+ *
+ * Bundled extensions are extracted to `publisher.name-version` directories, so
+ * bumping a version extracts a new directory beside the old one. The scanner
+ * shows only what `extensions.json` — the default profile's manifest — lists,
+ * not what sits on disk, so the deletion here is half of the swap: it is what
+ * lets reconcileExtensionsManifest drop the old entry and list the new version
+ * in its place. The other stake is disk, which never comes back on its own:
+ * the Python extension alone is 29 MB, kept for as long as the app is
+ * installed. (An earlier version of this comment claimed the scanner discovers
+ * extensions by listing directories; the manifest is what it reads.)
+ *
+ * Only strictly older copies are named. A user who installed a newer build of the
+ * same extension from the marketplace keeps it — that is their copy, and the
+ * scanner already prefers it. A version that is not purely numeric is left alone
+ * rather than guessed at.
+ */
+/**
+ * Directories under our own publisher that this build no longer bundles.
+ *
+ * `vscodroid.*` never appears on the marketplace, so such a directory can only
+ * be a leftover from a previous build of this app — the github-auth stub is the
+ * case that prompted this. With the manifest reconciled it would otherwise
+ * survive forever: reconciliation keeps any entry whose directory exists. A
+ * directory whose base id is still bundled is not retired; its versions belong
+ * to [supersededExtensionDirs].
+ */
+internal fun retiredOwnExtensionDirs(present: List<String>, bundled: List<String>): List<String> {
+    fun base(dir: String): String? {
+        val cut = dir.lastIndexOf('-')
+        if (cut <= 0 || cut == dir.length - 1) return null
+        return dir.substring(0, cut)
+    }
+
+    val bundledBases = bundled.mapNotNull(::base).toSet()
+    return present.filter { name ->
+        name.startsWith("vscodroid.") &&
+            name !in bundled &&
+            base(name).let { it != null && it !in bundledBases }
+    }
+}
+
+internal fun supersededExtensionDirs(present: List<String>, bundled: List<String>): List<String> {
+    fun split(dir: String): Pair<String, String>? {
+        val cut = dir.lastIndexOf('-')
+        if (cut <= 0 || cut == dir.length - 1) return null
+        return dir.substring(0, cut) to dir.substring(cut + 1)
+    }
+
+    fun parts(version: String): List<Int>? =
+        version.split('.').map { it.toIntOrNull() ?: return null }
+
+    fun isOlder(a: String, b: String): Boolean {
+        val left = parts(a) ?: return false
+        val right = parts(b) ?: return false
+        for (i in 0 until maxOf(left.size, right.size)) {
+            val l = left.getOrElse(i) { 0 }
+            val r = right.getOrElse(i) { 0 }
+            if (l != r) return l < r
+        }
+        return false
+    }
+
+    val current = bundled.mapNotNull(::split).toMap()
+    return present.filter { name ->
+        if (name in bundled) return@filter false
+        val (id, version) = split(name) ?: return@filter false
+        val bundledVersion = current[id] ?: return@filter false
+        isOlder(version, bundledVersion)
+    }
+}
+
+internal fun refreshManagedPaths(
+    content: String,
+    shellPath: String,
+    gitPath: String,
+    claudeWrapper: String,
+): String? {
+    var updated = GIT_PATH.replace(content) { "${it.groupValues[1]}\"$gitPath\"" }
+
+    val movedProfile =
+        LEGACY_BASH_PROFILE_PATH.replace(updated) { "${it.groupValues[1]}\"$shellPath\"" }
+    if (movedProfile != updated) {
+        updated = LEGACY_PROFILE_ARGS.replace(movedProfile) { "${it.groupValues[1]}[]" }
+        updated = SHELL_INTEGRATION_OFF.replace(updated) { "${it.groupValues[1]}true" }
+    }
+
+    // Without this setting the Claude Code extension refuses to start at all —
+    // resolveClaudeBinary() throws "Unsupported platform" rather than looking on
+    // PATH — so an install that predates the setting needs it added, not just
+    // refreshed. The value names musl's loader in nativeLibraryDir, so like the
+    // two paths above it moves on every reinstall and has to be rewritten here.
+    updated = if (CLAUDE_WRAPPER.containsMatchIn(updated)) {
+        CLAUDE_WRAPPER.replace(updated) { "${it.groupValues[1]}\"$claudeWrapper\"" }
+    } else {
+        insertSetting(updated, "claudeCode.claudeProcessWrapper", "\"$claudeWrapper\"")
+    }
+
+    // Signature verification cannot run here and refuses the install when it
+    // cannot: Code - OSS has no node_modules/vsda, and verify-server-tree.py
+    // rejects any tree that carries it, since only Microsoft's build may. Left on,
+    // every marketplace install stops at "cannot verify the extension signature /
+    // Signature verification was not executed" and offers to proceed unverified,
+    // which teaches people to click past a security prompt for no gain.
+    //
+    // Added for installs that predate it rather than only written at first run,
+    // and skipped when the key is already present in either state, because
+    // switching it back on is a decision worth keeping.
+    if (!VERIFY_SIGNATURE.containsMatchIn(updated)) {
+        updated = insertSetting(updated, "extensions.verifySignature", "false")
+    }
+
     return updated.takeIf { it != content }
+}
+
+/**
+ * Adds a setting to a JSONC document, directly after its opening brace.
+ *
+ * The document belongs to the user and is full of comments and formatting this
+ * app has no business reflowing, so exactly one line is inserted and nothing
+ * else moves. It borrows the indentation of the first property when there is
+ * one, which covers the document this app writes and anything formatted like it.
+ *
+ * [value] is written as-is, so it is raw JSON: callers quote their own strings.
+ * That is what lets a boolean through -- "false" and "\"false\"" are different
+ * settings, and the second one is not what any of these keys accept.
+ */
+private fun insertSetting(content: String, key: String, value: String): String {
+    val brace = content.indexOf('{')
+    if (brace < 0) return content
+    val indent = FIRST_PROPERTY.find(content)?.groupValues?.get(1) ?: "    "
+    return content.substring(0, brace + 1) +
+        "\n$indent\"$key\": $value," +
+        content.substring(brace + 1)
 }

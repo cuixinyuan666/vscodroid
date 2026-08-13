@@ -452,12 +452,19 @@ class MainActivity : AppCompatActivity() {
      * stays truthful. A folder that has since disappeared — a cleared SAF
      * mirror, unmounted storage — is dropped so the caller falls back to the
      * default rather than pinning the WebView to a dead path.
+     *
+     * The hierarchical check is load-bearing, not defensive. Before the workbench
+     * is loaded the WebView still holds the `data:` placeholder from
+     * [setupWebView], and `getQueryParameter` throws
+     * `UnsupportedOperationException` on an opaque URI. This runs on the main
+     * thread from `onServiceConnected`, so on every cold start the app died at the
+     * moment the server came up.
      */
     private fun folderFromUrl(url: String?): String? =
-        // A WebView that has not navigated yet reports an opaque URL
-        // (about:blank); getQueryParameter throws on non-hierarchical URIs.
-        url?.let { Uri.parse(it) }?.takeIf { it.isHierarchical }
-            ?.getQueryParameter("folder")?.takeIf { File(it).isDirectory }
+        url?.let { Uri.parse(it) }
+            ?.takeIf { it.isHierarchical }
+            ?.getQueryParameter("folder")
+            ?.takeIf { File(it).isDirectory }
 
     /**
      * Initializes the WebView bridge, security manager, and clients.
@@ -1005,13 +1012,23 @@ class MainActivity : AppCompatActivity() {
         val wv = webView ?: return
         // Read the open folder off the dying WebView before it goes away
         val lastUrl = wv.url
-        val container = findViewById<android.widget.FrameLayout>(R.id.webViewContainer)
+        val container = findViewById<android.widget.LinearLayout>(R.id.webViewContainer)
         container.removeView(wv)
         wv.destroy()
 
         val newWebView = WebView(this)
         newWebView.id = R.id.webView
-        container.addView(newWebView, 0)
+        // Weight, not the default wrap_content: the replacement has to claim the
+        // height the key row leaves, the same as the one declared in the layout.
+        container.addView(
+            newWebView,
+            0,
+            android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
         webView = newWebView
 
         // Reset bridge so initBridge() re-registers on the new WebView

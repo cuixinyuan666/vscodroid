@@ -1,0 +1,31 @@
+Brand the web Getting Started walkthrough.
+
+The welcome page's featured walkthrough is the one piece of product naming
+that lives in source strings rather than product.json: on first launch the
+user is greeted with "Get Started with VS Code for the Web" over a page
+titled "Setup VS Code Web". The pre-pivot build rewrote both strings in the
+packaged nls.messages files; that mutation lost its home when the download
+script was deleted, so every Code - OSS build since has shipped Microsoft's
+naming on the very first screen a user reads.
+
+The walkthrough's telemetry footer needs no equivalent edit: upstream gates
+it on productService.enableTelemetry, which the branding overlay sets to
+false, so it never renders here.
+
+--- a/src/vs/workbench/contrib/welcomeGettingStarted/common/gettingStartedContent.ts
++++ b/src/vs/workbench/contrib/welcomeGettingStarted/common/gettingStartedContent.ts
+@@ -289,12 +289,12 @@
+ 	{
+ 		id: 'SetupWeb',
+-		title: localize('gettingStarted.setupWeb.title', "Get Started with VS Code for the Web"),
++		title: localize('gettingStarted.setupWeb.title', "Get Started with VSCodroid"),
+ 		description: localize('gettingStarted.setupWeb.description', "Customize your editor, learn the basics, and start coding"),
+ 		isFeatured: true,
+ 		icon: setupIcon,
+ 		when: 'isWeb',
+ 		next: 'Beginner',
+-		walkthroughPageTitle: localize('gettingStarted.setupWeb.walkthroughPageTitle', 'Setup VS Code Web'),
++		walkthroughPageTitle: localize('gettingStarted.setupWeb.walkthroughPageTitle', 'Setup VSCodroid'),
+ 		content: {
+ 			type: 'steps',
+ 			steps: [

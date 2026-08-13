@@ -54,16 +54,23 @@ PKG_MAP_FILE="$(mktemp)"
 trap "rm -f '$PKG_MAP_FILE'" EXIT
 
 for pkg in "${REQUIRED_PACKAGES[@]}"; do
-    filename=$(awk -v pkg="$pkg" '
-        /^Package: / { current = $2 }
-        /^Filename: / && current == pkg { print $2; exit }
+    # One pass, emitting when the stanza ends: the live index carries duplicate
+    # Package stanzas (gdk-pixbuf, neovim-nightly, ...), and two independent
+    # scans could pair stanza A's Filename with stanza B's SHA256.
+    pkg_line=$(awk -v pkg="$pkg" '
+        /^Package: / { if (fn != "" && current == pkg) exit; current = $2; fn = ""; sh = "" }
+        /^Filename: / && current == pkg { fn = $2 }
+        /^SHA256: / && current == pkg { sh = $2 }
+        END { if (fn != "") print fn, (sh == "" ? "-" : sh) }
     ' Packages)
+    filename=${pkg_line% *}
+    sha256=${pkg_line##* }
 
     if [ -z "$filename" ]; then
         echo "  ERROR: Package '$pkg' not found in index"
         exit 1
     fi
-    echo "$pkg $filename" >> "$PKG_MAP_FILE"
+    echo "$pkg $filename ${sha256:--}" >> "$PKG_MAP_FILE"
     echo "  $pkg -> $(basename "$filename")"
 done
 
@@ -75,6 +82,35 @@ echo "  OpenJDK version: $JAVA_VERSION"
 
 get_pkg_filename() {
     awk -v pkg="$1" '$1 == pkg { print $2; exit }' "$PKG_MAP_FILE"
+}
+
+# Helper to look up the index's SHA256 for a package ("-" when absent)
+get_pkg_sha256() {
+    awk -v pkg="$1" '$1 == pkg { print $3; exit }' "$PKG_MAP_FILE"
+}
+
+# These payloads execute on user devices and arrive over a third-party
+# mirror. A file that does not match the index's SHA256 -- cached or fresh --
+# must not be used.
+verify_pkg_sha256() {
+    local file="$1" expected="$2"
+    if [ "$expected" = "-" ] || [ -z "$expected" ]; then
+        # Fail closed: the index and the payload come from the same host, so a
+        # mirror that drops the SHA256 line could otherwise switch the check
+        # off silently. Every package in the real index carries one; its
+        # absence is an anomaly, not a pass.
+        echo "    ERROR: no SHA256 in index for $(basename "$file")" >&2
+        return 1
+    fi
+    local actual
+    actual=$( (sha256sum "$file" 2>/dev/null || shasum -a 256 "$file") | cut -d' ' -f1)
+    if [ "$actual" != "$expected" ]; then
+        echo "    ERROR: $(basename "$file") does not match the index" >&2
+        echo "      index : $expected" >&2
+        echo "      file  : $actual" >&2
+        rm -f "$file"
+        return 1
+    fi
 }
 
 # --- Step 2: Download .deb files ---
@@ -90,6 +126,7 @@ for pkg in "${REQUIRED_PACKAGES[@]}"; do
         curl -L --fail --show-error -o "debs/$debname" "$TERMUX_REPO/$filename"
         echo "  $debname ($(du -sh "debs/$debname" | cut -f1))"
     fi
+    verify_pkg_sha256 "debs/$debname" "$(get_pkg_sha256 "$pkg")"
 done
 
 # --- Step 3: Extract ---

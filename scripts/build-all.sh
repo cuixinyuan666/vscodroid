@@ -10,26 +10,22 @@ echo "========================================="
 echo ""
 
 # Step 1: Setup
-echo "[1/5] Running setup..."
+echo "[1/4] Running setup..."
 "$SCRIPT_DIR/setup.sh"
 
-# Step 2: Build VS Code
+# Step 2: Fetch the VS Code Server
 echo ""
-echo "[2/5] Building VS Code..."
-if [ -d "$ROOT_DIR/server/lib/vscode" ]; then
-    "$SCRIPT_DIR/build-vscode.sh"
-else
-    echo "  ⚠ Skipping VS Code build (code-server submodule not initialized)"
-fi
+echo "[2/4] Fetching VS Code Server..."
+"$SCRIPT_DIR/fetch-vscode-oss.sh"
 
 # Step 3: Package assets
 echo ""
-echo "[3/5] Packaging assets..."
+echo "[3/4] Packaging assets..."
 "$SCRIPT_DIR/package-assets.sh"
 
 # Step 4: Build Android APK
 echo ""
-echo "[4/5] Building Android APK..."
+echo "[4/4] Building Android APK..."
 cd "$ROOT_DIR/android"
 if [ -f "gradlew" ]; then
     ./gradlew assembleDebug
@@ -38,9 +34,9 @@ else
     echo "  ⚠ Gradle wrapper not found. Run: cd android && gradle wrapper"
 fi
 
-# Step 5: Summary
+# Summary
 echo ""
-echo "[5/5] Build Summary"
+echo "Build Summary"
 APK_PATH="$ROOT_DIR/android/app/build/outputs/apk/debug/app-debug.apk"
 if [ -f "$APK_PATH" ]; then
     echo "  ✓ APK: $(du -sh "$APK_PATH" | cut -f1) at $APK_PATH"
