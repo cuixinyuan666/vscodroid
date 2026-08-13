@@ -21,10 +21,20 @@
  * TLS, plain forwarding for anything still on http. Node's own http/https
  * modules ignore these variables, so extension code written against them is
  * unaffected either way.
+ *
+ * Binding to 127.0.0.1 is not access control on Android. Loopback is not
+ * per-app isolated -- any installed app can connect to another app's loopback
+ * port -- so an unauthenticated forwarder here is reachable by every app on the
+ * device, and would let any of them make arbitrary outbound connections that
+ * appear to come from VSCodroid. The random port only raises the cost of
+ * finding it. Hence Basic proxy auth with a token minted per boot: the
+ * credentials ride in the proxy URL, which is how every standard proxy client
+ * already learns them, so nothing downstream needs to know this exists.
  */
 
 const http = require('http');
 const net = require('net');
+const crypto = require('crypto');
 const { URL } = require('url');
 
 /**
@@ -60,6 +70,57 @@ function start(log) {
     // every other outbound connect in this process share the exposure.
     net.setDefaultAutoSelectFamilyAttemptTimeout(1000);
 
+    // Minted per boot and never persisted: a token that outlived the process
+    // would be a credential on disk for a proxy that no longer exists.
+    //
+    // Hex, and it has to stay hex or something equally URL-inert. The token
+    // travels inside a URL's userinfo, and every client that reads it back runs
+    // it through decodeURIComponent first -- https-proxy-agent/dist/index.js:102
+    // and http-proxy-agent/dist/index.js:82 both do. A '%' from some shorter
+    // encoding would either be silently rewritten or throw URIError there,
+    // which surfaces here as an inexplicable 407 in a client we do not own.
+    const token = crypto.randomBytes(32).toString('hex');
+    const expected = crypto
+        .createHash('sha256')
+        .update(Buffer.from(`vscodroid:${token}`).toString('base64'))
+        .digest();
+
+    /**
+     * Matches the scheme case-insensitively and compares only the credentials.
+     *
+     * RFC 7235 makes the auth-scheme case-insensitive and Node passes the
+     * header through exactly as it arrived -- measured: "basic QUJD" stays
+     * "basic QUJD". Comparing the whole header string would therefore reject a
+     * conforming client over nothing but its capitalisation, and the client
+     * likeliest to be caught by that is the Claude Code CLI: a third-party
+     * binary this project does not bundle and cannot inspect, whose failure
+     * would look like an inexplicable 407.
+     *
+     * Digests before comparing so both buffers are always 32 bytes;
+     * timingSafeEqual throws outright on a length mismatch, which would turn a
+     * malformed header into a crash and leak the expected length besides.
+     *
+     * A duplicated header cannot be used to smuggle a second attempt past this:
+     * proxy-authorization is one of the headers Node keeps the first of and
+     * discards the rest -- also measured.
+     *
+     * @param {import('http').IncomingMessage} req
+     * @returns {boolean}
+     */
+    function authorized(req) {
+        const given = req.headers['proxy-authorization'];
+        if (typeof given !== 'string') {
+            return false;
+        }
+        const credentials = /^basic[ \t]+([A-Za-z0-9+/=]+)[ \t]*$/i.exec(given);
+        if (!credentials) {
+            return false;
+        }
+        return crypto.timingSafeEqual(crypto.createHash('sha256').update(credentials[1]).digest(), expected);
+    }
+
+    const CHALLENGE = 'Basic realm="vscodroid"';
+
     return new Promise((resolve) => {
         let settled = false;
         const done = (env) => {
@@ -70,6 +131,21 @@ function start(log) {
         };
 
         const server = http.createServer((req, res) => {
+            if (!authorized(req)) {
+                // No upstream leg exists yet, so there is nothing to tear down
+                // -- but an unhandled 'error' on either stream is still fatal,
+                // and a client that walked away before reading the 407 raises
+                // one here.
+                req.on('error', () => {});
+                res.on('error', () => {});
+                res.writeHead(407, { 'Proxy-Authenticate': CHALLENGE }).end();
+                return;
+            }
+            // Hop-by-hop by definition: the credential authenticates the client
+            // to this proxy and means nothing to the origin server. Forwarding
+            // it would hand this device's token to every host the CLI dials.
+            delete req.headers['proxy-authorization'];
+
             // Plain HTTP: the request line carries an absolute URI.
             let target;
             try {
@@ -113,8 +189,37 @@ function start(log) {
         // CONNECT: open a tunnel and stay out of the bytes. Resolution of `host`
         // happens in this process, which is the whole point.
         server.on('connect', (req, clientSocket, head) => {
+            // Registered before the first thing that can fail: a 407 written to
+            // a client that has already walked away emits EPIPE here, and an
+            // uncaught 'error' on a socket takes the whole bootstrap down.
+            let upstream = null;
+            clientSocket.on('error', () => upstream && upstream.destroy());
+
+            if (!authorized(req)) {
+                // "Connection: close" is load-bearing, not decoration. git does
+                // not send Basic preemptively -- http.proxyAuthMethod defaults
+                // to anyauth, which means "expect a 407 first" -- so it answers
+                // this challenge by retrying the CONNECT on the same socket.
+                // end() has already sent FIN, and without this header the
+                // client is entitled to think the connection is still reusable;
+                // the retry lands on a dead socket and git reports "Proxy
+                // CONNECT aborted" with nothing pointing at a proxy token.
+                // Measured: adding this one header is what makes git work, and
+                // Content-Length: 0 in its place does not.
+                //
+                // The plain-HTTP 407 above needs no equivalent: it goes through
+                // Node's own response framing, which keeps that connection
+                // alive for the retry.
+                clientSocket.end(
+                    `HTTP/1.1 407 Proxy Authentication Required\r\n` +
+                        `Proxy-Authenticate: ${CHALLENGE}\r\n` +
+                        `Connection: close\r\n\r\n`,
+                );
+                return;
+            }
+
             const [host, rawPort] = req.url.split(':');
-            const upstream = net.connect(Number(rawPort) || 443, host, () => {
+            upstream = net.connect(Number(rawPort) || 443, host, () => {
                 clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
                 if (head && head.length) {
                     upstream.write(head);
@@ -126,7 +231,6 @@ function start(log) {
                 log('warn', `dns-proxy: CONNECT ${host} failed: ${reason(err)}`);
                 clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
             });
-            clientSocket.on('error', () => upstream.destroy());
         });
 
         server.on('error', (err) => {
@@ -138,8 +242,11 @@ function start(log) {
         // fixed port to collide with, and nothing to persist between launches.
         server.listen(0, '127.0.0.1', () => {
             const { port } = server.address();
-            const url = `http://127.0.0.1:${port}`;
-            log('info', `dns-proxy listening on ${url}`);
+            // The log line is deliberately the credential-free form: this goes
+            // to logcat and to the workbench output channel, both readable well
+            // outside the process that owns the token.
+            log('info', `dns-proxy listening on http://127.0.0.1:${port}`);
+            const url = `http://vscodroid:${token}@127.0.0.1:${port}`;
             done({
                 HTTP_PROXY: url,
                 HTTPS_PROXY: url,
