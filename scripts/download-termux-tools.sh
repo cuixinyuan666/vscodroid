@@ -507,7 +507,76 @@ else
     echo "  WARNING: terminfo not found in ncurses package"
 fi
 
-# --- Step 8: Size summary ---
+# --- Step 8: Verify everything placed can actually load on Android ---
+echo ""
+echo "=== Verifying placed binaries ==="
+# Every object above arrives pre-compiled from a third-party mirror and is then
+# either executed on the device or dlopen'd into a process there, and until now
+# nothing checked that any of it could load at all. That gap is not theoretical:
+# an install shipped a libbash.so whose libandroid-support.so was not beside it,
+# and the terminal died with "CANNOT LINK EXECUTABLE ... library
+# libandroid-support.so not found" -- at runtime, on a device, from a build that
+# had reported success. verify-android-elf.py answers exactly the three
+# questions that would have caught it: the right architecture, every DT_NEEDED
+# resolvable, and 16 KB segment alignment for Android 16.
+#
+# Both --lib-dir arguments are load-bearing. The executables here link against
+# the libraries this same script places, so a check without them would reject
+# every legitimate dependency and the gate would be useless in the other
+# direction.
+#
+# This runs last because step 5 empties assets/usr/lib before repopulating it:
+# verifying earlier would be verifying a directory still being built.
+
+JNILIBS_BINARIES=(libbash.so libgit.so libtmux.so libmake.so libssh.so libssh-keygen.so)
+
+# git-core holds shell scripts and a manifest beside its binaries, and the
+# verifier rejects a non-ELF file rather than skipping it.
+is_elf() {
+    [ "$(dd if="$1" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "7f454c46" ]
+}
+
+verify_failures=0
+verify_checked=0
+
+verify_object() {
+    local out
+    verify_checked=$((verify_checked + 1))
+    if ! out=$(python3 "$SCRIPT_DIR/verify-android-elf.py" "$1" \
+                   --lib-dir "$ASSETS_DIR/usr/lib" --lib-dir "$JNILIBS_DIR" 2>&1); then
+        echo "  FAILED  $(basename "$1")" >&2
+        # `|| true` because this file runs under pipefail: if grep ever matched
+        # nothing it would return 1, and the shell would exit right here --
+        # killing the build with no message at all, in the one branch whose job
+        # is to explain what went wrong. Measured, not assumed: a failing
+        # pipeline in this position aborts before the next line runs.
+        echo "$out" | grep -v '^  ok' | sed 's/^/     /' >&2 || true
+        verify_failures=$((verify_failures + 1))
+    fi
+}
+
+for name in "${JNILIBS_BINARIES[@]}"; do
+    verify_object "$JNILIBS_DIR/$name"
+done
+
+for lib in "$ASSETS_DIR/usr/lib"/*.so*; do
+    [ -f "$lib" ] && verify_object "$lib"
+done
+
+for helper in "$GIT_CORE_DST"/*; do
+    [ -f "$helper" ] && is_elf "$helper" && verify_object "$helper"
+done
+
+if [ "$verify_failures" -gt 0 ]; then
+    echo "" >&2
+    echo "  ERROR: $verify_failures of $verify_checked objects would fail to load" >&2
+    echo "         on a device. Shipping them produces a working build and a" >&2
+    echo "         broken install." >&2
+    exit 1
+fi
+echo "  $verify_checked objects verified: architecture, dependencies, 16 KB alignment"
+
+# --- Step 9: Size summary ---
 echo ""
 echo "=== Size Summary ==="
 
