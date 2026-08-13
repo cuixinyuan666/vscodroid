@@ -74,7 +74,10 @@ if (!fs.existsSync(rehEntryPoint)) {
             <body style="background:#1e1e1e;color:#ccc;font-family:monospace;padding:40px;text-align:center;">
                 <h1>VSCodroid</h1>
                 <p>Server is running, but VS Code is not yet built.</p>
-                <p>Run: <code>./scripts/build-vscode.sh && ./scripts/package-assets.sh</code></p>
+                <p>Run: <code>./scripts/fetch-vscode-oss.sh && ./scripts/package-assets.sh</code></p>
+                <p style="color:#666;">The fetch pulls the server tree from the <code>server-&lt;version&gt;</code>
+                release for the version pinned in <code>VSCODE_VERSION</code>. If no such release exists,
+                build it first with the <code>build-vscode-oss</code> workflow.</p>
                 <p style="color:#666;">Node.js ${process.version} on ${process.platform} ${process.arch}</p>
             </body>
             </html>

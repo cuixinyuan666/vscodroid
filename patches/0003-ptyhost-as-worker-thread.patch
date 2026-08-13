@@ -29,7 +29,6 @@ ipc.cp.ts picks between them on serverName. Only the Pty Host moves in this
 change; the file watcher keeps forking, and the Extension Host is a separate step
 because it also has to stop passing sockets over its channel.
 
-  ipc.cp.ts: situs fork dikondisikan
 diff --git a/src/bootstrap-fork.ts b/src/bootstrap-fork.ts
 index a92290a..282873b 100644
 --- a/src/bootstrap-fork.ts
