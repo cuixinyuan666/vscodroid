@@ -960,6 +960,20 @@ claude() {
                         "the new one will be merged into it")
                 }
             }
+
+            // Every pre-pivot release also extracted a standalone web client here
+            // (the reh-web tree now carries it), and nothing writes or reads this
+            // path anymore — without this, tens of MB ride along on every phone
+            // forever, counted into the storage figure the app reports.
+            val webTree = File(context.filesDir, "server/vscode-web")
+            if (webTree.exists()) {
+                val freed = webTree.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+                if (webTree.deleteRecursively()) {
+                    Logger.i(tag, "Removed the orphaned web client tree (${freed / 1_048_576} MB)")
+                } else {
+                    Logger.e(tag, "Could not remove the orphaned web client tree at $webTree")
+                }
+            }
         }
     }
 
