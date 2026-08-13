@@ -220,34 +220,6 @@ class AndroidBridge(
         CrashReporter.clearCrashLogs()
     }
 
-    // -- GitHub OAuth --
-
-    /**
-     * Opens a GitHub OAuth URL via Chrome Custom Tabs.
-     * The callback deep link (vscodroid://oauth/github?code=...&state=...)
-     * is handled by MainActivity and forwarded to VS Code via JS callback.
-     */
-    @JavascriptInterface
-    fun startGitHubAuth(authUrl: String, authToken: String) {
-        if (!security.validateToken(authToken)) return
-        try {
-            val uri = Uri.parse(authUrl)
-            // Only allow GitHub OAuth URLs to prevent misuse
-            if (uri.scheme != "https" || uri.host != "github.com") {
-                Logger.w(tag, "Blocked non-GitHub OAuth URL: ${uri.host}")
-                return
-            }
-            val customTabsIntent = CustomTabsIntent.Builder()
-                .setShowTitle(true)
-                .build()
-            customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            customTabsIntent.launchUrl(context, uri)
-            Logger.i(tag, "GitHub OAuth started")
-        } catch (e: Exception) {
-            Logger.e(tag, "Failed to start GitHub OAuth", e)
-        }
-    }
-
     // -- Toolchain Settings --
 
     /**

@@ -132,10 +132,6 @@ class MainActivity : AppCompatActivity() {
             handleExtensionCallback(uri)
             return
         }
-        if (uri?.scheme == "vscodroid" && uri.host == "oauth") {
-            handleOAuthCallback(uri)
-            return
-        }
         handleIntent(intent)
     }
 
@@ -876,9 +872,6 @@ class MainActivity : AppCompatActivity() {
                         } else if (d.cmd === 'generateBugReport') {
                             result = AndroidBridge.generateBugReport(token);
                             ch.postMessage({id: d.id, ok: true, data: result});
-                        } else if (d.cmd === 'startGitHubAuth') {
-                            AndroidBridge.startGitHubAuth(d.url, token);
-                            ch.postMessage({id: d.id, ok: true});
                         } else if (d.cmd === 'openToolchainSettings') {
                             AndroidBridge.openToolchainSettings(token);
                             ch.postMessage({id: d.id, ok: true});
@@ -1077,27 +1070,6 @@ class MainActivity : AppCompatActivity() {
                 }
             })();
         """.trimIndent(), null)
-    }
-
-    /**
-     * Forwards an OAuth callback deep link to VS Code's authentication handler.
-     * URL format: vscodroid://oauth/github?code=XXX&state=YYY
-     */
-    private fun handleOAuthCallback(uri: Uri) {
-        val code = uri.getQueryParameter("code")
-        val state = uri.getQueryParameter("state")
-        if (code == null || state == null) {
-            Logger.w(tag, "OAuth callback missing code or state: $uri")
-            return
-        }
-        Logger.i(tag, "OAuth callback received (state=$state)")
-        // Forward to VS Code's auth handler via JS.
-        // Use JSONObject.quote() for complete escaping (handles \u2028, \u2029, etc.)
-        val escapedCode = org.json.JSONObject.quote(code)
-        val escapedState = org.json.JSONObject.quote(state)
-        webView?.evaluateJavascript(
-            "window.__vscodroid?.onOAuthCallback?.($escapedCode, $escapedState)", null
-        )
     }
 
     /**
