@@ -401,14 +401,41 @@ int pidfd_spawnp(int *pidfd, const char *file, const void *facts,
 
 /*
  * posix_spawn's chdir action. Bionic has it under the _np name POSIX had not yet
- * standardised when it was added; the declaration is guarded by API level in the
- * headers, so it is declared here rather than relying on the guard.
+ * standardised when it was added -- but only from API 34, the same dividing line
+ * copy_file_range sits on.
+ *
+ * This used to declare the _np name by hand and call it directly, on the
+ * reasoning that the header's API guard was the only thing in the way. The
+ * guard was not the obstacle; it was the warning. Declaring a symbol does not
+ * make it exist, it only moves the failure from compile time to load time, and
+ * load time is far worse here: the reference was a strong undefined symbol, so
+ * on an API 33 device Bionic's loader failed to bind it and dlopen of
+ * libglibc-shim.so failed outright -- taking every stub and therefore every
+ * glibc addon with it, on exactly the devices the minimum supports. Nothing
+ * caught it because every test ran on an API 36 emulator, where the symbol is
+ * present. It was the only undefined symbol in this library that Bionic could
+ * not supply.
+ *
+ * Resolved at runtime instead, like copy_file_range, so the library loads
+ * everywhere and only this one action is unavailable below 34. The
+ * posix_spawn_file_actions_* family reports errors by return value rather than
+ * through errno, so ENOSYS is returned directly.
  */
-int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, const char *);
-
 int posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t *acts,
                                       const char *path) {
-    return posix_spawn_file_actions_addchdir_np(acts, path);
+    static int (*real)(posix_spawn_file_actions_t *, const char *);
+    static int looked_up;
+
+    if (!looked_up) {
+        if (!shim_libc) shim_open_handles();
+        if (shim_libc) {
+            *(void **)&real = dlsym(shim_libc, "posix_spawn_file_actions_addchdir_np");
+        }
+        looked_up = 1;
+    }
+
+    if (!real) return ENOSYS;
+    return real(acts, path);
 }
 
 /*
