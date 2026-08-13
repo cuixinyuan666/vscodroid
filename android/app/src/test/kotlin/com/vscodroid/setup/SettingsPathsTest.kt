@@ -41,9 +41,10 @@ class SettingsPathsTest {
         shellIntegration: String = "false",
         preamble: String = "",
         claudeWrapper: String? = wrapper,
+        verifySignature: Boolean = true,
     ) = """
         {
-        $preamble    "editor.fontSize": 14,${claudeWrapper?.let { "\n    \"claudeCode.claudeProcessWrapper\": \"$it\"," } ?: ""}
+        $preamble    "editor.fontSize": 14,${claudeWrapper?.let { "\n    \"claudeCode.claudeProcessWrapper\": \"$it\"," } ?: ""}${if (verifySignature) "\n        \"extensions.verifySignature\": false," else ""}
             "terminal.integrated.profiles.linux": {
                 "bash": {
                     "path": "$bashPath",
@@ -200,7 +201,8 @@ class SettingsPathsTest {
 
         @Test
         fun `returns null when git path is absent rather than inventing one`() {
-            val noGit = """{ "claudeCode.claudeProcessWrapper": "$wrapper", "editor.fontSize": 14 }"""
+            val noGit = """{ "claudeCode.claudeProcessWrapper": "$wrapper", """ +
+                """"extensions.verifySignature": false, "editor.fontSize": 14 }"""
 
             assertNull(refreshManagedPaths(noGit, shell, git, wrapper))
         }
@@ -211,6 +213,7 @@ class SettingsPathsTest {
             val restructured = """
                 {
                     "claudeCode.claudeProcessWrapper": "$wrapper",
+                    "extensions.verifySignature": false,
                     "terminal.integrated.profiles.linux": {
                         "zsh": { "path": "$oldDir/libzsh.so" }
                     }
@@ -270,6 +273,32 @@ class SettingsPathsTest {
 
             assertTrue(result.contains(""""claudeCode.claudeProcessWrapper": "$wrapper""""))
             assertTrue(!result.contains("node-old"), "stale value survived:\n$result")
+        }
+
+        @Test
+        fun `turns signature verification off for installs that predate it`() {
+            // Code - OSS has no vsda, so verification cannot run and refuses the
+            // install when it cannot. Without this, every marketplace install stops
+            // at a security prompt the user can only click past.
+            val before = settings(shell, git, args = "[]", verifySignature = false)
+            val result = requireNotNull(refreshManagedPaths(before, shell, git, wrapper)) {
+                "a missing extensions.verifySignature must be added"
+            }
+
+            assertTrue(
+                result.contains(""""extensions.verifySignature": false"""),
+                "setting not inserted:\n$result",
+            )
+        }
+
+        @Test
+        fun `leaves signature verification alone once the user has an opinion`() {
+            // Either value counts as an opinion: someone who turned it back on meant to.
+            val on = settings(shell, git, args = "[]")
+                .replace(""""extensions.verifySignature": false""", """"extensions.verifySignature": true""")
+
+            assertNull(refreshManagedPaths(on, shell, git, wrapper),
+                "a deliberate re-enable was overwritten")
         }
 
         @Test

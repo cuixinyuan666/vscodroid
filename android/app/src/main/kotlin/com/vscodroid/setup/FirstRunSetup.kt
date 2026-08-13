@@ -688,6 +688,7 @@ claude() {
                     },
                     "git.path": "$nativeLibDir/libgit.so",
                     "terminal.integrated.shellIntegration.enabled": true,
+                    "extensions.verifySignature": false,
                     "telemetry.telemetryLevel": "off",
                     "telemetry.enableTelemetry": false,
                     "update.mode": "none",
@@ -1008,6 +1009,13 @@ private val SHELL_INTEGRATION_OFF = Regex(
 private val CLAUDE_WRAPPER = Regex("""("claudeCode\.claudeProcessWrapper"\s*:\s*)"[^"]*"""")
 
 /**
+ * Whether the user's settings already mention extension signature verification.
+ *
+ * Only its presence matters, either value: someone who turned it back on meant to.
+ */
+private val VERIFY_SIGNATURE = Regex(""""extensions\.verifySignature"\s*:""")
+
+/**
  * The first property in the document, with the indentation it sits at.
  *
  * Anchored to the opening brace so it cannot match a property nested inside some
@@ -1107,7 +1115,21 @@ internal fun refreshManagedPaths(
     updated = if (CLAUDE_WRAPPER.containsMatchIn(updated)) {
         CLAUDE_WRAPPER.replace(updated) { "${it.groupValues[1]}\"$claudeWrapper\"" }
     } else {
-        insertSetting(updated, "claudeCode.claudeProcessWrapper", claudeWrapper)
+        insertSetting(updated, "claudeCode.claudeProcessWrapper", "\"$claudeWrapper\"")
+    }
+
+    // Signature verification cannot run here and refuses the install when it
+    // cannot: Code - OSS has no node_modules/vsda, and verify-server-tree.py
+    // rejects any tree that carries it, since only Microsoft's build may. Left on,
+    // every marketplace install stops at "cannot verify the extension signature /
+    // Signature verification was not executed" and offers to proceed unverified,
+    // which teaches people to click past a security prompt for no gain.
+    //
+    // Added for installs that predate it rather than only written at first run,
+    // and skipped when the key is already present in either state, because
+    // switching it back on is a decision worth keeping.
+    if (!VERIFY_SIGNATURE.containsMatchIn(updated)) {
+        updated = insertSetting(updated, "extensions.verifySignature", "false")
     }
 
     return updated.takeIf { it != content }
@@ -1120,12 +1142,16 @@ internal fun refreshManagedPaths(
  * app has no business reflowing, so exactly one line is inserted and nothing
  * else moves. It borrows the indentation of the first property when there is
  * one, which covers the document this app writes and anything formatted like it.
+ *
+ * [value] is written as-is, so it is raw JSON: callers quote their own strings.
+ * That is what lets a boolean through -- "false" and "\"false\"" are different
+ * settings, and the second one is not what any of these keys accept.
  */
 private fun insertSetting(content: String, key: String, value: String): String {
     val brace = content.indexOf('{')
     if (brace < 0) return content
     val indent = FIRST_PROPERTY.find(content)?.groupValues?.get(1) ?: "    "
     return content.substring(0, brace + 1) +
-        "\n$indent\"$key\": \"$value\"," +
+        "\n$indent\"$key\": $value," +
         content.substring(brace + 1)
 }
