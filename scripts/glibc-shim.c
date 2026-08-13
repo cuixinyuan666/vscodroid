@@ -292,10 +292,12 @@ void sdallocx(void *ptr, size_t size, int flags) { (void)size; (void)flags; free
 
 static void *shim_libc;
 static void *shim_libdl;
+static void *shim_self;
 
 __attribute__((constructor(101))) static void shim_open_handles(void) {
     shim_libc = dlopen("libc.so", RTLD_LAZY | RTLD_NOLOAD);
     shim_libdl = dlopen("libdl.so", RTLD_LAZY | RTLD_NOLOAD);
+    shim_self = dlopen("libglibc-shim.so", RTLD_LAZY | RTLD_NOLOAD);
 }
 
 void *__shim_resolve(const char *name) {
@@ -311,6 +313,18 @@ void *__shim_resolve(const char *name) {
 
     void *p = shim_libc ? dlsym(shim_libc, name) : 0;
     if (!p && shim_libdl) p = dlsym(shim_libdl, name);
+    /* This library's own definitions, and they have to be asked for by handle.
+     * RTLD_NEXT begins after the caller, and the caller is this file, so the
+     * twelve symbols that exist only here -- __errno_location, __ctype_b_loc,
+     * the __xstat family, bcmp, fcntl64 and the rest -- resolved to nothing and
+     * left their trampolines null. Measured, not deduced: instrumenting this
+     * function showed every one of them taking the NONE branch while the addon
+     * ran correctly anyway, because the addon binds to this library directly and
+     * never reaches the trampoline. That made the null a landmine rather than a
+     * failure -- it fires the moment anything does reach the trampoline. Asking
+     * ourselves last of the three keeps Bionic's implementation preferred
+     * wherever one exists. */
+    if (!p && shim_self) p = dlsym(shim_self, name);
     if (!p) p = dlsym(RTLD_NEXT, name);
     return p;
 }

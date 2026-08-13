@@ -70,9 +70,15 @@ PAGE_SIZE_FLAGS=(-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384)
 
 echo ""
 echo "--- libglibc-shim.so ---"
+# -soname because the library now looks itself up by name at load time, to fill
+# the trampolines for the symbols only it defines. Without one the loader
+# registers it under whatever string happened to be requested; naming it here
+# makes that identity stated rather than incidental. The stubs already record
+# exactly this in DT_NEEDED, so nothing else changes.
 "$CC" -shared -fPIC -O2 -Wall \
     -o "$OUT_DIR/libglibc-shim.so" \
     "$SCRIPT_DIR/glibc-shim.c" \
+    -Wl,-soname,libglibc-shim.so \
     "${PAGE_SIZE_FLAGS[@]}"
 echo "  $(wc -c < "$OUT_DIR/libglibc-shim.so" | tr -d ' ') bytes"
 
