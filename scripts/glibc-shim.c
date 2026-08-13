@@ -466,7 +466,20 @@ static ssize_t copy_file_range_fallback(int fd_in, off64_t *off_in, int fd_out,
             put += n;
         }
         total += (size_t)put;
-        if (failed || put < got) break;
+        if (put < got) {
+            /* read() took `got` bytes from the descriptor's own position but
+             * only `put` were copied, so fd_in now points past the data still
+             * owed. The real call leaves it advanced by exactly what it copied,
+             * and this function's own contract tells callers to loop on a short
+             * count -- so without the rewind that loop resumes past the gap and
+             * the difference is data silently dropped. Measured against the
+             * kernel with a write ceiling: it left fd_in at 20000, this left it
+             * at 32768. Only the read() path needs it; pread() never moved the
+             * descriptor. */
+            if (!off_in) lseek(fd_in, -(off_t)(got - put), SEEK_CUR);
+            break;
+        }
+        if (failed) break;
     }
 
     if (off_in) *off_in += (off64_t)total;
