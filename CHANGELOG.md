@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The loopback DNS proxy that gives musl binaries working name resolution now requires a per-boot token. Binding to `127.0.0.1` is not access control on Android — loopback is not isolated per app — so any installed app could previously have used it as an open forwarder for arbitrary outbound connections attributed to VSCodroid
 
 ### Fixed
+- An emergency port picked when the usual range is full is no longer remembered. It came from the range the kernel hands to outgoing connections, so a later launch would often find it taken and move the workbench to a new address — emptying secret storage and every extension's saved state, and never moving back once the congestion cleared
+- Tunnelling to an IPv6 address through the local proxy failed: the target was split on every colon, so `[::1]:443` was read as a host named `[`. A malformed port in the same position could take the server down at startup instead of being refused
+- The placeholder page shown before the editor is installed pointed at a build script that no longer exists
+- Legal notices listed fixed versions for Node.js, Python, Bash, tmux and Make, none of which this repository pins — they come from the package index at build time, so the numbers had been wrong since the runtime changed
 - Chat panels were unusable: the extra key row covered the bottom of the page — exactly where VS Code anchors the chat toolbar — so the model picker and Send button could be seen but never tapped
 - Claude Code sign-in died with "Socket is closed": Node abandoned each connection attempt after 250 ms, which the API's handshake regularly exceeded from a phone
 - The glibc shim's ctype table misclassified five of twelve character classes, and its `environ`/`stdout`/`stderr` exports loaded as NULL
