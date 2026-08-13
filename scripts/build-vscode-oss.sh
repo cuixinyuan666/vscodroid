@@ -243,8 +243,25 @@ elapsed $(( SECONDS - t0 ))
 step "Package (vscode-reh-web-linux-$ARCH-min-ci)"
 # Packaging only -- native extensions, the node download, the copy into place.
 # Correct precisely because core-ci has already produced out-vscode-reh-web-min.
+#
+# On failure, print both sides of the copy. This stage's errors name the output
+# tree, so without the input beside it there is nothing to tell "packaging did
+# not copy it" apart from "it was never built" -- a distinction that cost three
+# runs to make once already.
 t0=$SECONDS
-npm run gulp "vscode-reh-web-linux-$ARCH-min-ci"
+if ! npm run gulp "vscode-reh-web-linux-$ARCH-min-ci"; then
+    echo "" >&2
+    echo "  --- what packaging read from (.build/extensions/copilot) ---" >&2
+    ls "$SRC/.build/extensions/copilot" 2>&1 | head -20 | sed 's/^/    /' >&2
+    ls "$SRC/.build/extensions/copilot/node_modules/@github" 2>&1 | sed 's/^/    @github: /' >&2
+    find "$SRC/.build/extensions/copilot/node_modules/@github/copilot/sdk" -maxdepth 1 2>&1 \
+        | head -8 | sed 's/^/    sdk: /' >&2
+    echo "  --- what reached the output ($OUT/extensions/copilot) ---" >&2
+    ls "$OUT/extensions" 2>&1 | head -20 | sed 's/^/    /' >&2
+    ls "$OUT/extensions/copilot" 2>&1 | head -20 | sed 's/^/    copilot: /' >&2
+    df -h "$WORK" 2>&1 | tail -1 | sed 's/^/    disk: /' >&2
+    exit 1
+fi
 elapsed $(( SECONDS - t0 ))
 step "Prune"
 # The node-linux-arm64 gulp task downloads a GNU/Linux Node and packageTask ships
