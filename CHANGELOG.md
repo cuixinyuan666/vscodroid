@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - The loopback DNS proxy that gives musl binaries working name resolution now requires a per-boot token. Binding to `127.0.0.1` is not access control on Android — loopback is not isolated per app — so any installed app could previously have used it as an open forwarder for arbitrary outbound connections attributed to VSCodroid
+- A rejected tunnel request through that proxy no longer leaves a connection pinned open. Any app on the device could previously open them in a loop and hold file descriptors in VSCodroid's server for as long as it kept running — without a token, without reaching the network, and without leaving a trace in the log
 
 ### Fixed
 - An emergency port picked when the usual range is full is no longer remembered. It came from the range the kernel hands to outgoing connections, so a later launch would often find it taken and move the workbench to a new address — emptying secret storage and every extension's saved state, and never moving back once the congestion cleared

@@ -121,6 +121,27 @@ function start(log) {
 
     const CHALLENGE = 'Basic realm="vscodroid"';
 
+    /**
+     * Writes a final response on a CONNECT socket and then releases it.
+     *
+     * end() on its own does not release anything here. http.Server constructs
+     * its sockets with allowHalfOpen -- measured true on the bundled runtime --
+     * so end() sends our FIN and then waits for the peer's. A client that
+     * simply stops talking never sends one, and the descriptor stays pinned for
+     * the life of the process: measured, 100 rejected CONNECTs held 100
+     * server-side sockets, still held at 65 seconds. Nothing reaps them,
+     * because none of the HTTP timeouts govern a socket once 'connect' has
+     * fired -- also measured, against a server whose timeouts demonstrably
+     * still reap an ordinary request.
+     *
+     * The callback runs once writableFinished is set, so the response is fully
+     * handed to the kernel before the descriptor closes; a challenge-response
+     * client such as git still reads the whole 407 and retries with
+     * credentials. It is also called on a socket that was already destroyed,
+     * so there is no path where this silently does nothing.
+     */
+    const closeWith = (socket, response) => socket.end(response, () => socket.destroy());
+
     return new Promise((resolve) => {
         let settled = false;
         const done = (env) => {
@@ -220,7 +241,8 @@ function start(log) {
                 // The plain-HTTP 407 above needs no equivalent: it goes through
                 // Node's own response framing, which keeps that connection
                 // alive for the retry.
-                clientSocket.end(
+                closeWith(
+                    clientSocket,
                     `HTTP/1.1 407 Proxy Authentication Required\r\n` +
                         `Proxy-Authenticate: ${CHALLENGE}\r\n` +
                         `Connection: close\r\n\r\n`,
@@ -266,7 +288,7 @@ function start(log) {
                     throw new Error('no host in CONNECT target');
                 }
             } catch {
-                clientSocket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+                closeWith(clientSocket, 'HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
                 return;
             }
             upstream = net.connect(port, host, () => {
@@ -279,7 +301,7 @@ function start(log) {
             });
             upstream.on('error', (err) => {
                 log('warn', `dns-proxy: CONNECT ${host}:${port} failed: ${reason(err)}`);
-                clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+                closeWith(clientSocket, 'HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
             });
         });
 

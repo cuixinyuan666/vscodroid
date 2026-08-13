@@ -367,6 +367,48 @@ async function main() {
     const stillAlive = await proxiedGet(proxyPort, `http://127.0.0.1:${originPort}/`, goodCredentials);
     assert.strictEqual(stillAlive.status, 200, 'the proxy died after a client aborted mid-transfer');
 
+    // --- a rejected CONNECT must not pin a descriptor ---------------------
+    // The response text is identical whether or not the socket is released, so
+    // this is the one case in the file that has to be asserted by counting.
+    // http.Server builds its sockets with allowHalfOpen, so end() sends our FIN
+    // and waits for a peer FIN that a client with no interest in replying never
+    // sends; and no HTTP timeout governs a socket once 'connect' has fired. A
+    // co-installed app could otherwise hold descriptors in this process for
+    // free, without a token and without a single line in the log.
+    //
+    // _getActiveHandles is private, and used deliberately: both ends live in
+    // this process, so it is the only vantage point that sees the server side
+    // at all.
+    const liveSockets = () =>
+        process._getActiveHandles().filter((h) => h.constructor && h.constructor.name === 'Socket' && !h.destroyed)
+            .length;
+
+    const PROBES = 40;
+    const baseline = liveSockets();
+    const probes = [];
+    for (let i = 0; i < PROBES; i++) {
+        await new Promise((resolve) => {
+            const socket = net.connect(proxyPort, '127.0.0.1', () => {
+                socket.write(`${connectHead}\r\n`);
+                probes.push(socket);
+                resolve();
+            });
+            socket.on('error', resolve);
+        });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Every probe still holds its own client socket on purpose -- a peer that
+    // hangs up is exactly the case that already worked. What must not survive
+    // is the server's half.
+    const held = liveSockets() - baseline - probes.length;
+    assert.ok(
+        held <= 0,
+        `${held} of ${PROBES} rejected CONNECTs left a server-side socket pinned; ` +
+            'end() without a release leaves them half-open and nothing reaps them',
+    );
+    probes.forEach((socket) => socket.destroy());
+
     // --- the token must not escape into any log ---------------------------
     const secret = decodeURIComponent(proxy.password);
     for (const line of logLines) {
