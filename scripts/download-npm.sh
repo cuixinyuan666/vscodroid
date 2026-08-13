@@ -33,6 +33,24 @@ else
     echo "  Downloaded: $(du -sh "$WORK_DIR/$NODE_TARBALL" | cut -f1)"
 fi
 
+# nodejs.org publishes SHASUMS256.txt per release; npm ships inside the APK, so
+# the tarball it comes from gets the same verification as every other payload.
+expected=$(curl -sL --fail --show-error "https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt" \
+    | awk -v f="$NODE_TARBALL" '$2 == f { print $1; exit }')
+if [ -n "$expected" ]; then
+    actual=$( (sha256sum "$WORK_DIR/$NODE_TARBALL" 2>/dev/null || shasum -a 256 "$WORK_DIR/$NODE_TARBALL") | cut -d' ' -f1)
+    if [ "$actual" != "$expected" ]; then
+        echo "  ERROR: $NODE_TARBALL does not match SHASUMS256.txt" >&2
+        echo "    published : $expected" >&2
+        echo "    file      : $actual" >&2
+        rm -f "$WORK_DIR/$NODE_TARBALL"
+        exit 1
+    fi
+    echo "  sha256: verified against SHASUMS256.txt"
+else
+    echo "  WARNING: could not resolve $NODE_TARBALL in SHASUMS256.txt; unverified" >&2
+fi
+
 # --- Step 2: Extract only npm ---
 echo ""
 echo "Extracting npm from tarball..."

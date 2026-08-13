@@ -46,6 +46,11 @@ curl -sL --fail --show-error -o "$WORK_DIR/APKINDEX.tar.gz" "$MIRROR/APKINDEX.ta
 # closing the pipe early makes tar fail the whole script under `set -o pipefail`.
 tar xzf "$WORK_DIR/APKINDEX.tar.gz" -C "$WORK_DIR" APKINDEX
 MUSL_VERSION=$(awk -v RS='' '/(^|\n)P:musl\n/ { for (i = 1; i <= NF; i++) if ($i ~ /^V:/) { print substr($i, 3); exit } }' "$WORK_DIR/APKINDEX")
+# The strongest digest APKINDEX carries: C: is "Q1" + base64(SHA1). SHA1 is
+# below today's bar but it is what Alpine publishes for v2 indexes, and a
+# stale or truncated mirror file still fails it -- checking it beats trusting
+# the transport. Noted as a limitation rather than silently accepted.
+MUSL_C1=$(awk -v RS='' '/(^|\n)P:musl\n/ { for (i = 1; i <= NF; i++) if ($i ~ /^C:/) { print substr($i, 3); exit } }' "$WORK_DIR/APKINDEX")
 
 if [ -z "$MUSL_VERSION" ]; then
     echo "  ERROR: no musl package in the $ALPINE_BRANCH index." >&2
@@ -56,6 +61,35 @@ echo "  version   : $MUSL_VERSION"
 APK="$WORK_DIR/musl-$MUSL_VERSION.apk"
 if [ ! -f "$APK" ]; then
     curl -sL --fail --show-error -o "$APK" "$MIRROR/musl-$MUSL_VERSION.apk"
+fi
+if [ -n "$MUSL_C1" ]; then
+    # An .apk is three concatenated gzip streams -- signature, control, data --
+    # and C: is the SHA1 of the CONTROL stream alone, not of the file. Hashing
+    # the whole file fails against a perfectly good package.
+    actual=$(python3 - "$APK" <<'PY'
+import base64, hashlib, sys, zlib
+data = open(sys.argv[1], "rb").read()
+bounds, i = [], 0
+for _ in range(3):
+    d = zlib.decompressobj(31)
+    d.decompress(data[i:])
+    end = len(data) - len(d.unused_data)
+    bounds.append((i, end))
+    i = end
+control = data[bounds[0][1]:bounds[1][1]]
+print("Q1" + base64.b64encode(hashlib.sha1(control).digest()).decode())
+PY
+)
+    if [ "$actual" != "$MUSL_C1" ]; then
+        echo "  ERROR: musl-$MUSL_VERSION.apk does not match the index" >&2
+        echo "    index : $MUSL_C1" >&2
+        echo "    file  : $actual" >&2
+        rm -f "$APK"
+        exit 1
+    fi
+    echo "  checksum  : verified (SHA1, the strongest APKINDEX offers)"
+else
+    echo "  WARNING: index carries no checksum for musl; downloaded unverified" >&2
 fi
 
 # An .apk is a gzipped tar. In musl the loader and libc are one file, so this is

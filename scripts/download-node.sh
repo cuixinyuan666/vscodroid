@@ -53,6 +53,10 @@ version=$(awk -v pkg="$PACKAGE" '
     /^Package: / { current = $2 }
     /^Version: / && current == pkg { print $2; exit }
 ' Packages)
+sha256=$(awk -v pkg="$PACKAGE" '
+    /^Package: / { current = $2 }
+    /^SHA256: / && current == pkg { print $2; exit }
+' Packages)
 
 if [ -z "$filename" ]; then
     echo "  ERROR: $PACKAGE is not in the Termux index" >&2
@@ -61,10 +65,27 @@ fi
 
 echo "  package : $PACKAGE $version"
 
+# This file becomes libnode.so, the entire server runtime, executed on every
+# user's device -- and it arrives over a third-party mirror. The index's SHA256
+# field is the strongest statement the repo makes about what the bytes should
+# be; a file that does not match it, cached or fresh, must not be used.
 deb="debs/$(basename "$filename")"
 mkdir -p debs
 if [ ! -f "$deb" ]; then
     curl -sL --fail --show-error -o "$deb" "$TERMUX_REPO/$filename"
+fi
+if [ -n "$sha256" ]; then
+    actual=$( (sha256sum "$deb" 2>/dev/null || shasum -a 256 "$deb") | cut -d' ' -f1)
+    if [ "$actual" != "$sha256" ]; then
+        echo "  ERROR: $deb does not match the index" >&2
+        echo "    index : $sha256" >&2
+        echo "    file  : $actual" >&2
+        rm -f "$deb"
+        exit 1
+    fi
+    echo "  sha256  : verified"
+else
+    echo "  WARNING: index carries no SHA256 for $PACKAGE; downloaded unverified" >&2
 fi
 echo "  deb     : $(du -h "$deb" | cut -f1)"
 

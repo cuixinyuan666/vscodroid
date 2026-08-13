@@ -7,6 +7,13 @@ set -euo pipefail
 # Each extension becomes a directory like PKief.material-icon-theme-5.17.0/
 # which FirstRunSetup extracts on device and registers via extensions.json.
 #
+# Unverified by design, and worth knowing why: every other download script
+# checks its payload against a published digest, but Open VSX's API exposes no
+# checksum for VSIX assets, so there is nothing here to check against. Pinning
+# versions (publisher.name@version below) is the strongest guarantee available
+# from this source. If Open VSX ever publishes digests, this script should be
+# brought up to the same bar as the rest.
+#
 # Compatible with bash 3.2+ (macOS default).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
