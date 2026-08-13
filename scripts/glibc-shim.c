@@ -193,6 +193,45 @@ const unsigned short **__ctype_b_loc(void) {
     return &p;
 }
 
+/*
+ * The two case-conversion tables, in the same shape and with the same 128-entry
+ * offset. Entries are int rather than unsigned short because each holds a
+ * character value that must still be able to be EOF.
+ *
+ * The negative half is neither padding nor a mirror of the positive half, which
+ * is the part worth getting from a measurement instead of from reasoning. Dumped
+ * from glibc 2.36 on aarch64 in the C locale: indices -128..-2 hold i + 256 --
+ * the index reinterpreted as an unsigned char -- and -1 holds -1, so
+ * tolower(EOF) is EOF rather than 255. Every one of the 384 entries in both
+ * tables was compared against that dump and the rule below reproduces all of
+ * them. None of 128..255 is a letter, so the case tests never fire there.
+ */
+static const int *ctype_case_table(int want_upper) {
+    static int lower[384], upper[384];
+    static int built;
+    if (!built) {
+        for (int i = -128; i < 256; i++) {
+            int v = (i < -1) ? i + 256 : i;
+            lower[i + 128] = (v >= 'A' && v <= 'Z') ? v + 32 : v;
+            upper[i + 128] = (v >= 'a' && v <= 'z') ? v - 32 : v;
+        }
+        built = 1;
+    }
+    return (want_upper ? upper : lower) + 128;
+}
+
+const int **__ctype_tolower_loc(void) {
+    static const int *p;
+    p = ctype_case_table(0);
+    return &p;
+}
+
+const int **__ctype_toupper_loc(void) {
+    static const int *p;
+    p = ctype_case_table(1);
+    return &p;
+}
+
 /* Version strings addons occasionally log or gate on. Nothing branches on the
  * exact value in practice; a modern one keeps any comparison happy. */
 const char *gnu_get_libc_version(void) { return "2.31"; }
@@ -253,10 +292,12 @@ void sdallocx(void *ptr, size_t size, int flags) { (void)size; (void)flags; free
 
 static void *shim_libc;
 static void *shim_libdl;
+static void *shim_self;
 
 __attribute__((constructor(101))) static void shim_open_handles(void) {
     shim_libc = dlopen("libc.so", RTLD_LAZY | RTLD_NOLOAD);
     shim_libdl = dlopen("libdl.so", RTLD_LAZY | RTLD_NOLOAD);
+    shim_self = dlopen("libglibc-shim.so", RTLD_LAZY | RTLD_NOLOAD);
 }
 
 void *__shim_resolve(const char *name) {
@@ -272,6 +313,18 @@ void *__shim_resolve(const char *name) {
 
     void *p = shim_libc ? dlsym(shim_libc, name) : 0;
     if (!p && shim_libdl) p = dlsym(shim_libdl, name);
+    /* This library's own definitions, and they have to be asked for by handle.
+     * RTLD_NEXT begins after the caller, and the caller is this file, so the
+     * twelve symbols that exist only here -- __errno_location, __ctype_b_loc,
+     * the __xstat family, bcmp, fcntl64 and the rest -- resolved to nothing and
+     * left their trampolines null. Measured, not deduced: instrumenting this
+     * function showed every one of them taking the NONE branch while the addon
+     * ran correctly anyway, because the addon binds to this library directly and
+     * never reaches the trampoline. That made the null a landmine rather than a
+     * failure -- it fires the moment anything does reach the trampoline. Asking
+     * ourselves last of the three keeps Bionic's implementation preferred
+     * wherever one exists. */
+    if (!p && shim_self) p = dlsym(shim_self, name);
     if (!p) p = dlsym(RTLD_NEXT, name);
     return p;
 }
@@ -298,6 +351,42 @@ FILE *__shim_stderr(void) { return stderr; }
 int bcmp(const void *a, const void *b, size_t n) { return memcmp(a, b, n); }
 
 /*
+ * The scanf family under the names glibc actually links against.
+ *
+ * glibc's stdio.h redirects sscanf, fscanf, scanf and their v- forms to
+ * __isoc99_ spellings whenever C99 conversion rules apply, which is every build
+ * that has not asked for the older ones. So an addon whose source says sscanf
+ * imports a name Bionic has never had at any API level, and the forwarder for it
+ * aborts on first call. Compiling all six calls against glibc 2.36 on aarch64
+ * emits exactly these six undefined symbols, which is where the list comes from.
+ *
+ * The C99 behaviour the redirect selects -- %a as a conversion rather than the
+ * GNU allocation modifier -- is already what Bionic implements, so each of these
+ * is the plain function and nothing more.
+ */
+int __isoc99_sscanf(const char *s, const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    int rc = vsscanf(s, fmt, ap);
+    va_end(ap);
+    return rc;
+}
+int __isoc99_fscanf(FILE *f, const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    int rc = vfscanf(f, fmt, ap);
+    va_end(ap);
+    return rc;
+}
+int __isoc99_scanf(const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    int rc = vfscanf(stdin, fmt, ap);
+    va_end(ap);
+    return rc;
+}
+int __isoc99_vsscanf(const char *s, const char *fmt, va_list ap) { return vsscanf(s, fmt, ap); }
+int __isoc99_vfscanf(FILE *f, const char *fmt, va_list ap) { return vfscanf(f, fmt, ap); }
+int __isoc99_vscanf(const char *fmt, va_list ap) { return vfscanf(stdin, fmt, ap); }
+
+/*
  * pidfd helpers, glibc 2.36 and later. Bionic has the syscalls but not these
  * wrappers. Reporting "not implemented" is honest and is a case callers of these
  * already handle -- they exist precisely because older kernels lack them.
@@ -312,14 +401,135 @@ int pidfd_spawnp(int *pidfd, const char *file, const void *facts,
 
 /*
  * posix_spawn's chdir action. Bionic has it under the _np name POSIX had not yet
- * standardised when it was added; the declaration is guarded by API level in the
- * headers, so it is declared here rather than relying on the guard.
+ * standardised when it was added -- but only from API 34, the same dividing line
+ * copy_file_range sits on.
+ *
+ * This used to declare the _np name by hand and call it directly, on the
+ * reasoning that the header's API guard was the only thing in the way. The
+ * guard was not the obstacle; it was the warning. Declaring a symbol does not
+ * make it exist, it only moves the failure from compile time to load time, and
+ * load time is far worse here: the reference was a strong undefined symbol, so
+ * on an API 33 device Bionic's loader failed to bind it and dlopen of
+ * libglibc-shim.so failed outright -- taking every stub and therefore every
+ * glibc addon with it, on exactly the devices the minimum supports. Nothing
+ * caught it because every test ran on an API 36 emulator, where the symbol is
+ * present. It was the only undefined symbol in this library that Bionic could
+ * not supply.
+ *
+ * Resolved at runtime instead, like copy_file_range, so the library loads
+ * everywhere and only this one action is unavailable below 34. The
+ * posix_spawn_file_actions_* family reports errors by return value rather than
+ * through errno, so ENOSYS is returned directly.
  */
-int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, const char *);
-
 int posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t *acts,
                                       const char *path) {
-    return posix_spawn_file_actions_addchdir_np(acts, path);
+    static int (*real)(posix_spawn_file_actions_t *, const char *);
+    static int looked_up;
+
+    if (!looked_up) {
+        if (!shim_libc) shim_open_handles();
+        if (shim_libc) {
+            *(void **)&real = dlsym(shim_libc, "posix_spawn_file_actions_addchdir_np");
+        }
+        looked_up = 1;
+    }
+
+    if (!real) return ENOSYS;
+    return real(acts, path);
+}
+
+/*
+ * copy_file_range, which Bionic gained at API 34.
+ *
+ * This one is not a symbol Bionic lacks, it is a symbol Bionic lacks *below the
+ * minimum this app supports*. minSdk is 33, and the NDK's stub libc for 21, 33,
+ * 34 and 35 puts the dividing line exactly there: absent at 33, present at 34.
+ * An addon in the shipped tree imports it, so on an Android 13 device the
+ * forwarder resolved to NULL and aborted the process the first time a file was
+ * copied -- while every emulator running 34 or later resolves it and shows
+ * nothing wrong. That asymmetry is why this needs the NDK's per-API answer and
+ * not a device test.
+ *
+ * The real one is preferred wherever it exists; it is a kernel-side copy and
+ * this is not. Resolution goes straight to Bionic's libc rather than through
+ * __shim_resolve, which consults this library too and would find its way back
+ * here.
+ *
+ * The fallback keeps the offset semantics, which are the part worth getting
+ * right: a NULL offset pointer reads or writes at the descriptor's own position
+ * and advances it, while a non-NULL one starts there, leaves the descriptor
+ * alone, and is advanced by the number of bytes copied. Short counts are a
+ * result, not an error -- callers loop -- and an error after partial progress
+ * reports the progress.
+ */
+static ssize_t copy_file_range_fallback(int fd_in, off64_t *off_in, int fd_out,
+                                        off64_t *off_out, size_t len, unsigned flags) {
+    if (flags) { errno = EINVAL; return -1; }
+
+    /* 16 KB rather than the 64 KB a copy loop would normally take: this runs on
+     * whatever thread the addon calls from, including Node worker threads, and a
+     * shim has no business putting 64 KB on a stack it did not size. At this
+     * scale the syscall overhead is already amortised. */
+    char buf[16384];
+    size_t total = 0;
+    int failed = 0;
+
+    while (total < len) {
+        size_t want = len - total;
+        if (want > sizeof(buf)) want = sizeof(buf);
+
+        ssize_t got = off_in ? pread(fd_in, buf, want, *off_in + (off64_t)total)
+                             : read(fd_in, buf, want);
+        if (got < 0) { failed = 1; break; }
+        if (got == 0) break;                    /* end of input */
+
+        ssize_t put = 0;
+        while (put < got) {
+            ssize_t n = off_out
+                ? pwrite(fd_out, buf + put, (size_t)(got - put),
+                         *off_out + (off64_t)(total + (size_t)put))
+                : write(fd_out, buf + put, (size_t)(got - put));
+            if (n < 0) { failed = 1; break; }
+            put += n;
+        }
+        total += (size_t)put;
+        if (put < got) {
+            /* read() took `got` bytes from the descriptor's own position but
+             * only `put` were copied, so fd_in now points past the data still
+             * owed. The real call leaves it advanced by exactly what it copied,
+             * and this function's own contract tells callers to loop on a short
+             * count -- so without the rewind that loop resumes past the gap and
+             * the difference is data silently dropped. Measured against the
+             * kernel with a write ceiling: it left fd_in at 20000, this left it
+             * at 32768. Only the read() path needs it; pread() never moved the
+             * descriptor. */
+            if (!off_in) lseek(fd_in, -(off_t)(got - put), SEEK_CUR);
+            break;
+        }
+        if (failed) break;
+    }
+
+    if (off_in) *off_in += (off64_t)total;
+    if (off_out) *off_out += (off64_t)total;
+    if (total == 0 && failed) return -1;
+    return (ssize_t)total;
+}
+
+ssize_t copy_file_range(int fd_in, off64_t *off_in, int fd_out, off64_t *off_out,
+                        size_t len, unsigned flags) {
+    static ssize_t (*real)(int, off64_t *, int, off64_t *, size_t, unsigned);
+    static int looked_up;
+
+    if (!looked_up) {
+        if (!shim_libc) shim_open_handles();
+        if (shim_libc) {
+            *(void **)&real = dlsym(shim_libc, "copy_file_range");
+        }
+        looked_up = 1;
+    }
+
+    if (real) return real(fd_in, off_in, fd_out, off_out, len, flags);
+    return copy_file_range_fallback(fd_in, off_in, fd_out, off_out, len, flags);
 }
 
 /* ------------------------------------------------------------------------
@@ -462,6 +672,112 @@ struct glibc_addrinfo {
     struct glibc_addrinfo *ai_next;
 };
 
+/*
+ * The AI_ and EAI_ constants, which the two libcs number differently. Swapping
+ * the struct fields was only half the boundary: the flag word going in and the
+ * error code coming out are both plain ints that mean different things on each
+ * side, and forwarding them unchanged is not a near miss.
+ *
+ * The flags cross-collide rather than merely disagree. glibc's AI_V4MAPPED is
+ * 8, which is Bionic's AI_NUMERICSERV; glibc's AI_NUMERICSERV is 1024, which is
+ * Bionic's AI_ADDRCONFIG. glibc's AI_ALL (16) and AI_ADDRCONFIG (32) are bits
+ * Bionic assigns to nothing, and Bionic rejects a flag word carrying an unknown
+ * bit outright. So the common idiom AI_V4MAPPED|AI_ADDRCONFIG -- 8|32 -- arrived
+ * as "numeric service, plus one undefined bit" and the call failed with
+ * EAI_BADFLAGS, measured on device before this translation existed.
+ *
+ * Mapping each name to Bionic's number for the same name is still not enough,
+ * and this is the part a header cannot tell you. Bionic defines AI_ALL and
+ * AI_V4MAPPED but its getaddrinfo refuses them: AI_MASK is 1039, covering only
+ * PASSIVE, CANONNAME, NUMERICHOST, NUMERICSERV and ADDRCONFIG, and anything else
+ * is EAI_BADFLAGS. Offered to the device one at a time, those two are the two
+ * that fail. They are therefore dropped rather than translated -- the request
+ * loses a preference and still answers, where forwarding it fails outright.
+ *
+ * The error codes have no overlap at all: glibc's are negative, Bionic's are
+ * 1..14. An addon testing rc == EAI_AGAIN (-3) against Bionic's 2 never matched,
+ * so a retryable DNS failure read as an unrecognised one.
+ *
+ * Values on both sides were measured -- glibc 2.36 aarch64 under Debian, Bionic
+ * on an arm64 device -- rather than recalled.
+ *
+ * The ceiling: dropping AI_V4MAPPED and AI_ALL means an addon asking for
+ * IPv4-mapped results on an IPv6-only network gets Bionic's ordinary answer
+ * instead. AI_IDN and AI_CANONIDN (glibc 0x40, 0x80) go the same way, there
+ * being no IDN support here to ask for. And each returned node's ai_flags is
+ * left in Bionic's numbering: both libcs echo the hint word into every node, and
+ * translating it back would cost a second walk to serve a field POSIX leaves
+ * unspecified and callers do not read.
+ */
+#define G_AI_PASSIVE     0x0001
+#define G_AI_CANONNAME   0x0002
+#define G_AI_NUMERICHOST 0x0004
+#define G_AI_V4MAPPED    0x0008
+#define G_AI_ALL         0x0010
+#define G_AI_ADDRCONFIG  0x0020
+#define G_AI_NUMERICSERV 0x0400
+
+static int ai_flags_to_bionic(int g) {
+    int b = 0;
+    if (g & G_AI_PASSIVE)     b |= AI_PASSIVE;
+    if (g & G_AI_CANONNAME)   b |= AI_CANONNAME;
+    if (g & G_AI_NUMERICHOST) b |= AI_NUMERICHOST;
+    if (g & G_AI_NUMERICSERV) b |= AI_NUMERICSERV;
+    if (g & G_AI_ADDRCONFIG)  b |= AI_ADDRCONFIG;
+    /* G_AI_V4MAPPED and G_AI_ALL are deliberately absent: Bionic's AI_MASK
+     * refuses both, so translating them turns a working lookup into
+     * EAI_BADFLAGS. Everything else glibc can set is dropped for the same
+     * reason -- an unknown bit fails the whole call. */
+    return b;
+}
+
+/* Bionic's codes run 1..14 with no gaps, so one table answers both directions.
+ * Index 0 is never reached: 0 is success. */
+static const int eai_glibc_for_bionic[] = {
+    0,    /* unused          */
+    -9,   /* EAI_ADDRFAMILY  */
+    -3,   /* EAI_AGAIN       */
+    -1,   /* EAI_BADFLAGS    */
+    -4,   /* EAI_FAIL        */
+    -6,   /* EAI_FAMILY      */
+    -10,  /* EAI_MEMORY      */
+    -5,   /* EAI_NODATA      */
+    -2,   /* EAI_NONAME      */
+    -8,   /* EAI_SERVICE     */
+    -7,   /* EAI_SOCKTYPE    */
+    -11,  /* EAI_SYSTEM      */
+    -4,   /* EAI_BADHINTS -- no glibc spelling; a permanent failure either way */
+    -4,   /* EAI_PROTOCOL -- likewise                                          */
+    -12,  /* EAI_OVERFLOW    */
+};
+#define EAI_TABLE_LEN ((int)(sizeof(eai_glibc_for_bionic) / sizeof(*eai_glibc_for_bionic)))
+
+static int eai_to_glibc(int rc) {
+    if (rc < 1 || rc >= EAI_TABLE_LEN) return -4;  /* EAI_FAIL */
+    return eai_glibc_for_bionic[rc];
+}
+
+/* The reverse, for handing a code back to Bionic's gai_strerror. -4 appears
+ * three times above; the search finds EAI_FAIL first, which is the right one.
+ *
+ * Zero is passed through rather than searched for. Callers do print
+ * gai_strerror(rc) unconditionally, and mapping success onto EAI_FAIL would have
+ * this name a failure that did not happen. Bionic answers "Success" there;
+ * glibc's own answer is "Unknown error", so passing through is if anything the
+ * more useful of the two. A code that is neither zero nor in the table is
+ * reported as EAI_FAIL, which is what an unrecognised permanent failure is. */
+static int eai_to_bionic(int rc) {
+    if (rc == 0) return 0;
+    for (int i = 1; i < EAI_TABLE_LEN; i++)
+        if (eai_glibc_for_bionic[i] == rc) return i;
+    return EAI_FAIL;
+}
+
+/* An addon passes back the glibc-numbered code it was given, so it has to be
+ * put into Bionic's numbering before Bionic can name it. Forwarded unchanged,
+ * every code named the wrong error. */
+const char *__shim_gai_strerror(int code) { return gai_strerror(eai_to_bionic(code)); }
+
 int __shim_getaddrinfo(const char *node, const char *service,
                        const struct glibc_addrinfo *hints,
                        struct glibc_addrinfo **res) {
@@ -470,14 +786,14 @@ int __shim_getaddrinfo(const char *node, const char *service,
 
     if (hints) {
         memset(&b_hints, 0, sizeof(b_hints));
-        b_hints.ai_flags = hints->ai_flags;
+        b_hints.ai_flags = ai_flags_to_bionic(hints->ai_flags);
         b_hints.ai_family = hints->ai_family;
         b_hints.ai_socktype = hints->ai_socktype;
         b_hints.ai_protocol = hints->ai_protocol;
     }
 
     int rc = getaddrinfo(node, service, hints ? &b_hints : 0, &b_res);
-    if (rc != 0) return rc;
+    if (rc != 0) return eai_to_glibc(rc);
 
     /* Same size, swapped middle: rewriting each node in place keeps the
      * allocation Bionic's, so freeaddrinfo still owns it. */
@@ -490,6 +806,55 @@ int __shim_getaddrinfo(const char *node, const char *service,
     }
     *res = (struct glibc_addrinfo *)b_res;
     return 0;
+}
+
+/*
+ * getnameinfo, the same boundary and the quieter half of it.
+ *
+ * Its NI_ flags cross-collide exactly the way the AI_ ones do -- glibc's
+ * NI_NUMERICHOST is 1, which is Bionic's NI_NOFQDN; glibc's NI_NUMERICSERV is 2,
+ * which is Bionic's NI_NUMERICHOST; NOFQDN and NAMEREQD trade 4 and 8 the same
+ * way -- but Bionic validates nothing here, so nothing fails and the call just
+ * answers a different question. Measured on device against the loopback address:
+ * asking for NI_NUMERICHOST alone, which is the flag that means "give me an
+ * address, do not look anything up", returned "localhost" -- Bionic read bit 1
+ * as NOFQDN and performed exactly the reverse lookup the caller had asked to
+ * avoid. Asking for NI_NUMERICSERV returned "http" where the caller wanted "80".
+ * Through the wrapper the same three calls answer 127.0.0.1 and 80.
+ *
+ * The lengths differ too, and only in type: glibc declares hostlen and servlen
+ * socklen_t, Bionic size_t. AArch64 zeroes the upper half of an X register on
+ * any W write, so in practice the value survives -- but converting here says so
+ * rather than relying on it.
+ *
+ * Nothing in the tree imports this today. It is written now because the
+ * getaddrinfo half of the same boundary was, and a wrapper for one of them
+ * leaves the other looking checked.
+ */
+#define G_NI_NUMERICHOST 0x01
+#define G_NI_NUMERICSERV 0x02
+#define G_NI_NOFQDN      0x04
+#define G_NI_NAMEREQD    0x08
+#define G_NI_DGRAM       0x10
+
+static int ni_flags_to_bionic(int g) {
+    int b = 0;
+    if (g & G_NI_NUMERICHOST) b |= NI_NUMERICHOST;
+    if (g & G_NI_NUMERICSERV) b |= NI_NUMERICSERV;
+    if (g & G_NI_NOFQDN)      b |= NI_NOFQDN;
+    if (g & G_NI_NAMEREQD)    b |= NI_NAMEREQD;
+    if (g & G_NI_DGRAM)       b |= NI_DGRAM;
+    /* glibc's NI_IDN (32) and its companions are dropped: there is no IDN
+     * support here to ask for. */
+    return b;
+}
+
+int __shim_getnameinfo(const struct sockaddr *sa, socklen_t salen,
+                       char *host, socklen_t hostlen,
+                       char *serv, socklen_t servlen, int flags) {
+    int rc = getnameinfo(sa, salen, host, (size_t)hostlen, serv, (size_t)servlen,
+                         ni_flags_to_bionic(flags));
+    return rc == 0 ? 0 : eai_to_glibc(rc);
 }
 
 void __shim_freeaddrinfo(struct glibc_addrinfo *res) {
