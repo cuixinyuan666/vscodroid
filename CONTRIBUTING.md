@@ -35,7 +35,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 | Python            | 3.x                            | For node-gyp (native module compilation)     |
 | Git               | Any recent version             | -                                            |
 | adb               | Via Android SDK platform-tools | For deploying to device                      |
-| Physical ARM64 device | Android 13+ (API 33+)      | Emulators will not work (ARM64 binaries)     |
+| ARM64 device or emulator | Android 13+ (API 33+)   | The bundled binaries are arm64-only, so an x86_64 emulator will not work; an arm64 emulator (the default on Apple Silicon) works fine |
 
 ### Clone and Initial Setup
 
