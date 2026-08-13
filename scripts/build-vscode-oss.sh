@@ -305,6 +305,37 @@ for f in LICENSE.txt ThirdPartyNotices.txt; do
     fi
 done
 
+step "Mobile CSS"
+# Touch overrides for the hamburger menu, and the Accounts/Manage hide that the
+# activity bar sizing patch (0008) assumes. The pre-pivot build appended these to
+# the packaged workbench.css; the mutation lost its home when the download
+# script was deleted, so menus have been desktop-sized on device since. An
+# append rather than a patch because it is additive CSS against a generated
+# file - there is no source context to drift. Guarded idempotent so a reused
+# work volume does not accumulate copies.
+WORKBENCH_CSS="$OUT/out/vs/code/browser/workbench/workbench.css"
+if [ ! -f "$WORKBENCH_CSS" ]; then
+    echo "  ERROR: $WORKBENCH_CSS not in the package" >&2
+    exit 1
+fi
+if ! grep -q "VSCodroid: Mobile-friendly" "$WORKBENCH_CSS"; then
+    cat >> "$WORKBENCH_CSS" << 'CSSEOF'
+
+/* VSCodroid: Mobile-friendly hamburger menu overrides */
+.menubar-menu-items-holder { min-width: 280px !important; }
+.monaco-menu .monaco-action-bar.vertical .action-item { min-height: 44px !important; }
+.monaco-menu .monaco-action-bar.vertical .action-label { font-size: 14px !important; padding: 8px 24px 8px 12px !important; line-height: 28px !important; }
+.monaco-menu .submenu-indicator { font-size: 16px !important; }
+.monaco-menu .keybinding { font-size: 12px !important; }
+.monaco-menu .monaco-action-bar.vertical .action-label.separator { margin: 4px 8px !important; }
+/* VSCodroid: Hide Accounts/Manage section in Activity Bar */
+.activitybar .content > div:has(.actions-container[aria-label="Manage"]) { display: none !important; }
+.activitybar .content > .composite-bar { flex-grow: 1 !important; }
+CSSEOF
+fi
+grep -q "VSCodroid: Mobile-friendly" "$WORKBENCH_CSS" || { echo "  ERROR: append did not land" >&2; exit 1; }
+echo "  appended mobile menu overrides to workbench.css"
+
 step "Verify"
 fail=0
 
@@ -343,6 +374,7 @@ if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
 0006 callback relay|out/vs/code/browser/workbench/callback.html|intent://callback
 0008 activitybar height|out/vs/code/browser/workbench/workbench.js|.activitybar .composite-bar
 0009 alpine target|out/server-main.js|Android: requesting the alpine target platform
+0011 walkthrough brand|out/nls.messages.js|Get Started with VSCodroid
 FINGERPRINTS
 fi
 
