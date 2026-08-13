@@ -606,8 +606,16 @@ npx() { VSCODROID_PLATFORM_FIX=1 node "${'$'}PREFIX/lib/node_modules/npm/bin/npx
 # execve but will let a loader map. libldmusl.so is found on PATH, which already
 # includes nativeLibraryDir.
 claude() {
-    local cli
-    cli=${'$'}(echo "${'$'}HOME"/.vscodroid/extensions/Anthropic.claude-code-*/resources/native-binary/claude)
+    local cli="" c
+    # An update can leave two versioned directories side by side, which made the
+    # old echo-glob expand to two space-joined paths and fail the -f test. Take
+    # the most recently installed candidate; -nt is a bash builtin, so this
+    # leans on nothing external. [Aa] covers a gallery serving the publisher
+    # name lowercased.
+    for c in "${'$'}HOME"/.vscodroid/extensions/[Aa]nthropic.claude-code-*/resources/native-binary/claude; do
+        [ -f "${'$'}c" ] || continue
+        if [ -z "${'$'}cli" ] || [ "${'$'}c" -nt "${'$'}cli" ]; then cli="${'$'}c"; fi
+    done
     if [ ! -f "${'$'}cli" ]; then
         echo "claude: install the Claude Code extension first" >&2
         return 127
