@@ -313,6 +313,13 @@ step "Mobile CSS"
 # append rather than a patch because it is additive CSS against a generated
 # file - there is no source context to drift. Guarded idempotent so a reused
 # work volume does not accumulate copies.
+#
+# Two known ceilings, both parity with the pre-pivot CSS rather than new: the
+# :has() selector needs Chrome 105, which is exactly the project's minimum
+# WebView - correct by target, but with no margin; and [aria-label="Manage"]
+# matches the English UI only, so on a localized workbench the Manage section
+# reappears instead of hiding. Structural selectors would fix the latter if it
+# ever matters.
 WORKBENCH_CSS="$OUT/out/vs/code/browser/workbench/workbench.css"
 if [ ! -f "$WORKBENCH_CSS" ]; then
     echo "  ERROR: $WORKBENCH_CSS not in the package" >&2
