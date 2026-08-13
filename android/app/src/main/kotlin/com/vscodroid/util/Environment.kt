@@ -76,6 +76,12 @@ object Environment {
             "GIT_TEMPLATE_DIR" to "$filesDir/usr/share/git-core/templates",
             "GIT_SSH_COMMAND" to "$nativeLibDir/libssh.so -F $homeDir/.ssh/config",
             "GIT_SSL_CAPATH" to getSystemCaCertsPath(),
+            // The bundle file curl actually reads. Its Termux build looks for
+            // one at a path that does not exist here, and fails before checking
+            // any certificate; CAPATH alone does not satisfy it, measured on
+            // device. setupGitCaBundle() writes this from the system trust
+            // store on every launch it has changed.
+            "GIT_SSL_CAINFO" to "$filesDir/usr/etc/tls/cert.pem",
             "SSL_CERT_DIR" to getSystemCaCertsPath(),
             "NPM_CONFIG_PREFIX" to "$filesDir/usr",
             "NPM_CONFIG_CACHE" to "$cacheDir/npm-cache",

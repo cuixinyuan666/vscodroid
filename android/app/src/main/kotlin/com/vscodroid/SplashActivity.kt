@@ -55,6 +55,8 @@ class SplashActivity : AppCompatActivity() {
         // logcat is the only trace, so keep the message specific.
         try {
             setup.setupToolSymlinks()
+            setup.setupGitCore()
+            setup.setupGitCaBundle()
             setup.setupRipgrepVscodeSymlink()
             setup.setupCopilotAndroidAliases()
             setup.createNpmWrappers()

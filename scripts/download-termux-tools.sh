@@ -249,6 +249,27 @@ else
     exit 1
 fi
 
+# git-remote-curl, the helper git execs for anything it does not speak natively.
+# http, https, ftp and ftps are one identical binary under four names -- checked
+# on device, all four 2010824 bytes with the same sha256 -- so one copy serves
+# all of them and setupGitCore links the four names to it.
+#
+# It belongs here rather than in git-core with the rest, and that is the whole
+# point of this entry: SELinux refuses execve on anything under filesDir for
+# targetSdk >= 29, which is why bash, git and ripgrep are shipped this way too.
+# Left as the copied file in git-core it installs, chmods, and then fails at the
+# moment git needs it -- "cannot exec 'git-remote-https': Permission denied",
+# taking every clone, fetch and push over HTTPS with it.
+GIT_REMOTE_CURL_BIN="extracted/git/data/data/com.termux/files/usr/libexec/git-core/git-remote-https"
+if [ -f "$GIT_REMOTE_CURL_BIN" ]; then
+    cp "$GIT_REMOTE_CURL_BIN" "$JNILIBS_DIR/libgit-remote-curl.so"
+    echo "  libgit-remote-curl.so ($(du -sh "$JNILIBS_DIR/libgit-remote-curl.so" | cut -f1))"
+else
+    echo "  ERROR: git-remote-https not found at $GIT_REMOTE_CURL_BIN"
+    find "extracted/git" -name "git-remote-https" -type f 2>/dev/null || true
+    exit 1
+fi
+
 # tmux
 TMUX_BIN="extracted/tmux/data/data/com.termux/files/usr/bin/tmux"
 if [ -f "$TMUX_BIN" ]; then
@@ -528,7 +549,8 @@ echo "=== Verifying placed binaries ==="
 # This runs last because step 5 empties assets/usr/lib before repopulating it:
 # verifying earlier would be verifying a directory still being built.
 
-JNILIBS_BINARIES=(libbash.so libgit.so libtmux.so libmake.so libssh.so libssh-keygen.so)
+JNILIBS_BINARIES=(libbash.so libgit.so libgit-remote-curl.so libtmux.so libmake.so
+                  libssh.so libssh-keygen.so)
 
 # git-core holds shell scripts and a manifest beside its binaries, and the
 # verifier rejects a non-ELF file rather than skipping it.
@@ -581,7 +603,8 @@ echo ""
 echo "=== Size Summary ==="
 
 echo "jniLibs executables:"
-for so in "$JNILIBS_DIR"/libbash.so "$JNILIBS_DIR"/libgit.so "$JNILIBS_DIR"/libtmux.so "$JNILIBS_DIR"/libmake.so "$JNILIBS_DIR"/libssh.so "$JNILIBS_DIR"/libssh-keygen.so; do
+for name in "${JNILIBS_BINARIES[@]}"; do
+    so="$JNILIBS_DIR/$name"
     [ -f "$so" ] && echo "  $(basename "$so"): $(du -sh "$so" | cut -f1)"
 done
 
