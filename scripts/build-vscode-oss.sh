@@ -215,6 +215,31 @@ t0=$SECONDS
 npm run gulp core-ci
 elapsed $(( SECONDS - t0 ))
 
+step "Copilot extension (compile-copilot-extension-build)"
+# Not in core-ci, and packaging fails without it. The reh-web package task reads
+# built-in extensions out of .build/extensions (gulpfile.reh.ts:387), and the
+# copilot extension is the one thing that never lands there on its own: nothing
+# in core-ci compiles it. The packaging tail then calls
+# prepareBuiltInCopilotRipgrepShim unconditionally, which throws "Copilot SDK
+# directory not found" -- a message about the output tree, three stages away from
+# the stage that should have filled it.
+#
+# Microsoft's pipeline never hits this because it downloads the extension as a
+# VSIX from an internal feed. gulpfile.extensions.ts:288 says so directly: this
+# task is "used by non-CI local builds where copilot is not downloaded as a
+# VSIX", which is exactly what this build is. Their desktop series places it
+# after the non-native extensions compile and before packaging
+# (gulpfile.vscode.ts:745), and so does this.
+t0=$SECONDS
+npm run gulp compile-copilot-extension-build
+elapsed $(( SECONDS - t0 ))
+[ -d "$SRC/.build/extensions/copilot/node_modules/@github/copilot/sdk" ] || {
+    echo "  ERROR: .build/extensions/copilot has no @github/copilot/sdk" >&2
+    echo "  Packaging would fail three stages later with a message about the" >&2
+    echo "  output tree instead of about this." >&2
+    exit 1
+}
+
 step "Package (vscode-reh-web-linux-$ARCH-min-ci)"
 # Packaging only -- native extensions, the node download, the copy into place.
 # Correct precisely because core-ci has already produced out-vscode-reh-web-min.
