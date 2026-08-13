@@ -30,6 +30,12 @@ REQUIRED = [
     # Code - OSS is MIT and this tree is redistributed inside every APK, so the
     # copyright notice has to travel with it. product.json names it too.
     "LICENSE.txt",
+    # What patch 0010 exists to keep: upstream's .moduleignore strips the SDK
+    # entry the extension's own exports map points at, and on device that
+    # surfaces as chat submit dying in ChatSessionsService. The android-arm64
+    # aliases built at runtime resolve into this file, so a tree without it
+    # ships a Copilot that renders but cannot send.
+    "extensions/copilot/node_modules/@github/copilot/sdk/index.js",
 ]
 
 failed = False

@@ -56,6 +56,7 @@ class SplashActivity : AppCompatActivity() {
         try {
             setup.setupToolSymlinks()
             setup.setupRipgrepVscodeSymlink()
+            setup.setupCopilotAndroidAliases()
             setup.createNpmWrappers()
             setup.ensureToolchainEnvSourcing()
             setup.ensurePromptFix()

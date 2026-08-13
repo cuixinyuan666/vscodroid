@@ -304,7 +304,9 @@ python3 "$SCRIPT_DIR/verify-server-tree.py" "$OUT" || fail=1
 if [ -d "$PATCHES" ] && [ -n "$(ls -A "$PATCHES"/*.patch 2>/dev/null)" ]; then
     # patch | bundle it must reach | fingerprint that survives minification
     # Not every patch leaves one: 0007 flips a single boolean and its only
-    # distinctive text is a comment, which minification strips. An absent row is
+    # distinctive text is a comment, which minification strips. 0010 edits
+    # build/.moduleignore, so its proof is a file surviving into the tree,
+    # which verify-server-tree.py checks as a required path. An absent row is
     # deliberate, not an oversight.
     while IFS='|' read -r id bundle pattern; do
         [ -z "$id" ] && continue

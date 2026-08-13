@@ -62,6 +62,7 @@ TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/$HOST_TAG"
 [ -d "$TOOLCHAIN" ] || { echo "ERROR: no NDK host toolchain in $NDK_DIR" >&2; exit 1; }
 
 CXX="$TOOLCHAIN/bin/$TARGET$API-clang++"
+CC="$TOOLCHAIN/bin/$TARGET$API-clang"
 STRIP="$TOOLCHAIN/bin/llvm-strip"
 READELF="$TOOLCHAIN/bin/llvm-readelf"
 [ -x "$CXX" ] || { echo "ERROR: $CXX not found" >&2; exit 1; }
@@ -166,6 +167,49 @@ compile "$WATCHER_SRC" "$OUTPUT_ROOT/node_modules/@parcel/watcher/build/Release/
     -- -fexceptions -DNAPI_DISABLE_CPP_EXCEPTIONS \
        -DWATCHMAN -DINOTIFY -DBRUTE_FORCE -DNODE_GYP_MODULE_NAME=watcher
 verify "$OUTPUT_ROOT/node_modules/@parcel/watcher/build/Release/watcher.node" @parcel/watcher || failed=1
+
+# @vscode/sqlite3 — the workbench's storage engine, and what the Copilot CLI
+# session store opens through the embedder. The glibc build fails dlopen on
+# libstdc++.so.6, which surfaces as Copilot's "(modelSelectionFailed)" — an
+# error three layers from its cause. Bundles SQLite itself: the amalgamation
+# compiles as C, the addon as C++, so this block is two-phase where the others
+# are one call.
+echo ""
+echo "@vscode/sqlite3..."
+SQLITE_SRC=$(fetch @vscode/sqlite3 5.1.12-vscode)
+SQLITE_AMALGAMATION="$SQLITE_SRC/sqlite-autoconf-3390400"
+if [ ! -d "$SQLITE_AMALGAMATION" ]; then
+    tar xzf "$SQLITE_SRC/deps/sqlite-autoconf-3390400.tar.gz" -C "$SQLITE_SRC"
+fi
+# Defines are deps/sqlite3.gyp's list. NDEBUG matters: without it SQLite
+# compiles its internal assert()s in and slows every query.
+SQLITE_DEFINES=(
+    -DNDEBUG -D_REENTRANT=1 -DSQLITE_THREADSAFE=1 -DHAVE_USLEEP=1
+    -DSQLITE_ENABLE_FTS3 -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS5
+    -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_DBSTAT_VTAB=1
+    -DSQLITE_ENABLE_MATH_FUNCTIONS
+)
+SQLITE_OUT="$OUTPUT_ROOT/node_modules/@vscode/sqlite3/build/Release/vscode-sqlite3.node"
+mkdir -p "$(dirname "$SQLITE_OUT")"
+"$CC" -c -fPIC -O2 "${SQLITE_DEFINES[@]}" \
+    -o "$WORK_DIR/sqlite3.o" "$SQLITE_AMALGAMATION/sqlite3.c"
+# node_addon_api_except in binding.gyp means C++ exceptions are ON here, unlike
+# the addons above — so -fexceptions and no NAPI_DISABLE_CPP_EXCEPTIONS.
+"$CXX" \
+    -shared -fPIC -std=c++17 -O2 -fexceptions \
+    -static-libstdc++ \
+    "${PAGE_SIZE_FLAGS[@]}" \
+    -DNAPI_VERSION=8 -DNODE_API_SWALLOW_UNTHROWABLE_EXCEPTIONS \
+    "${SQLITE_DEFINES[@]}" \
+    -I"$NODE_INCLUDE" \
+    -I"$SQLITE_SRC/node_modules/node-addon-api" \
+    -I"$SQLITE_AMALGAMATION" \
+    -o "$SQLITE_OUT" \
+    "$SQLITE_SRC/src/backup.cc" "$SQLITE_SRC/src/database.cc" \
+    "$SQLITE_SRC/src/node_sqlite3.cc" "$SQLITE_SRC/src/statement.cc" \
+    "$WORK_DIR/sqlite3.o"
+"$STRIP" "$SQLITE_OUT"
+verify "$SQLITE_OUT" @vscode/sqlite3 || failed=1
 
 echo ""
 [ "$failed" -eq 0 ] || { echo "=== FAILED ==="; exit 1; }

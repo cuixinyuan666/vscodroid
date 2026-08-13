@@ -309,6 +309,92 @@ class FirstRunSetup(private val context: Context) {
     }
 
     /**
+     * Aliases the Copilot platform packages under the name Android resolves.
+     *
+     * Node here reports process.platform === "android", and the Copilot CLI SDK
+     * resolves its platform package as @github/copilot-<platform>-<arch> with no
+     * fallback, so everything the server tree ships for linux-arm64 is invisible
+     * on device: chat submit dies in ChatSessionsService before any request is
+     * made. The server tarball cannot carry these aliases itself because AAPT
+     * flattens asset symlinks into copies, so like the tool symlinks above they
+     * are rebuilt on every launch. Relative targets keep them valid across
+     * reinstalls. Three sites:
+     *
+     *  - REH node_modules: a link farm over copilot-linux-arm64 for the agent
+     *    host, which runs the newer CLI line the server tree carries.
+     *  - the built-in extension's node_modules: sdk -> ../copilot/sdk, whose
+     *    index.js patch 0010 keeps in the build; the manifest pins the version
+     *    the extension was compiled against.
+     *  - ripgrep-universal: bin/android-arm64 -> linux-arm64, whose rg is
+     *    already the Bionic binary via setupRipgrepVscodeSymlink().
+     */
+    fun setupCopilotAndroidAliases() {
+        val serverRoot = File(context.filesDir, "server/vscode-reh")
+
+        fun linkIfAbsent(link: File, target: String) {
+            val exists = try { Os.lstat(link.absolutePath); true } catch (e: Exception) { false }
+            if (exists) return
+            try {
+                Os.symlink(target, link.absolutePath)
+            } catch (e: Exception) {
+                Logger.d(tag, "copilot alias symlink failed for ${link.name}: ${e.message}")
+            }
+        }
+
+        // REH side, for the agent host.
+        val gh = File(serverRoot, "node_modules/@github")
+        val linuxPkg = File(gh, "copilot-linux-arm64")
+        if (linuxPkg.isDirectory) {
+            val alias = File(gh, "copilot-android-arm64")
+            alias.mkdirs()
+            linuxPkg.listFiles()?.forEach { entry ->
+                if (entry.name != "package.json") {
+                    linkIfAbsent(File(alias, entry.name), "../copilot-linux-arm64/${entry.name}")
+                }
+            }
+            try {
+                val manifest = File(linuxPkg, "package.json").readText()
+                    .replace("copilot-linux-arm64", "copilot-android-arm64")
+                val aliasManifest = File(alias, "package.json")
+                if (!aliasManifest.exists() || aliasManifest.readText() != manifest) {
+                    aliasManifest.writeText(manifest)
+                    Logger.i(tag, "copilot alias: REH copilot-android-arm64 -> copilot-linux-arm64")
+                }
+            } catch (e: Exception) {
+                Logger.d(tag, "copilot REH alias manifest failed: ${e.message}")
+            }
+        }
+
+        // Extension side, for the copilotcli session provider. Only meaningful
+        // when the tree keeps sdk/index.js (patch 0010); without it the alias
+        // would resolve to a directory with no entry point.
+        val extCopilot = File(serverRoot, "extensions/copilot/node_modules/@github/copilot")
+        if (File(extCopilot, "sdk/index.js").exists()) {
+            try {
+                val version = org.json.JSONObject(File(extCopilot, "package.json").readText())
+                    .getString("version")
+                val alias = File(extCopilot.parentFile, "copilot-android-arm64")
+                alias.mkdirs()
+                linkIfAbsent(File(alias, "sdk"), "../copilot/sdk")
+                val manifest = """{"name":"@github/copilot-android-arm64","version":"$version","type":"module","exports":{"./sdk":{"import":"./sdk/index.js"}}}"""
+                val aliasManifest = File(alias, "package.json")
+                if (!aliasManifest.exists() || aliasManifest.readText() != manifest) {
+                    aliasManifest.writeText(manifest)
+                    Logger.i(tag, "copilot alias: extension copilot-android-arm64 pinned to $version")
+                }
+            } catch (e: Exception) {
+                Logger.d(tag, "copilot extension alias failed: ${e.message}")
+            }
+        }
+
+        // ripgrep-universal directory alias; its rg is the Bionic symlink.
+        val rgBin = File(serverRoot, "node_modules/@vscode/ripgrep-universal/bin")
+        if (File(rgBin, "linux-arm64").isDirectory) {
+            linkIfAbsent(File(rgBin, "android-arm64"), "linux-arm64")
+        }
+    }
+
+    /**
      * Creates default SSH configuration for git operations.
      *
      * Sets up ~/.ssh/ directory, default ssh_config (auto-accept first connection,
