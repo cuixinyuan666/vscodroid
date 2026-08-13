@@ -397,6 +397,87 @@ int posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t *acts,
     return posix_spawn_file_actions_addchdir_np(acts, path);
 }
 
+/*
+ * copy_file_range, which Bionic gained at API 34.
+ *
+ * This one is not a symbol Bionic lacks, it is a symbol Bionic lacks *below the
+ * minimum this app supports*. minSdk is 33, and the NDK's stub libc for 21, 33,
+ * 34 and 35 puts the dividing line exactly there: absent at 33, present at 34.
+ * An addon in the shipped tree imports it, so on an Android 13 device the
+ * forwarder resolved to NULL and aborted the process the first time a file was
+ * copied -- while every emulator running 34 or later resolves it and shows
+ * nothing wrong. That asymmetry is why this needs the NDK's per-API answer and
+ * not a device test.
+ *
+ * The real one is preferred wherever it exists; it is a kernel-side copy and
+ * this is not. Resolution goes straight to Bionic's libc rather than through
+ * __shim_resolve, which consults this library too and would find its way back
+ * here.
+ *
+ * The fallback keeps the offset semantics, which are the part worth getting
+ * right: a NULL offset pointer reads or writes at the descriptor's own position
+ * and advances it, while a non-NULL one starts there, leaves the descriptor
+ * alone, and is advanced by the number of bytes copied. Short counts are a
+ * result, not an error -- callers loop -- and an error after partial progress
+ * reports the progress.
+ */
+static ssize_t copy_file_range_fallback(int fd_in, off64_t *off_in, int fd_out,
+                                        off64_t *off_out, size_t len, unsigned flags) {
+    if (flags) { errno = EINVAL; return -1; }
+
+    /* 16 KB rather than the 64 KB a copy loop would normally take: this runs on
+     * whatever thread the addon calls from, including Node worker threads, and a
+     * shim has no business putting 64 KB on a stack it did not size. At this
+     * scale the syscall overhead is already amortised. */
+    char buf[16384];
+    size_t total = 0;
+    int failed = 0;
+
+    while (total < len) {
+        size_t want = len - total;
+        if (want > sizeof(buf)) want = sizeof(buf);
+
+        ssize_t got = off_in ? pread(fd_in, buf, want, *off_in + (off64_t)total)
+                             : read(fd_in, buf, want);
+        if (got < 0) { failed = 1; break; }
+        if (got == 0) break;                    /* end of input */
+
+        ssize_t put = 0;
+        while (put < got) {
+            ssize_t n = off_out
+                ? pwrite(fd_out, buf + put, (size_t)(got - put),
+                         *off_out + (off64_t)(total + (size_t)put))
+                : write(fd_out, buf + put, (size_t)(got - put));
+            if (n < 0) { failed = 1; break; }
+            put += n;
+        }
+        total += (size_t)put;
+        if (failed || put < got) break;
+    }
+
+    if (off_in) *off_in += (off64_t)total;
+    if (off_out) *off_out += (off64_t)total;
+    if (total == 0 && failed) return -1;
+    return (ssize_t)total;
+}
+
+ssize_t copy_file_range(int fd_in, off64_t *off_in, int fd_out, off64_t *off_out,
+                        size_t len, unsigned flags) {
+    static ssize_t (*real)(int, off64_t *, int, off64_t *, size_t, unsigned);
+    static int looked_up;
+
+    if (!looked_up) {
+        if (!shim_libc) shim_open_handles();
+        if (shim_libc) {
+            *(void **)&real = dlsym(shim_libc, "copy_file_range");
+        }
+        looked_up = 1;
+    }
+
+    if (real) return real(fd_in, off_in, fd_out, off_out, len, flags);
+    return copy_file_range_fallback(fd_in, off_in, fd_out, off_out, len, flags);
+}
+
 /* ------------------------------------------------------------------------
  * Translating wrappers.
  *
