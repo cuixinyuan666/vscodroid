@@ -173,6 +173,42 @@ Node.js includes V8 (BSD-3-Clause), libuv (MIT), OpenSSL (Apache-2.0), ICU (Unic
 
 ---
 
+## Proprietary Redistributed Components
+
+### @github/copilot (GitHub Copilot CLI SDK)
+
+The built-in GitHub Copilot Chat extension depends on GitHub's `@github/copilot` package. Unlike everything listed above, this component is **not open source**: it is redistributed under GitHub's own terms.
+
+- **Publisher**: GitHub, Inc.
+- **License**: GitHub Copilot CLI License — the full text ships with every copy in the server tree; read it at `extensions/copilot/node_modules/@github/copilot/LICENSE.md`. It is not reproduced here.
+- **Version**: as pinned by the Copilot extension at the Code - OSS tag in `VSCODE_VERSION`
+
+**What is redistributed.** The SDK library files the built-in extension loads at runtime. The `copilot` CLI executable itself is **not** shipped — it is removed by the upstream build's own pruning rules, so VSCodroid distributes the library, not the command-line program.
+
+**Why we believe redistribution is permitted.** Section 1 of the license grants the right to reproduce and redistribute unmodified copies of the Software as part of an application or service, subject to the five conditions in Section 2. Our position on each:
+
+| Condition (§2) | Assessment |
+|---|---|
+| Distributed only in unmodified form | **Judgment call — see below.** |
+| Redistributed solely as part of an application providing material functionality beyond the Software | Met. VSCodroid is a full IDE; the Copilot SDK is one optional dependency of one built-in extension. |
+| Not distributed standalone or as a primary product | Met. It is not separately installable, not advertised, and not reachable except through the extension. |
+| A copy of the license is included and notices retained | Met. `LICENSE.md` travels with every copy in the tree (all copies byte-identical), and `NOTICE.md` attributes the component. |
+| The application is licensed independently of the Software | Met. VSCodroid's own source is MIT; the root `LICENSE` covers only that. |
+
+**The judgment call on "unmodified form".** The redistributed tree is not byte-identical to any package published on npm. Three transformations apply to it:
+
+- Files are pruned, per the rules in the upstream build's `build/.moduleignore`.
+- `package.json` is rewritten — renamed, given an `exports` map, and stripped of its platform constraints — and the payload is re-rooted under `sdk/`, both done by the Copilot extension's own `postinstall`.
+- The SDK's bundled `ripgrep` binary is replaced with the editor's own ripgrep, and a `shims.txt` marker is written, by the upstream packaging step `prepareBuiltInCopilotRipgrepShim`.
+
+Every one of these is performed by GitHub's or Microsoft's own build tooling, which VSCodroid runs unmodified; none is a VSCodroid intervention. The single patch this project applies to that area, `patches/0010-moduleignore-keep-copilot-sdk-entry.patch`, *removes* a pruning rule, so the result is closer to the published package than the default build would produce, not further from it.
+
+We read "unmodified form" as directed at the redistributor altering the Software, not at the vendor's own packaging pipeline producing the embedded shape it was designed to produce — the same pipeline and the same transformations that Microsoft's own desktop builds of VS Code apply. We note plainly that the ripgrep replacement is the weakest point in that reading, because a binary component is substituted rather than merely omitted.
+
+**This is a reasoned engineering position, not legal advice.** It records how the maintainers understand the terms and why the component is bundled. Anyone redistributing VSCodroid, or building a product on it, should reach their own conclusion and take their own advice.
+
+---
+
 ## Termux Project Attribution
 
 Many of the command-line tools bundled with VSCodroid (Node.js, Python, Bash, Git, tmux, Make, OpenSSH, and their dependencies) are built from recipes and patches maintained by the **Termux** project.
