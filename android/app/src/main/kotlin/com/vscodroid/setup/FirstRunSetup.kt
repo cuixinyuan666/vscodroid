@@ -869,13 +869,19 @@ claude() {
             }
         }
 
-        val superseded = supersededExtensionDirs(
-            extensionsDir.list()?.toList() ?: emptyList(),
-            bundled.toList(),
-        )
+        val present = extensionsDir.list()?.toList() ?: emptyList()
+        val superseded = supersededExtensionDirs(present, bundled.toList())
         for (name in superseded) {
             if (File(extensionsDir, name).deleteRecursively()) {
                 Logger.i(tag, "Removed superseded bundled extension: $name")
+            }
+        }
+
+        // Disjoint from superseded by construction: that set is versions of ids
+        // still bundled, this one is our ids that stopped being bundled at all.
+        for (name in retiredOwnExtensionDirs(present, bundled.toList())) {
+            if (File(extensionsDir, name).deleteRecursively()) {
+                Logger.i(tag, "Removed retired bundled extension: $name")
             }
         }
 
@@ -948,9 +954,10 @@ claude() {
      * Brings the manifest back in line with the directories after an upgrade
      * swapped bundled extension versions underneath it. Conservative on
      * purpose: an entry survives unless its directory is verifiably gone, and a
-     * bundled directory is only added when no entry — bundled or marketplace —
-     * already claims its identifier, so a user's own newer install keeps
-     * winning over the bundled copy.
+     * bundled directory is only added to replace an entry that was just
+     * dropped — never for an identifier with no entry at all, which is an
+     * extension the user uninstalled, nor over a surviving entry, so a user's
+     * own newer install keeps winning over the bundled copy.
      */
     private fun reconcileExtensionsManifest(
         manifestFile: File,
@@ -961,6 +968,7 @@ claude() {
             val entries = JSONArray(manifestFile.readText())
             val kept = JSONArray()
             val keptIds = mutableSetOf<String>()
+            val droppedIds = mutableSetOf<String>()
             var dropped = 0
 
             for (i in 0 until entries.length()) {
@@ -970,6 +978,7 @@ claude() {
                     .ifEmpty { if (path.isEmpty()) "" else File(path).name }
                 if (dirName.isNotEmpty() && !File(extensionsDir, dirName).exists()) {
                     dropped++
+                    entry.optJSONObject("identifier")?.optString("id")?.let { droppedIds.add(it) }
                     continue
                 }
                 kept.put(entry)
@@ -979,7 +988,12 @@ claude() {
             var added = 0
             for (dirName in bundledDirs) {
                 val entry = manifestEntryFor(extensionsDir, dirName) ?: continue
-                if (entry.getJSONObject("identifier").getString("id") in keptIds) continue
+                val id = entry.getJSONObject("identifier").getString("id")
+                // Only replace what was just dropped. An id with no entry at all
+                // is an extension the user uninstalled - re-adding it on every
+                // app upgrade would undo that choice each time - so the freshly
+                // extracted directory stays unlisted and inert instead.
+                if (id in keptIds || id !in droppedIds) continue
                 kept.put(entry)
                 added++
             }
@@ -1239,18 +1253,45 @@ private val FIRST_PROPERTY = Regex("""(?<=\{)\s*\n([ \t]*)(?=")""")
  * Names the extension directories left behind by an earlier bundled version.
  *
  * Bundled extensions are extracted to `publisher.name-version` directories, so
- * bumping a version extracts a new directory beside the old one. Nothing breaks
- * without cleaning up — the scanner discovers extensions by listing directories
- * (`extensionsScannerService.ts:585-598`) and prefers the highest version when it
- * finds duplicates (`:350-361`), so the new copy is the one that loads either way.
- * What is left is disk, and it never comes back: the Python extension alone is
- * 29 MB, kept on a phone for as long as the app is installed.
+ * bumping a version extracts a new directory beside the old one. The scanner
+ * shows only what `extensions.json` — the default profile's manifest — lists,
+ * not what sits on disk, so the deletion here is half of the swap: it is what
+ * lets reconcileExtensionsManifest drop the old entry and list the new version
+ * in its place. The other stake is disk, which never comes back on its own:
+ * the Python extension alone is 29 MB, kept for as long as the app is
+ * installed. (An earlier version of this comment claimed the scanner discovers
+ * extensions by listing directories; the manifest is what it reads.)
  *
  * Only strictly older copies are named. A user who installed a newer build of the
  * same extension from the marketplace keeps it — that is their copy, and the
  * scanner already prefers it. A version that is not purely numeric is left alone
  * rather than guessed at.
  */
+/**
+ * Directories under our own publisher that this build no longer bundles.
+ *
+ * `vscodroid.*` never appears on the marketplace, so such a directory can only
+ * be a leftover from a previous build of this app — the github-auth stub is the
+ * case that prompted this. With the manifest reconciled it would otherwise
+ * survive forever: reconciliation keeps any entry whose directory exists. A
+ * directory whose base id is still bundled is not retired; its versions belong
+ * to [supersededExtensionDirs].
+ */
+internal fun retiredOwnExtensionDirs(present: List<String>, bundled: List<String>): List<String> {
+    fun base(dir: String): String? {
+        val cut = dir.lastIndexOf('-')
+        if (cut <= 0 || cut == dir.length - 1) return null
+        return dir.substring(0, cut)
+    }
+
+    val bundledBases = bundled.mapNotNull(::base).toSet()
+    return present.filter { name ->
+        name.startsWith("vscodroid.") &&
+            name !in bundled &&
+            base(name).let { it != null && it !in bundledBases }
+    }
+}
+
 internal fun supersededExtensionDirs(present: List<String>, bundled: List<String>): List<String> {
     fun split(dir: String): Pair<String, String>? {
         val cut = dir.lastIndexOf('-')

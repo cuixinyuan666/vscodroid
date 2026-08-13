@@ -79,4 +79,24 @@ class SupersededExtensionsTest {
         val present = bundled + "ms-python.python-2026.4"
         assertTrue(supersededExtensionDirs(present, bundled).isEmpty())
     }
+
+    // retiredOwnExtensionDirs: the same one-directional risk applies, sharpened
+    // by the publisher filter — nothing outside vscodroid.* may ever be named.
+
+    @Test
+    fun `retires an own extension that is no longer bundled`() {
+        val present = bundled + "vscodroid.vscodroid-github-auth-1.0.0"
+        assertEquals(listOf("vscodroid.vscodroid-github-auth-1.0.0"),
+            retiredOwnExtensionDirs(present, bundled))
+    }
+
+    @Test
+    fun `never retires marketplace extensions or bundled own ones`() {
+        val present = bundled + listOf(
+            "rust-lang.rust-analyzer-0.3.2000",
+            "vscodroid.vscodroid-welcome-0.9.0", // old version: superseded's job
+            "extensions.json",
+        )
+        assertTrue(retiredOwnExtensionDirs(present, bundled).isEmpty())
+    }
 }
