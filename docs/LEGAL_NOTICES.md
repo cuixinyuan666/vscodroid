@@ -173,6 +173,56 @@ Node.js includes V8 (BSD-3-Clause), libuv (MIT), OpenSSL (Apache-2.0), ICU (Unic
 
 ---
 
+## Proprietary Redistributed Components
+
+### @github/copilot (GitHub Copilot CLI)
+
+The built-in GitHub Copilot Chat extension depends on GitHub's `@github/copilot` package. Unlike everything listed above, this component is **not open source**: it is redistributed under GitHub's own terms.
+
+- **Publisher**: GitHub, Inc.
+- **License**: GitHub Copilot CLI License — the full text ships with every copy in the server tree; read it at `extensions/copilot/node_modules/@github/copilot/LICENSE.md`. It is not reproduced here.
+- **Versions**: whatever the Copilot extension pins at the Code - OSS tag in `VSCODE_VERSION`. These are not all the same number; see below.
+
+**What is redistributed.** Three copies, at two versions, all produced by the Code - OSS build:
+
+| Location in the server tree | Version | What it is |
+|---|---|---|
+| `node_modules/@github/copilot` | 1.0.79-6 | The three-file npm loader (`npm-loader.js`, `package.json`, `LICENSE.md`) |
+| `node_modules/@github/copilot-linux-arm64` | 1.0.79-6 | The runtime itself — 104 files, ~175 MB |
+| `extensions/copilot/node_modules/@github/copilot` | 1.0.73 | The SDK copy the extension resolves — 98 files |
+
+The CLI **application** is among them: `index.js` is a `#!/usr/bin/env node` launcher and `app.js` is the 9 MB program it runs. What is *not* shipped is the standalone single-executable build — `build/lib/copilot.ts:212-213` excludes `copilot` and `copilot.exe`, and `:214-215` excludes the optional native payloads (`foundry-local-sdk`, `webview`, `clipboard`, `pvrecorder`) along with the non-target `prebuilds`. So the accurate statement is that VSCodroid ships the CLI as JavaScript executed by the bundled Node, not as a self-contained binary.
+
+**Why we believe redistribution is permitted.** Section 1 of the license grants the right to reproduce and redistribute unmodified copies of the Software as part of an application or service, subject to the five conditions in Section 2. Our position on each:
+
+| Condition (§2) | Assessment |
+|---|---|
+| Distributed only in unmodified form | **Judgment call — see below.** |
+| Redistributed solely as part of an application providing material functionality beyond the Software | Met. VSCodroid is a full IDE; the Copilot runtime is a dependency of one built-in extension. |
+| Not distributed standalone or as a primary product | Met. It is not separately installable, not advertised, and not reachable except through the extension — the standalone executable form is the one thing the build excludes. |
+| A copy of the license is included and notices retained | Met. `LICENSE.md` travels with every copy in the tree (all copies byte-identical), and `NOTICE.md` attributes the component. |
+| The application is licensed independently of the Software | Met. VSCodroid's own source is MIT; the root `LICENSE` covers only that. |
+
+**The judgment call on "unmodified form".** The question is not whether the tree matches npm exactly — it does not — but what the differences actually are. Measured file by file against the upstream tarballs:
+
+*The loader copy* (`@github/copilot@1.0.79-6`): byte-identical in all three files it ships. Only `README.md` is omitted.
+
+*The runtime copy* (`@github/copilot-linux-arm64@1.0.79-6`): 99 of its 104 files are byte-identical to upstream. The remaining five — `app.js`, `sdk/index.js`, and the three `voice-*` workers — differ by exactly one thing: a trailing `//# sourceMappingURL=` comment has been removed. No `.map` files ship, so the removed lines pointed at files that are not there. The change is 32 to 41 bytes per file and alters no behavior.
+
+*The SDK copy* (`@github/copilot@1.0.73`): 95 of its 98 files are byte-identical to the upstream platform package, 35 of them re-rooted under `sdk/`. The differences are `package.json`, rewritten by the extension's own `postinstall` (renamed, given an `exports` map, platform constraints dropped), and the bundled `ripgrep` binary, replaced with the editor's own — verified byte-identical to `@vscode/ripgrep-universal` — by the upstream packaging step `prepareBuiltInCopilotRipgrepShim`, which also writes a `shims.txt` marker.
+
+Pruning in both copies follows the upstream build's own `build/.moduleignore` and `build/lib/copilot.ts`.
+
+Every one of these transformations is performed by GitHub's or Microsoft's own build tooling, which VSCodroid runs unmodified; none is a VSCodroid intervention. The single patch this project applies to that area, `patches/0010-moduleignore-keep-copilot-sdk-entry.patch`, *removes* a pruning rule, so the result is closer to the published package than a default build would produce, not further from it.
+
+We read "unmodified form" as directed at the redistributor altering the Software, not at the vendor's own build tooling producing the embedded shape it was designed to produce. To be precise about which mode of that tooling is in play: Microsoft's own CI does **not** compile this extension — it downloads it as a VSIX from an internal feed, and `compile-copilot-extension-build` is described upstream as the path "used by non-CI local builds where copilot is not downloaded as a VSIX" (`gulpfile.extensions.ts:288`). That is the path this build takes, and it is a mode Microsoft ships for building from source; it is not the identical pipeline behind their released desktop binaries.
+
+The weakest point in our reading is the `ripgrep` substitution, because a binary component is replaced rather than merely omitted. The `sourceMappingURL` stripping is the next weakest, though it is hard to characterise a dangling reference to an unshipped file as a modification of substance.
+
+**This is a reasoned engineering position, not legal advice.** It records how the maintainers understand the terms and why the component is bundled. Anyone redistributing VSCodroid, or building a product on it, should reach their own conclusion and take their own advice.
+
+---
+
 ## Termux Project Attribution
 
 Many of the command-line tools bundled with VSCodroid (Node.js, Python, Bash, Git, tmux, Make, OpenSSH, and their dependencies) are built from recipes and patches maintained by the **Termux** project.
