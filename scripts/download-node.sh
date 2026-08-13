@@ -45,18 +45,20 @@ if [ ! -f Packages ] || [ -n "$(find Packages -mmin +60 2>/dev/null)" ]; then
     curl -sL --fail --show-error -o Packages "$PACKAGES_URL"
 fi
 
-filename=$(awk -v pkg="$PACKAGE" '
-    /^Package: / { current = $2 }
-    /^Filename: / && current == pkg { print $2; exit }
+# One pass, all three fields from the same stanza: the live index carries
+# duplicate Package stanzas for some packages, and independent scans could
+# pair one stanza's Filename with another's SHA256.
+pkg_line=$(awk -v pkg="$PACKAGE" '
+    /^Package: / { if (fn != "" && current == pkg) exit; current = $2; fn = ""; ver = ""; sh = "" }
+    /^Filename: / && current == pkg { fn = $2 }
+    /^Version: / && current == pkg { ver = $2 }
+    /^SHA256: / && current == pkg { sh = $2 }
+    END { if (fn != "") print fn, (ver == "" ? "-" : ver), (sh == "" ? "-" : sh) }
 ' Packages)
-version=$(awk -v pkg="$PACKAGE" '
-    /^Package: / { current = $2 }
-    /^Version: / && current == pkg { print $2; exit }
-' Packages)
-sha256=$(awk -v pkg="$PACKAGE" '
-    /^Package: / { current = $2 }
-    /^SHA256: / && current == pkg { print $2; exit }
-' Packages)
+filename=$(echo "$pkg_line" | cut -d' ' -f1)
+version=$(echo "$pkg_line" | cut -d' ' -f2)
+sha256=$(echo "$pkg_line" | cut -d' ' -f3)
+[ "$sha256" = "-" ] && sha256=""
 
 if [ -z "$filename" ]; then
     echo "  ERROR: $PACKAGE is not in the Termux index" >&2
@@ -67,8 +69,10 @@ echo "  package : $PACKAGE $version"
 
 # This file becomes libnode.so, the entire server runtime, executed on every
 # user's device -- and it arrives over a third-party mirror. The index's SHA256
-# field is the strongest statement the repo makes about what the bytes should
-# be; a file that does not match it, cached or fresh, must not be used.
+# travels over the same channel as the payload, so this is integrity against
+# corruption, truncation and stale caches rather than a root of trust against
+# a hostile mirror; a file that does not match, cached or fresh, must not be
+# used.
 deb="debs/$(basename "$filename")"
 mkdir -p debs
 if [ ! -f "$deb" ]; then
@@ -85,7 +89,10 @@ if [ -n "$sha256" ]; then
     fi
     echo "  sha256  : verified"
 else
-    echo "  WARNING: index carries no SHA256 for $PACKAGE; downloaded unverified" >&2
+    # Fail closed: index and payload come from the same mirror, so a missing
+    # SHA256 line would otherwise switch verification off silently.
+    echo "  ERROR: index carries no SHA256 for $PACKAGE" >&2
+    exit 1
 fi
 echo "  deb     : $(du -h "$deb" | cut -f1)"
 

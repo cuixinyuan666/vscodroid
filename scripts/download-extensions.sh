@@ -7,13 +7,6 @@ set -euo pipefail
 # Each extension becomes a directory like PKief.material-icon-theme-5.17.0/
 # which FirstRunSetup extracts on device and registers via extensions.json.
 #
-# Unverified by design, and worth knowing why: every other download script
-# checks its payload against a published digest, but Open VSX's API exposes no
-# checksum for VSIX assets, so there is nothing here to check against. Pinning
-# versions (publisher.name@version below) is the strongest guarantee available
-# from this source. If Open VSX ever publishes digests, this script should be
-# brought up to the same bar as the rest.
-#
 # Compatible with bash 3.2+ (macOS default).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -120,6 +113,27 @@ for EXT_SPEC in "${EXTENSIONS[@]}"; do
         curl -sL --fail --show-error -o "$VSIX_FILE" "$DOWNLOAD_URL"
         echo "  Downloaded: $(du -sh "$VSIX_FILE" | cut -f1)"
     fi
+
+    # files.sha256 sits right next to files.download in the same metadata this
+    # loop already parses. These are executable payloads bundled into the APK,
+    # so they get the same bar as every other download script: fail closed,
+    # cached files included. (An earlier revision claimed Open VSX publishes no
+    # digests; review disproved that with a live fetch.)
+    SHA256_URL=$(python3 -c "import json; print(json.load(open('$METADATA_FILE'))['files'].get('sha256', ''))")
+    if [ -z "$SHA256_URL" ]; then
+        echo "  FAIL   $EXT_ID: metadata carries no files.sha256" >&2
+        exit 1
+    fi
+    EXPECTED=$(curl -sL --fail --show-error "$SHA256_URL" | awk '{print $1}')
+    ACTUAL=$( (sha256sum "$VSIX_FILE" 2>/dev/null || shasum -a 256 "$VSIX_FILE") | cut -d' ' -f1)
+    if [ -z "$EXPECTED" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
+        echo "  FAIL   $EXT_ID: VSIX does not match files.sha256" >&2
+        echo "         published : ${EXPECTED:-(empty)}" >&2
+        echo "         file      : $ACTUAL" >&2
+        rm -f "$VSIX_FILE"
+        exit 1
+    fi
+    echo "  sha256: verified"
 
     # Extract extension/ contents from VSIX (it's a ZIP)
     echo "  Extracting..."

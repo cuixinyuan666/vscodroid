@@ -41,14 +41,17 @@ PKG_MAP_FILE="$(mktemp)"
 trap "rm -f '$PKG_MAP_FILE'" EXIT
 
 for pkg in "${REQUIRED_PACKAGES[@]}"; do
-    filename=$(awk -v pkg="$pkg" '
-        /^Package: / { current = $2 }
-        /^Filename: / && current == pkg { print $2; exit }
+    # One pass, emitting when the stanza ends: the live index carries duplicate
+    # Package stanzas (gdk-pixbuf, neovim-nightly, ...), and two independent
+    # scans could pair stanza A's Filename with stanza B's SHA256.
+    pkg_line=$(awk -v pkg="$pkg" '
+        /^Package: / { if (fn != "" && current == pkg) exit; current = $2; fn = ""; sh = "" }
+        /^Filename: / && current == pkg { fn = $2 }
+        /^SHA256: / && current == pkg { sh = $2 }
+        END { if (fn != "") print fn, (sh == "" ? "-" : sh) }
     ' Packages)
-    sha256=$(awk -v pkg="$pkg" '
-        /^Package: / { current = $2 }
-        /^SHA256: / && current == pkg { print $2; exit }
-    ' Packages)
+    filename=${pkg_line% *}
+    sha256=${pkg_line##* }
 
     if [ -z "$filename" ]; then
         echo "  ERROR: Package '$pkg' not found in index"
@@ -80,8 +83,12 @@ get_pkg_sha256() {
 verify_pkg_sha256() {
     local file="$1" expected="$2"
     if [ "$expected" = "-" ] || [ -z "$expected" ]; then
-        echo "    WARNING: no SHA256 in index for $(basename "$file"); unverified" >&2
-        return 0
+        # Fail closed: the index and the payload come from the same host, so a
+        # mirror that drops the SHA256 line could otherwise switch the check
+        # off silently. Every package in the real index carries one; its
+        # absence is an anomaly, not a pass.
+        echo "    ERROR: no SHA256 in index for $(basename "$file")" >&2
+        return 1
     fi
     local actual
     actual=$( (sha256sum "$file" 2>/dev/null || shasum -a 256 "$file") | cut -d' ' -f1)

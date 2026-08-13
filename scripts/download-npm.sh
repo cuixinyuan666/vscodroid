@@ -35,21 +35,31 @@ fi
 
 # nodejs.org publishes SHASUMS256.txt per release; npm ships inside the APK, so
 # the tarball it comes from gets the same verification as every other payload.
-expected=$(curl -sL --fail --show-error "https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt" \
-    | awk -v f="$NODE_TARBALL" '$2 == f { print $1; exit }')
+# The digest is kept in a sidecar next to the cache so an offline rebuild with
+# an already-verified tarball still verifies instead of dying in the fetch;
+# with neither the network nor a sidecar, fail closed.
+SIDECAR="$WORK_DIR/$NODE_TARBALL.sha256"
+expected=$(curl -sL "https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt" 2>/dev/null \
+    | awk -v f="$NODE_TARBALL" '$2 == f { print $1; exit }' || true)
 if [ -n "$expected" ]; then
-    actual=$( (sha256sum "$WORK_DIR/$NODE_TARBALL" 2>/dev/null || shasum -a 256 "$WORK_DIR/$NODE_TARBALL") | cut -d' ' -f1)
-    if [ "$actual" != "$expected" ]; then
-        echo "  ERROR: $NODE_TARBALL does not match SHASUMS256.txt" >&2
-        echo "    published : $expected" >&2
-        echo "    file      : $actual" >&2
-        rm -f "$WORK_DIR/$NODE_TARBALL"
-        exit 1
-    fi
-    echo "  sha256: verified against SHASUMS256.txt"
-else
-    echo "  WARNING: could not resolve $NODE_TARBALL in SHASUMS256.txt; unverified" >&2
+    printf '%s\n' "$expected" > "$SIDECAR"
+elif [ -f "$SIDECAR" ]; then
+    expected=$(cat "$SIDECAR")
+    echo "  sha256: using cached digest (SHASUMS256.txt unreachable)"
 fi
+if [ -z "$expected" ]; then
+    echo "  ERROR: no digest for $NODE_TARBALL (SHASUMS256.txt unreachable, no cached sidecar)" >&2
+    exit 1
+fi
+actual=$( (sha256sum "$WORK_DIR/$NODE_TARBALL" 2>/dev/null || shasum -a 256 "$WORK_DIR/$NODE_TARBALL") | cut -d' ' -f1)
+if [ "$actual" != "$expected" ]; then
+    echo "  ERROR: $NODE_TARBALL does not match SHASUMS256.txt" >&2
+    echo "    published : $expected" >&2
+    echo "    file      : $actual" >&2
+    rm -f "$WORK_DIR/$NODE_TARBALL"
+    exit 1
+fi
+echo "  sha256: verified"
 
 # --- Step 2: Extract only npm ---
 echo ""

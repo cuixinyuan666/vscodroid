@@ -89,7 +89,10 @@ PY
     fi
     echo "  checksum  : verified (SHA1, the strongest APKINDEX offers)"
 else
-    echo "  WARNING: index carries no checksum for musl; downloaded unverified" >&2
+    # Fail closed: the index and the .apk come from the same mirror, so a
+    # missing C: field would otherwise switch verification off silently.
+    echo "  ERROR: index carries no checksum for musl" >&2
+    exit 1
 fi
 
 # An .apk is a gzipped tar. In musl the loader and libc are one file, so this is
