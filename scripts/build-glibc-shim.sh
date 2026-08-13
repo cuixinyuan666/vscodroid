@@ -79,6 +79,7 @@ echo "--- libglibc-shim.so ---"
     -o "$OUT_DIR/libglibc-shim.so" \
     "$SCRIPT_DIR/glibc-shim.c" \
     -Wl,-soname,libglibc-shim.so \
+    -llog \
     "${PAGE_SIZE_FLAGS[@]}"
 echo "  $(wc -c < "$OUT_DIR/libglibc-shim.so" | tr -d ' ') bytes"
 
