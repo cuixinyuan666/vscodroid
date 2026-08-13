@@ -123,4 +123,16 @@ done
 
 echo ""
 echo "=== Verify ==="
-python3 "$SCRIPT_DIR/verify-android-elf.py" "$OUT_DIR/libglibc-shim.so" --lib-dir "$OUT_DIR"
+# Every object this script emits, not only the shim. The stubs are what an
+# addon's loader binds to first, and they are linked by a separate command with
+# its own flags -- so a max-page-size that stopped being passed there would not
+# surface until an Android 16 device refused to map one, long after this build
+# reported success. All eleven pass today; this keeps it that way.
+#
+# What it does not cover: whether an undefined symbol exists at the minimum API
+# level. This checks that DT_NEEDED libraries resolve, which is a different
+# question -- see the addchdir fix for the class it cannot see.
+for lib in libglibc-shim.so "${STUBS[@]}"; do
+    echo "  --- $lib ---"
+    python3 "$SCRIPT_DIR/verify-android-elf.py" "$OUT_DIR/$lib" --lib-dir "$OUT_DIR"
+done
