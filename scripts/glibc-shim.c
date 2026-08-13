@@ -193,6 +193,45 @@ const unsigned short **__ctype_b_loc(void) {
     return &p;
 }
 
+/*
+ * The two case-conversion tables, in the same shape and with the same 128-entry
+ * offset. Entries are int rather than unsigned short because each holds a
+ * character value that must still be able to be EOF.
+ *
+ * The negative half is neither padding nor a mirror of the positive half, which
+ * is the part worth getting from a measurement instead of from reasoning. Dumped
+ * from glibc 2.36 on aarch64 in the C locale: indices -128..-2 hold i + 256 --
+ * the index reinterpreted as an unsigned char -- and -1 holds -1, so
+ * tolower(EOF) is EOF rather than 255. Every one of the 384 entries in both
+ * tables was compared against that dump and the rule below reproduces all of
+ * them. None of 128..255 is a letter, so the case tests never fire there.
+ */
+static const int *ctype_case_table(int want_upper) {
+    static int lower[384], upper[384];
+    static int built;
+    if (!built) {
+        for (int i = -128; i < 256; i++) {
+            int v = (i < -1) ? i + 256 : i;
+            lower[i + 128] = (v >= 'A' && v <= 'Z') ? v + 32 : v;
+            upper[i + 128] = (v >= 'a' && v <= 'z') ? v - 32 : v;
+        }
+        built = 1;
+    }
+    return (want_upper ? upper : lower) + 128;
+}
+
+const int **__ctype_tolower_loc(void) {
+    static const int *p;
+    p = ctype_case_table(0);
+    return &p;
+}
+
+const int **__ctype_toupper_loc(void) {
+    static const int *p;
+    p = ctype_case_table(1);
+    return &p;
+}
+
 /* Version strings addons occasionally log or gate on. Nothing branches on the
  * exact value in practice; a modern one keeps any comparison happy. */
 const char *gnu_get_libc_version(void) { return "2.31"; }
