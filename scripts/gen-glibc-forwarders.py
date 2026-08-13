@@ -148,17 +148,24 @@ TRANSLATED = {
 # a working call into an abort.
 NEEDS_TRANSLATION = set()
 
+# Every source is a call into libglibc-shim.so, never a bare name. The stub
+# exports these very names itself (versioned, default visibility), so a bare
+# `environ` or `stdout` in its own constructor binds to its own zeroed storage
+# and copies NULL over NULL -- the same self-binding hazard the resolver
+# comment below describes for dlopen, measured here with readelf: the GLOB_DAT
+# entries pointed into the stub's own .bss. libglibc-shim.so defines none of
+# these names, so a call routed through it reaches the real values.
 DATA_SYMBOLS = {
-    "stdout": ("FILE *", "stdout"),
-    "stderr": ("FILE *", "stderr"),
-    "stdin": ("FILE *", "stdin"),
-    "environ": ("char **", "environ"),
+    "stdout": ("FILE *", "__shim_stdout()"),
+    "stderr": ("FILE *", "__shim_stderr()"),
+    "stdin": ("FILE *", "__shim_stdin()"),
+    "environ": ("char **", "__shim_environ()"),
     # The stack-protector canary. Bionic keeps its own private, so this is a
     # separate value -- which is fine, because the addon only ever compares it
     # against itself. It has to be non-zero and not guessable from the binary.
     "__stack_chk_guard": ("unsigned long ", "__shim_stack_guard()"),
-    "__environ": ("char **", "environ"),
-    "_environ": ("char **", "environ"),
+    "__environ": ("char **", "__shim_environ()"),
+    "_environ": ("char **", "__shim_environ()"),
 }
 
 
@@ -292,7 +299,10 @@ def generate(inputs, out_dir: pathlib.Path):
             "#include <stdio.h>",
             "#include <stdlib.h>",
             "",
-            "extern char **environ;",
+            "extern char **__shim_environ(void);",
+            "extern FILE *__shim_stdin(void);",
+            "extern FILE *__shim_stdout(void);",
+            "extern FILE *__shim_stderr(void);",
             "",
             "#include <android/log.h>",
             "",

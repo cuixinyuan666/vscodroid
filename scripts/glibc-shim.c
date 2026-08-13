@@ -140,22 +140,47 @@ void __assert_fail(const char *assertion, const char *file, unsigned line,
  * ctype tables. glibc returns a pointer to a pointer into a table offset by 128
  * so that EOF (-1) indexes validly. The table is built once with the C locale,
  * which is what these addons run under anyway.
+ *
+ * The bit values are glibc's _ISbit(): bits 0-7 are shifted up a byte, bits
+ * 8-11 down a byte, so the "obvious" hex guesses are wrong in both directions.
+ * The first version of this table guessed, and got 5 of the 12 classes wrong -
+ * isalnum() false for everything, isprint() false, ispunct('A') true - which an
+ * addon consumes through the __ctype_b_loc() macro expansion with no error to
+ * see anywhere. Values below are copied from glibc's ctype.h, not derived.
  */
+#define SHIM_ISupper  0x0100
+#define SHIM_ISlower  0x0200
+#define SHIM_ISalpha  0x0400
+#define SHIM_ISdigit  0x0800
+#define SHIM_ISxdigit 0x1000
+#define SHIM_ISspace  0x2000
+#define SHIM_ISprint  0x4000
+#define SHIM_ISgraph  0x8000
+#define SHIM_ISblank  0x0001
+#define SHIM_IScntrl  0x0002
+#define SHIM_ISpunct  0x0004
+#define SHIM_ISalnum  0x0008
+
 static const unsigned short *ctype_b_table(void) {
     static unsigned short table[384];
     static const unsigned short *ptr;
     if (!ptr) {
         for (int c = 0; c < 256; c++) {
             unsigned short f = 0;
-            if (c >= 'A' && c <= 'Z') f |= 0x0100 | 0x0400;            /* upper, alpha */
-            if (c >= 'a' && c <= 'z') f |= 0x0200 | 0x0400;            /* lower, alpha */
-            if (c >= '0' && c <= '9') f |= 0x0800 | 0x1000;            /* digit, xdigit */
-            if ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) f |= 0x1000;
-            if (c == ' ' || (c >= '\t' && c <= '\r')) f |= 0x2000;     /* space */
-            if (c == ' ' || c == '\t') f |= 0x4000;                    /* blank */
-            if (c < 32 || c == 127) f |= 0x0002;                       /* cntrl */
-            if (c >= 33 && c <= 126) f |= 0x0004 | 0x8000;             /* punct-ish, print */
-            if (c >= 32 && c <= 126) f |= 0x8000;                      /* print */
+            if (c >= 'A' && c <= 'Z') f |= SHIM_ISupper | SHIM_ISalpha;
+            if (c >= 'a' && c <= 'z') f |= SHIM_ISlower | SHIM_ISalpha;
+            if (c >= '0' && c <= '9') f |= SHIM_ISdigit;
+            if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
+                f |= SHIM_ISxdigit;
+            if (f & (SHIM_ISalpha | SHIM_ISdigit)) f |= SHIM_ISalnum;
+            if (c == ' ' || (c >= '\t' && c <= '\r')) f |= SHIM_ISspace;
+            if (c == ' ' || c == '\t') f |= SHIM_ISblank;
+            if (c < 32 || c == 127) f |= SHIM_IScntrl;
+            if (c >= 33 && c <= 126) {
+                f |= SHIM_ISgraph;
+                if (!(f & SHIM_ISalnum)) f |= SHIM_ISpunct;
+            }
+            if (c >= 32 && c <= 126) f |= SHIM_ISprint;
             table[c + 128] = f;
         }
         ptr = table + 128;
@@ -251,7 +276,18 @@ void *__shim_resolve(const char *name) {
     return p;
 }
 
+/*
+ * Accessors for the data symbols the stubs re-export. The stubs cannot read
+ * `environ` or `stdout` by name: they define those very names (versioned, at
+ * default visibility), so the reference would bind to their own zeroed storage
+ * and the constructor would copy NULL over NULL — measured with readelf, the
+ * GLOB_DAT entries pointed at the stub's own .bss. This library defines
+ * neither name, so from here the same references reach Bionic's real ones.
+ */
 char **__shim_environ(void) { return environ; }
+FILE *__shim_stdin(void)  { return stdin; }
+FILE *__shim_stdout(void) { return stdout; }
+FILE *__shim_stderr(void) { return stderr; }
 
 /*
  * The last few glibc keeps and Bionic does not.
