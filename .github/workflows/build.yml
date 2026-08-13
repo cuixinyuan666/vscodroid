@@ -53,11 +53,17 @@ jobs:
             toolchains/build/npm/
             toolchains/extensions/
             toolchains/musl/
-          key: downloads-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-musl-loader.sh') }}
+          key: downloads-${{ hashFiles('VSCODE_VERSION', 'patches/**', 'branding/**', 'scripts/build-vscode-oss.sh', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-musl-loader.sh') }}
           restore-keys: |
             downloads-
 
-      # Cache the generated assets directory (extracted, patched VS Code server + tools)
+      # Cache the generated assets directory (extracted, patched VS Code server + tools).
+      # patches/, branding/ and build-vscode-oss.sh are in the key even though no
+      # step here reads them: they shape the server tarball, which is republished
+      # under the same server-<version> name when they change. On an assets cache
+      # hit the fetch step - and its digest check against the release - never
+      # runs, so this key is the only thing standing between a republished server
+      # and a stale cached tree going into the APK.
       - name: Cache generated assets
         id: cache-assets
         uses: actions/cache@v4
@@ -68,7 +74,7 @@ jobs:
             android/app/src/main/assets/extensions/
             android/app/src/main/jniLibs/arm64-v8a/
             server/vscode-reh/
-          key: assets-${{ hashFiles('VSCODE_VERSION', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-musl-loader.sh', 'scripts/build-native-addons.sh', 'scripts/build-glibc-shim.sh', 'scripts/glibc-shim.c', 'scripts/gen-glibc-forwarders.py') }}
+          key: assets-${{ hashFiles('VSCODE_VERSION', 'patches/**', 'branding/**', 'scripts/build-vscode-oss.sh', 'scripts/fetch-vscode-oss.sh', 'scripts/verify-server-tree.py', 'scripts/download-termux-tools.sh', 'scripts/download-node.sh', 'scripts/download-npm.sh', 'scripts/download-python.sh', 'scripts/download-extensions.sh', 'scripts/download-musl-loader.sh', 'scripts/build-native-addons.sh', 'scripts/build-glibc-shim.sh', 'scripts/glibc-shim.c', 'scripts/gen-glibc-forwarders.py') }}
           restore-keys: |
             assets-
 
