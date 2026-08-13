@@ -5,6 +5,8 @@ import android.system.Os
 import com.vscodroid.util.Environment
 import com.vscodroid.util.Logger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -26,7 +28,18 @@ class FirstRunSetup(private val context: Context) {
         return installedVersion != currentVersion
     }
 
-    suspend fun runSetup(): SetupResult = withContext(Dispatchers.IO) {
+    suspend fun runSetup(): SetupResult = setupMutex.withLock {
+        // Two Splash instances can exist at once (noHistory + standard
+        // launchMode), each calling this from its own lifecycleScope. The body
+        // is blocking I/O that never checks for cancellation, so cancelling the
+        // loser does nothing — serialize instead, and let whoever waited find
+        // the work already done. The winner's markSetupComplete() flips
+        // isFirstRun() before the lock is released.
+        if (!isFirstRun()) return@withLock SetupResult.SUCCESS
+        runSetupLocked()
+    }
+
+    private suspend fun runSetupLocked(): SetupResult = withContext(Dispatchers.IO) {
         val previousVersionCode = getPreviousVersionCode()
         val currentVersionCode = getCurrentVersionCode()
         val isUpgrade = previousVersionCode > 0
@@ -1004,6 +1017,10 @@ claude() {
     companion object {
         private const val KEY_VERSION = "setup_version"
         private const val KEY_VERSION_CODE = "setup_version_code"
+
+        // Process-wide: each Splash instance builds its own FirstRunSetup, so an
+        // instance field would serialize nothing.
+        private val setupMutex = Mutex()
 
         /**
          * The release that replaces the pre-built VS Code Server with Code - OSS
