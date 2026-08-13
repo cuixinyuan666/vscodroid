@@ -53,6 +53,29 @@ function rawExchange(port, request) {
     });
 }
 
+/**
+ * Like rawExchange, but lets the server close the connection instead of
+ * destroying it at the first CRLFCRLF. That distinction is the whole point of
+ * the Connection: close test below -- reading the header text only proves the
+ * proxy claimed it would close, not that it did.
+ */
+function rawExchangeUntilClose(port, request) {
+    return new Promise((resolve, reject) => {
+        const socket = net.connect(port, '127.0.0.1', () => socket.write(request));
+        let received = '';
+        let sawFin = false;
+        socket.on('data', (chunk) => (received += chunk));
+        socket.on('end', () => (sawFin = true));
+        socket.on('error', reject);
+        socket.on('close', () => resolve({ received, sawFin }));
+        // A tunnel that stays open would hang this forever; fail loudly instead.
+        socket.setTimeout(3000, () => {
+            socket.destroy();
+            resolve({ received, sawFin });
+        });
+    });
+}
+
 /** Issues a proxied GET with the Proxy-Authorization header set verbatim. */
 function proxiedGetRaw(proxyPort, targetUrl, headerValue) {
     return new Promise((resolve, reject) => {
@@ -180,6 +203,65 @@ async function main() {
         `${connectHead}Proxy-Authorization: Basic ${Buffer.from(goodCredentials).toString('base64')}\r\n\r\n`,
     );
     assert.match(goodTunnel, /^HTTP\/1\.1 200 /, `a correct token was refused a tunnel: ${goodTunnel}`);
+
+    // The header text above only proves the proxy said it would close. This
+    // proves it did: a challenge-response client retries on this connection, and
+    // if the FIN never arrives it waits on a socket that is already gone.
+    const closed = await rawExchangeUntilClose(proxyPort, `${connectHead}\r\n`);
+    assert.match(closed.received, /^HTTP\/1\.1 407 /, 'unauthenticated CONNECT was not rejected');
+    assert.ok(closed.sawFin, 'the proxy announced Connection: close but never closed the connection');
+
+    // --- IPv6 literals ----------------------------------------------------
+    // "[::1]:443".split(':') yields ["[", "", "1]", "443"], so the pre-parser
+    // form dialled a host named "[". Skipped where the loopback has no IPv6.
+    const echo6 = net.createServer((socket) => socket.pipe(socket));
+    const echo6Port = await new Promise((resolve) => {
+        echo6.once('error', () => resolve(null));
+        echo6.listen(0, '::1', () => resolve(echo6.address().port));
+    });
+    if (echo6Port) {
+        const tunnel6 = await rawExchange(
+            proxyPort,
+            `CONNECT [::1]:${echo6Port} HTTP/1.1\r\nHost: [::1]:${echo6Port}\r\n` +
+                `Proxy-Authorization: Basic ${Buffer.from(goodCredentials).toString('base64')}\r\n\r\n`,
+        );
+        assert.match(tunnel6, /^HTTP\/1\.1 200 /, `an IPv6 CONNECT target was refused: ${tunnel6}`);
+        echo6.close();
+    } else {
+        console.log('note -- no IPv6 loopback here, skipped the IPv6 CONNECT case');
+    }
+
+    // A port outside the valid range used to reach net.connect and throw
+    // ERR_SOCKET_BAD_PORT synchronously, which took the whole bootstrap down.
+    const badPort = await rawExchange(
+        proxyPort,
+        `CONNECT example.com:99999999 HTTP/1.1\r\nHost: example.com\r\n` +
+            `Proxy-Authorization: Basic ${Buffer.from(goodCredentials).toString('base64')}\r\n\r\n`,
+    );
+    assert.match(badPort, /^HTTP\/1\.1 400 /, `a malformed CONNECT target was not rejected: ${badPort}`);
+
+    // --- a client that walks away mid-flight ------------------------------
+    // The error listeners in both handlers exist so an aborted client cannot
+    // raise an unhandled 'error' and kill the bootstrap. Nothing exercised them.
+    await new Promise((resolve) => {
+        const socket = net.connect(proxyPort, '127.0.0.1', () => {
+            socket.write(`${connectHead}Proxy-Authorization: Basic ${Buffer.from(goodCredentials).toString('base64')}\r\n\r\n`);
+            socket.destroy();
+            resolve();
+        });
+        socket.on('error', resolve);
+    });
+    await new Promise((resolve) => {
+        const socket = net.connect(proxyPort, '127.0.0.1', () => {
+            socket.write(`GET http://127.0.0.1:${originPort}/ HTTP/1.1\r\nHost: x\r\n\r\n`);
+            socket.destroy();
+            resolve();
+        });
+        socket.on('error', resolve);
+    });
+    // If either abort had killed the proxy, this would not answer.
+    const stillAlive = await proxiedGet(proxyPort, `http://127.0.0.1:${originPort}/`, goodCredentials);
+    assert.strictEqual(stillAlive.status, 200, 'the proxy died after a client aborted mid-request');
 
     // --- the token must not escape into any log ---------------------------
     const secret = decodeURIComponent(proxy.password);

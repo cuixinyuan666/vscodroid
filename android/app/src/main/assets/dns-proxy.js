@@ -218,8 +218,25 @@ function start(log) {
                 return;
             }
 
-            const [host, rawPort] = req.url.split(':');
-            upstream = net.connect(Number(rawPort) || 443, host, () => {
+            // Parsed rather than split on ':' because a CONNECT target may be an
+            // IPv6 literal: "[::1]:443".split(':') yields ["[", "", "1]", "443"],
+            // so the old form dialled a host named "[". The WHATWG parser gets
+            // this right and rejects a malformed authority outright, which also
+            // closes a second hole -- "host:99999999" used to reach net.connect
+            // and throw ERR_SOCKET_BAD_PORT synchronously, taking the bootstrap
+            // down with it. It keeps the brackets on an IPv6 hostname; net.connect
+            // wants the bare address.
+            let host;
+            let port;
+            try {
+                const target = new URL(`http://${req.url}`);
+                host = target.hostname.startsWith('[') ? target.hostname.slice(1, -1) : target.hostname;
+                port = Number(target.port) || 443;
+            } catch {
+                clientSocket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+                return;
+            }
+            upstream = net.connect(port, host, () => {
                 clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
                 if (head && head.length) {
                     upstream.write(head);
