@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- The build now refuses a server tree that is missing any of the Android adaptations, instead of checking only the ones someone remembered to list. A patch added without its check used to produce a clean-looking build that quietly shipped without it
 - npm upgraded 10.8.2 → 11.16.0, the version the bundled Node runtime actually ships with. The app had been packaging npm taken from an older Node release it no longer runs, left behind when the runtime was replaced
 - The on-device test suite now states when it is expected to be run, and the build checks that it can still read the versions it asserts. It had gone two releases expecting a Node version the app no longer shipped, because nothing ran it and nothing noticed
 - The release now checks the app bundle against the store's size limits before publishing anything, rather than measuring it and carrying on. A bundle that has grown too large previously failed at store upload with the download release already public, leaving one version shipping through two channels with different contents
