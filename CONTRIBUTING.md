@@ -220,6 +220,17 @@ VSCodroid/
 
 Each script downloads pre-built binaries and places them in the correct location under `android/app/src/main/`.
 
+**To find out which version of something ships, read the script — never the
+assets tree.** `android/app/src/main/assets/` is build output, gitignored, and
+filled by whichever run of these scripts happened last; a checkout can be weeks
+stale and still hold a well-formed file that answers confidently. That has
+produced a wrong number in a published issue: `node_modules/npm/package.json`
+was read from a working tree, parsed cleanly, and reported a version the app had
+already stopped shipping. The rule is not "read the assets tree carefully" — the
+assets tree is never the answer, even on the days it happens to be right, and
+two people reading it the same way got different results only because their
+checkouts differed.
+
 | Script | What it does | Output location |
 | ------ | ------------ | --------------- |
 | `fetch-vscode-oss.sh` | Downloads the Code - OSS server tree from the `server-<version>` release, verifies it, and installs ripgrep as `libripgrep.so` | `server/vscode-reh/`, `jniLibs/arm64-v8a/libripgrep.so` |
@@ -241,7 +252,7 @@ Each script downloads pre-built binaries and places them in the correct location
 | `check-build-steps.py` | Checks the documented build sequence, `build-all.sh` and the workflows still name the same scripts | exit status |
 | `check-langserver-patterns.py` | Checks the process monitor can recognise the language servers being packaged. A pattern matching nothing is invisible twice: the server keeps running, keeps counting against the phantom-process budget, and the idle-kill never sees it | exit status |
 | `check-patch-fingerprints.py` | Checks a packaged tree carries every patch in `patches/`, using the expectations in `patches/fingerprints.txt`. Takes the tree as an argument, so the same check can run against a downloaded tarball | exit status |
-| `check-welcome-claims.py` | Refuses a welcome screen that names a bundled tool's version or promises a toolchain as "coming soon". Those runtimes come from the Termux index at build time, so a number written into the manifest is right until the next rebuild -- it was wrong for two releases, in the illustrations as well as the text | exit status |
+| `check-welcome-claims.py` | Refuses a welcome screen that names a bundled tool's version, promises a toolchain as "coming soon", or puts an undeclared number in walkthrough prose. Those runtimes come from the Termux index at build time, so a number written into the manifest is right until the next rebuild -- it was wrong for two releases, in the illustrations as well as the text | exit status |
 | `check-bundle-size.py` | Checks the release bundle against Play's per-module size caps before anything is published, rather than at upload | exit status |
 | `check-local-network-permission.py` | Checks local network access survives the `targetSdk` in use | exit status |
 
@@ -305,6 +316,14 @@ bug; 3 GB derives 384 and the test bites. `findAvailablePort()` scans upward
 from a fixed default, so the first remembered port and a fresh scan return the
 same number, and a test comparing two calls to each other moves with the bug
 instead of catching it -- holding the first port forces the paths apart.
+
+When the thing being judged is a guard rather than a test, measure the tree it
+will guard, not the tree that caused it to be written. A rule for the welcome
+screen was scored against the content the fix replaced, and every number in that
+reading was correct — right command, right tree, right moment — but it described
+what the rule was written to remove rather than what would have to pass it
+afterwards. Nothing marks that mistake, because the data comes out of the very
+file the change edits.
 
 Confirm it rather than assuming: delete the line under test, run the suite, and
 check that something red points at the deletion. A test that stays green has not
