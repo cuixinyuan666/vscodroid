@@ -313,6 +313,25 @@ class SplashActivity : AppCompatActivity() {
 
     private fun handleDownloadState(packName: String, status: Int, percent: Int) {
         if (cancelled) return
+
+        // Only the download the queue is waiting for gets to speak.
+        //
+        // The listener is registered for the app rather than for one fetch
+        // (ToolchainManager.kt:81), and every queued pack gets a row up front, so
+        // a state naming some other pack reaches here and used to be acted on. It
+        // could repaint a finished pack's row red, and worse, move the index --
+        // stepping over whichever pack was genuinely downloading and leaving it
+        // uninstalled with its row still reading "installing".
+        //
+        // downloadNext() increments the index before calling install(), so the
+        // pack being fetched is always the one at the index by the time any state
+        // for it arrives. Past the end of the queue nothing matches, which is also
+        // what stops a late arrival reaching launchMain() a second time.
+        if (!isCurrentDownload(packName, downloadQueue, currentDownloadIndex)) {
+            Logger.d(tag, "Ignoring $packName at status $status; not the current download")
+            return
+        }
+
         val row = progressRows[packName] ?: return
 
         when (status) {
@@ -324,14 +343,6 @@ class SplashActivity : AppCompatActivity() {
                 row.progressBar.progress = 100
                 row.statusText.text = getString(R.string.progress_done)
                 row.statusText.setTextColor(getColor(R.color.colorSuccess))
-                // Start next download
-                downloadNext()
-            }
-            AssetPackStatus.FAILED -> {
-                row.statusText.text = getString(R.string.progress_failed)
-                row.statusText.setTextColor(getColor(R.color.colorError))
-                // Skip failed and continue with next
-                downloadNext()
             }
             AssetPackStatus.PENDING, AssetPackStatus.WAITING_FOR_WIFI -> {
                 row.statusText.text = getString(R.string.progress_waiting)
@@ -343,8 +354,39 @@ class SplashActivity : AppCompatActivity() {
                     Logger.e(tag, "Failed to show confirmation dialog", e)
                 }
             }
+            // Anything else ends this pack without installing it. FAILED is the
+            // expected one; CANCELED arrives when the download is cancelled from
+            // the Play notification rather than from this screen, and UNKNOWN and
+            // NOT_INSTALLED arrive when Play has nothing to report for it.
+            else -> {
+                if (status != AssetPackStatus.FAILED) {
+                    Logger.w(tag, "Pack $packName ended at status $status")
+                }
+                row.statusText.text = getString(R.string.progress_failed)
+                row.statusText.setTextColor(getColor(R.color.colorError))
+            }
+        }
+
+        // Deliberately outside the when, and that is the whole fix.
+        //
+        // Advancing used to be a call inside two of the branches, so a status
+        // matching no branch advanced nothing: downloadNext() was never reached
+        // and the screen sat on its progress list for the rest of the session,
+        // with every toolchain behind the stalled one left uninstalled. Deciding
+        // it here, from the status alone, means a branch cannot forget to do it
+        // -- which is the shape the bug had, rather than the particular states
+        // it happened to miss.
+        //
+        // The stall is not a dead end, and an earlier version of this comment
+        // said it was: cancelButton is always visible and goes straight to
+        // launchMain(), and a relaunch skips setup entirely because
+        // markSetupComplete() has already run by the time this screen appears.
+        if (isTerminalPackStatus(status)) {
+            downloadNext()
         }
     }
+
+
 
     // -- Navigation --
 
@@ -356,3 +398,47 @@ class SplashActivity : AppCompatActivity() {
         finish()
     }
 }
+
+/**
+ * Whether [status] means the pack will not arrive on its own.
+ *
+ * Only five states are still going somewhere: the two transfer states, the two
+ * waiting states, and the confirmation prompt. Everything else counts as
+ * finished -- including states this build has never heard of -- because the cost
+ * of being wrong is not symmetric, though neither side is free.
+ *
+ * A pack wrongly treated as finished costs that toolchain, and costs it for
+ * good: nothing in the UI reaches ToolchainActivity, whose only caller is a
+ * BroadcastChannel command (AndroidBridge.kt:229, MainActivity.kt:907), so
+ * there is no "install it later" for an ordinary user to fall back on.
+ *
+ * A pack wrongly waited on costs that toolchain and every one queued behind it,
+ * because the queue stops rather than skips, and leaves the screen sitting there
+ * until the user finds the Cancel button. Losing one is better than losing the
+ * remainder, which is the only reason this defaults to advancing.
+ *
+ * File scope so it can be tested without an Activity; this project's unit tests
+ * have no Robolectric.
+ */
+internal fun isTerminalPackStatus(status: Int): Boolean = when (status) {
+    AssetPackStatus.DOWNLOADING,
+    AssetPackStatus.TRANSFERRING,
+    AssetPackStatus.PENDING,
+    AssetPackStatus.WAITING_FOR_WIFI,
+    AssetPackStatus.REQUIRES_USER_CONFIRMATION -> false
+    else -> true
+}
+
+/**
+ * Whether [packName] is the download the queue is currently waiting for.
+ *
+ * The one question the old code never asked. It deduplicated by pack name, which
+ * stops the same pack advancing twice but does nothing about a different pack
+ * advancing once -- and a different pack is exactly what a listener registered
+ * for the whole app can deliver.
+ *
+ * Returns false once the queue has passed its end, so a late arrival cannot
+ * reach launchMain() a second time.
+ */
+internal fun isCurrentDownload(packName: String, queue: List<String>, index: Int): Boolean =
+    packName == queue.getOrNull(index)
