@@ -55,6 +55,24 @@ class KeyInjectorShiftTest {
     }
 
     @Test
+    fun `typing with only Shift active is left to the page`() {
+        // The interceptor's own doc scopes it to Ctrl and Alt, and the guard is
+        // what has to say so. Admitting Shift cancels the soft keyboard's
+        // insertText and dispatches a synthetic keydown in its place, and Monaco
+        // types through the input event that was just cancelled: tap Shift, type
+        // s, and nothing appears. The row's Shift exists for the row's own keys,
+        // which arrive by injectKey with the modifier already on the event.
+        KeyInjector(webView).setupModifierInterceptor()
+
+        val script = script.captured
+        assertTrue(
+            script.contains("if (!mod.ctrl && !mod.alt) return;"),
+            "the interceptor must not act on Shift alone; it exists for the " +
+                "chords a soft keyboard cannot type, not for capital letters"
+        )
+    }
+
+    @Test
     fun `a character that needs Shift is sent with Shift held`() {
         // `{` rather than a letter: a letter is unshifted, so it would pass
         // whether or not the flag is read, and the fixture would agree with the
