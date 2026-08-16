@@ -18,8 +18,8 @@ import java.nio.file.Files
 
 /**
  * @param assetBytes how much the APK's asset tree weighs, and [largestAssetBytes]
- *   the biggest single file in it. Both are measured at build time -- see
- *   `app/build.gradle.kts` -- and both are parameters rather than direct reads of
+ *   the biggest single file in it. Both are measured at build time, see
+ *   `app/build.gradle.kts`, and both are parameters rather than direct reads of
  *   `BuildConfig` so that the storage pre-flight can be exercised against a tree
  *   of known size. A unit test compiles against whatever `src/main/assets` holds
  *   on the machine running it: the whole 810 MiB on a developer's checkout, and
@@ -114,8 +114,8 @@ class FirstRunSetup(
             // Ahead of the pre-flight, not behind it, for the reason
             // reconcilePythonRuntimeLocked gives for its own ordering: what frees
             // disk has to run before what needs disk. This is where the previous
-            // server tree and the orphaned web client go -- hundreds of MB on a
-            // device upgrading across the pivot -- and behind the check it was
+            // server tree and the orphaned web client go, hundreds of MB on a
+            // device upgrading across the pivot, and behind the check it was
             // gated by the shortfall it is the cure for. A device short of room
             // returned LOW_STORAGE with those trees untouched, and Retry measured
             // the same shortfall for ever, on the one install where there was
@@ -123,7 +123,7 @@ class FirstRunSetup(
             //
             // Safe this early because these migrations only delete, and only
             // trees this version no longer reads. Nothing below has run yet, so
-            // there is nothing here for them to remove that was just written --
+            // there is nothing here for them to remove that was just written,
             // which is the ordering hazard runPreExtractionMigrations exists to
             // avoid, in the other direction.
             if (isUpgrade) {
@@ -133,8 +133,8 @@ class FirstRunSetup(
             // Pre-flight: enough room for the part of the tree that is not
             // already unpacked, plus what rewriting the rest of it costs.
             //
-            // The asset total comes from the build rather than from a literal here --
-            // see EXTRACTED_ASSET_BYTES in app/build.gradle.kts for why -- and what is
+            // The asset total comes from the build rather than from a literal here,
+            // see EXTRACTED_ASSET_BYTES in app/build.gradle.kts for why, and what is
             // already on disk is MEASURED rather than inferred from the tree being
             // there at all. Those two answers differ exactly where it matters: a
             // complete tree and a tree an interrupted attempt left half-written both
@@ -148,7 +148,7 @@ class FirstRunSetup(
             // far had its old server tree deleted a few lines above and measured a
             // device with that room already given back. The next release has no such
             // deletion, and the demand would have been 874 MiB free ON TOP OF the
-            // 810 MiB the install already occupies -- refused on the splash screen,
+            // 810 MiB the install already occupies, refused on the splash screen,
             // with a Retry button that measures the same thing for ever and a
             // MainActivity that never runs, so nothing the app offers can free a byte.
             val available = context.filesDir.usableSpace
@@ -199,7 +199,7 @@ class FirstRunSetup(
             // here: it asks for what is MISSING, so every byte this attempt did
             // write is counted in the device's favour on the next one. An abort
             // at the 800th MiB leaves a retry asking for the remainder plus the
-            // room to rewrite one file -- a figure the user can act on -- and
+            // room to rewrite one file, a figure the user can act on, and
             // not for a second 874 MiB the device has just spent on us. The two
             // are one mechanism and have to move together.
             //
@@ -367,7 +367,7 @@ class FirstRunSetup(
      * would send a low-storage device round a full unpack for ever. The first
      * half stopped being true when the abort was added. The second was the reason
      * the abort was held back, and what answers it is the pre-flight asking for
-     * what is MISSING rather than for the whole tree -- so the retry after an
+     * what is MISSING rather than for the whole tree, so the retry after an
      * abort measures a device that keeps the credit for everything it already
      * wrote.
      *
@@ -1002,7 +1002,7 @@ class FirstRunSetup(
             // before it writes, so a write that runs out of disk leaves an empty
             // `.npmrc` rather than the previous one. Empty means no
             // `script-shell`, and npm then hands every lifecycle script to
-            // `/bin/sh`, which Android does not have -- so `npm install` fails on
+            // `/bin/sh`, which Android does not have, so `npm install` fails on
             // any package with a postinstall, for a reason nothing on screen
             // connects to storage.
             //
@@ -1010,7 +1010,7 @@ class FirstRunSetup(
             // `.bashrc` and `settings.json`, and an empty `.npmrc` is
             // indistinguishable from one a user emptied on purpose. The rewrite
             // above is reached only when the content differs, and an empty file
-            // does differ -- but only on a launch that has room, which is the
+            // does differ, but only on a launch that has room, which is the
             // launch that would not have broken it.
             if (writeAtomically(npmrc) { it.write(expectedContent.toByteArray()) }) {
                 Logger.d(tag, "Updated .npmrc")
@@ -1918,7 +1918,7 @@ claude() {
      * server at all.
      *
      * It also runs before the storage pre-flight, which is a second ordering
-     * constraint with its own reason -- see the call site. Everything here only
+     * constraint with its own reason, see the call site. Everything here only
      * deletes, so nothing it does depends on the room the pre-flight is
      * measuring.
      */
@@ -2024,7 +2024,7 @@ claude() {
          * The larger is block rounding: the tree is over 23,000 files, and each
          * one rounds up to a filesystem block on the way out, so a few KiB of
          * slack per file adds up to tens of MiB. The smaller is the files written
-         * after extraction -- settings.json, .bashrc, ssh defaults, git config --
+         * after extraction, settings.json, .bashrc, ssh defaults, git config,
          * which together are under a megabyte.
          *
          * Deliberately a fixed figure rather than a percentage: block rounding
@@ -2032,8 +2032,8 @@ claude() {
          * been stable across pins while the size has not.
          *
          * The same figure serves the upgrade path, which asks for far fewer bytes,
-         * and that is not an oversight. Rounding on a rewrite is roughly neutral --
-         * the file already occupies its blocks -- but the credit given for it is
+         * and that is not an oversight. Rounding on a rewrite is roughly neutral,
+         * the file already occupies its blocks, but the credit given for it is
          * computed from logical file lengths, which under-states the space an
          * overwrite actually reclaims, and a new file in a new pin rounds like any
          * other. One over-estimate covering another is worth more here than a
@@ -2046,7 +2046,7 @@ claude() {
          * not refused in this process.
          *
          * The figure depends on what is already unpacked, so it is no longer
-         * something [requiredStorageMb] can compute on its own -- and that
+         * something [requiredStorageMb] can compute on its own, and that
          * function cannot take a Context, because `SplashActivity` calls it
          * statically at the point it has a LOW_STORAGE result and nothing else.
          * Recording the refusal is what keeps the message naming the number the
@@ -2072,7 +2072,7 @@ claude() {
          *    when a pin drops files that extraction never removes.
          *  - the room to rewrite one file, charged only when something is already
          *    there. [writeAtomically] writes `<dest>.tmp~` and renames, so while
-         *    the biggest file is being replaced both copies exist -- 113 MiB of
+         *    the biggest file is being replaced both copies exist, 113 MiB of
          *    Copilot runtime, currently. On an install with nothing on disk there
          *    is no second copy to hold, and charging for one would refuse fresh
          *    installs that fit.
@@ -2141,7 +2141,7 @@ claude() {
          *
          * The refusal that has just happened is the honest answer, and the
          * whole-tree figure is the fallback for a caller asking before any
-         * refusal -- there is none today, and it is the conservative direction
+         * refusal, there is none today, and it is the conservative direction
          * for one that appears.
          */
         fun requiredStorageMb(): Long =
@@ -2601,27 +2601,27 @@ private val ATOMIC_WRITE_LOCK = Any()
  * bundled extensions, and the asymmetry is the design rather than an omission.
  * `server/` is 700 of the tree's 810 MiB and nothing but extraction writes
  * there, so every byte counted is a byte the next unpack genuinely writes over.
- * The other two are shared ground: toolchains install into `usr/` -- Java is
- * 146 MB unpacked, Go 163 MB -- `npm install -g` lands there too, and
+ * The other two are shared ground: toolchains install into `usr/`, Java is
+ * 146 MB unpacked, Go 163 MB, `npm install -g` lands there too, and
  * `home/.vscodroid/extensions` fills with whatever the user takes from the
  * gallery. Crediting those would subtract bytes that overwriting does not give
  * back, and that failure is the worse one: the gate passes, extraction runs out
  * of disk partway, and the user is told "Setup failed" rather than how much to
- * free -- on every retry, because the toolchains stay where they are. Charging
+ * free, on every retry, because the toolchains stay where they are. Charging
  * their asset size in full instead over-states the requirement, which costs a
  * user on a tight device one round of freeing space they did not strictly need
  * to free.
  *
  * Symlinks are skipped rather than followed, and that is not tidiness. The
- * Copilot alias farm links every entry of `copilot-linux-arm64` -- including the
- * 113 MiB `runtime.node`, the largest file in the tree -- and the extension side
+ * Copilot alias farm links every entry of `copilot-linux-arm64`, including the
+ * 113 MiB `runtime.node`, the largest file in the tree, and the extension side
  * links a whole `sdk` directory holding another 96 MiB. Following those counts
  * the same bytes twice and credits the install for space that does not exist,
  * which is the direction that lets the gate pass a device it should refuse.
  *
  * Asks `Files.isSymbolicLink` rather than [isSymlink], which is the same
- * question -- both are `lstat` on the final component, and `SymlinkPredicateTest`
- * already leans on that equivalence -- put through the JDK instead of
+ * question, both are `lstat` on the final component, and `SymlinkPredicateTest`
+ * already leans on that equivalence, put through the JDK instead of
  * `android.system.Os`. The difference is only that `Os.lstat` throws in a JVM
  * unit test and [isSymlink] catches it into "not a link", so the skipping this
  * walk depends on could be asserted but never measured.

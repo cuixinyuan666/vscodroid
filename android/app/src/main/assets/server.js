@@ -216,7 +216,7 @@ if (!fs.existsSync(rehEntryPoint)) {
         // Who holds the port, recorded from the side that knows.
         //
         // This process can be SIGKILLed while the child it forked keeps running
-        // and keeps the socket -- routine here, and the reason the Kotlin side
+        // and keeps the socket, routine here, and the reason the Kotlin side
         // adopts a surviving server rather than spawning one that cannot bind.
         // But the survivor is anonymous to the next launch: the Process handle
         // died with the parent, and Android denies an app any read of
@@ -224,7 +224,7 @@ if (!fs.existsSync(rehEntryPoint)) {
         //
         // So write the pid down while it is still known. The alternative the
         // Kotlin side used was to ask over HTTP whether the port holder accepted
-        // our connection token -- which meant sending the token to whoever held
+        // our connection token, which meant sending the token to whoever held
         // the port, before knowing whether they were ours. Anything on Android
         // can bind a loopback port; that made the test hand the secret to the one
         // party it was meant to identify.

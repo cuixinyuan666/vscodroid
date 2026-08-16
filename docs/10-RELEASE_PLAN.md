@@ -40,8 +40,8 @@ flowchart TD
 ## 2. CI/CD Pipeline
 
 > **This section is the pipeline as sketched on 2026-02-10, not the one in `.github/workflows/`.**
-> The rest of this document is maintained — §5 in particular is checked against the manifest and
-> the shipped strings before a submission — but nothing below reflects how the project builds.
+> The rest of this document is maintained, §5 in particular is checked against the manifest and
+> the shipped strings before a submission, but nothing below reflects how the project builds.
 > The real workflows are `build.yml` and `lint.yml` on pull requests, `release.yml` on a `v*` tag,
 > `r8.yml` on a weekly cron, `pages.yml` when `docs/site/**` lands on main, and
 > `build-vscode-oss.yml`, which is dispatched by hand on a version bump.
@@ -49,10 +49,10 @@ flowchart TD
 > Several of the jobs sketched in §2.2 describe work that is done differently or not at all.
 > `build-vscode` is not "a code-server fork": `build-vscode-oss.sh` builds vanilla Code - OSS from
 > the MIT `microsoft/vscode` source with the diffs in `patches/` applied first, on an arm64
-> runner, once per VS Code version — the pre-built server on Microsoft's update CDN carries terms
+> runner, once per VS Code version, the pre-built server on Microsoft's update CDN carries terms
 > that do not permit modifying and redistributing it, which is what forced the source build. It is
 > also not part of an app build: those fetch the published tarball with `fetch-vscode-oss.sh`.
-> `build-binaries` cross-compiles nothing — `scripts/download-*.sh` take Termux's packages.
+> `build-binaries` cross-compiles nothing, `scripts/download-*.sh` take Termux's packages.
 > `integration-test` has no counterpart at all; no CI here runs the instrumented tests, and
 > `android/app/src/androidTest/README.md` records the measurement behind that. Nor is there a
 > monthly `patch-regression` job; the only scheduled workflow is the weekly shrinker run in
@@ -370,7 +370,7 @@ Notes:
 - **The toolchain ZIPs are a delivery channel, not a convenience artifact.**
   `ToolchainRegistry` points every non-Play install at `releases/latest/download/`, so a release
   that omits them, or that publishes them without the matching `toolchains.sha256`, breaks
-  toolchain installation for those users — including ones who already have the app. The packs in
+  toolchain installation for those users, including ones who already have the app. The packs in
   the AAB and the ZIPs on the release are built from the same download in the same job, so the
   two channels cannot ship different toolchain versions for one app version.
 

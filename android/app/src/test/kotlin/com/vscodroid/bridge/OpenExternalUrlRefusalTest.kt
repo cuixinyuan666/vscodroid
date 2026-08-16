@@ -107,6 +107,10 @@ class OpenExternalUrlRefusalTest {
 
         mockkStatic(Uri::class)
         every { Uri.parse(any()) } throws IllegalStateException(UNREACHABLE)
+        // Arming left the https branch, so the plain-http launch below reads the
+        // clock too; the one test that needs a particular reading re-stubs it.
+        mockkStatic(SystemClock::class)
+        every { SystemClock.elapsedRealtime() } returns 1L
 
         context = mockk(relaxed = true)
         bridge = AndroidBridge(
@@ -297,6 +301,34 @@ class OpenExternalUrlRefusalTest {
                 "the window it is judged against exists. A failed launch is handled by the " +
                 "rollback in the catch, not by arming later — arming later also makes that " +
                 "rollback unreachable.",
+        )
+    }
+
+    @Test
+    fun `an http address opened through the system browser arms the callback window`() {
+        // The Custom Tabs branch is not the only way out: plain http, the LAN
+        // dev-server shape this method exists to serve, goes through ACTION_VIEW.
+        // Both return by the same `vscodroid://callback`, and a window armed on
+        // one branch only refuses the other's return, a sign-in against a
+        // self-hosted IdP over http then hangs with nothing said, because the
+        // callback is judged against a window that was never opened.
+        val uri = mockk<Uri>(relaxed = true)
+        every { uri.host } returns "192.168.1.50"
+        every { uri.scheme } returns "http"
+        every { Uri.parse(any()) } returns uri
+
+        mockkConstructor(Intent::class)
+        every { anyConstructed<Intent>().addFlags(any()) } returns mockk(relaxed = true)
+
+        assertTrue(
+            bridge.openExternalUrl("http://192.168.1.50/signin", security.getSessionToken()),
+            "the system browser branch must report the launch it made"
+        )
+        verify(exactly = 1) { context.startActivity(any()) }
+        assertTrue(
+            AuthTabWindow.openedAt() != 0L,
+            "every browser hand-off has to record itself, or the callback it " +
+                "returns with is refused"
         )
     }
 

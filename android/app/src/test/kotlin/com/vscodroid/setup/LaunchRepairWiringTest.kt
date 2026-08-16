@@ -13,15 +13,15 @@ import java.io.File
  * run above the `isFirstRun()` early return because an install that is not new
  * still needs them: Android hands out a fresh `nativeLibraryDir` on every
  * reinstall, which dangles every absolute symlink in `usr/bin` and stales every
- * path recorded in `settings.json`. Move the block below that return -- a tidy-up
+ * path recorded in `settings.json`. Move the block below that return, a tidy-up
  * anyone might make, since "launch-time setup refresh" reads like first-run work
- * -- and every one of them keeps its own passing test while nothing calls them.
+ * and every one of them keeps its own passing test while nothing calls them.
  *
  * They are guarded one at a time because a single `try` made the first failure
  * cost the rest, and the first is not the least likely to fail: `.npmrc` is
  * rewritten on the first launch after any reinstall, and a full disk turns that
- * into an exception that used to take the twelve calls behind it -- including the
- * only pass that gives disk back -- down with it.
+ * into an exception that used to take the twelve calls behind it, including the
+ * only pass that gives disk back, down with it.
  *
  * Read out of the source, following [com.vscodroid.DownloadStateWiringTest],
  * which explains why an Activity's `onCreate` is not reachable from a JVM test
@@ -34,7 +34,7 @@ import java.io.File
  * unconditional call and nothing else. That last one is not decoration: while
  * the check was "the line begins with `repair(` and contains the name",
  * `repair("tool symlinks") { if (false) setup.setupToolSymlinks() }` satisfied
- * every test here -- measured, not supposed -- and so would a `?.` on a null
+ * every test here, measured, not supposed, and so would a `?.` on a null
  * receiver or a call handed the wrong argument.
  *
  * What stays out of reach:
@@ -58,7 +58,7 @@ class LaunchRepairWiringTest {
     private val source = File("src/main/kotlin/com/vscodroid/SplashActivity.kt")
 
     /**
-     * The full inventory, in call order — and the order is checked, by the last
+     * The full inventory, in call order, and the order is checked, by the last
      * test in this class rather than merely claimed here, which it was until the
      * check existed. It is a checklist rather than a description: a repair added
      * to `onCreate` and not added here fails that same test, which is how the two
@@ -86,7 +86,7 @@ class LaunchRepairWiringTest {
 
     private fun onCreateBody(): String {
         check(source.isFile) {
-            "SplashActivity.kt not found at ${source.absolutePath} — this test would " +
+            "SplashActivity.kt not found at ${source.absolutePath}, this test would " +
                 "otherwise pass by looking at nothing"
         }
         val text = source.readText()
@@ -118,7 +118,7 @@ class LaunchRepairWiringTest {
     /**
      * Names are searched for in code, not in prose. Commenting a call out leaves
      * its characters in place, and the comments in this method name most of the
-     * repairs anyway -- matching raw text would find every one of them in a file
+     * repairs anyway, matching raw text would find every one of them in a file
      * that calls none.
      */
     private fun code(body: String) = body
@@ -131,8 +131,8 @@ class LaunchRepairWiringTest {
     /**
      * The name a guarded line calls, or null when the line is not a bare call.
      *
-     * Bare means the whole body is one invocation: an optional receiver -- a
-     * name, or a constructor call, followed by a dot -- then the method and an
+     * Bare means the whole body is one invocation: an optional receiver, a
+     * name, or a constructor call, followed by a dot, then the method and an
      * empty argument list, then the closing brace. Nothing else fits, and the
      * exclusions are the point rather than a side effect. `if (false)` in front
      * of the call does not fit, nor does `?.` on a receiver that may be null,
@@ -190,8 +190,8 @@ class LaunchRepairWiringTest {
      * written.
      *
      * `repair("tool symlinks") { if (false) setup.setupToolSymlinks() }` satisfies
-     * every other assertion in this class -- the name is there, it is above the
-     * return, it is inside its own guard -- and calls nothing. So does
+     * every other assertion in this class, the name is there, it is above the
+     * return, it is inside its own guard, and calls nothing. So does
      * `setup?.setupToolSymlinks()` on a receiver that has gone null, and so does a
      * call handed an argument that turns it into a no-op. Whether the guarded line
      * can actually reach the method is a different question from whether it
@@ -249,7 +249,7 @@ class LaunchRepairWiringTest {
      * The same mutation, against the real source rather than a string this test
      * wrote, and it is the one that proves the check is pointed at the file it
      * claims to read. The line is taken out of `onCreate`, switched off in
-     * memory, and put back through the check -- so the assertion fails if the
+     * memory, and put back through the check, so the assertion fails if the
      * check is loosened, and the `check()` above it fails if the line it targets
      * has been reworded, rather than the whole thing quietly passing on source it
      * no longer recognises.

@@ -20,7 +20,7 @@ Specifies how binary code interacts at the machine level. VSCodroid targets `arm
 A document that captures an important architectural decision along with its context and consequences. See [Architecture § ADRs](./03-ARCHITECTURE.md#4-key-architecture-decisions-adrs).
 
 **Asset Pack (Play Asset Delivery)**
-A mechanism for delivering additional assets with an Android App Bundle (AAB). VSCodroid uses on-demand asset packs to deliver its language toolchains — **Go, Ruby and Java 17, those three** (`ToolchainRegistry.available`, `android/settings.gradle.kts`). Packs are downloaded when the user selects them in the Language Picker during first-run or via Settings > Toolchains. Play handles that download only for installs that came from Play; every other install (sideload, debug build, `adb install`) fetches the same toolchains as ZIPs over HTTPS from this project's GitHub Releases and checks them against a published sha256 manifest before installing. Either way the payload lands in `filesDir`, never in the APK.
+A mechanism for delivering additional assets with an Android App Bundle (AAB). VSCodroid uses on-demand asset packs to deliver its language toolchains, **Go, Ruby and Java 17, those three** (`ToolchainRegistry.available`, `android/settings.gradle.kts`). Packs are downloaded when the user selects them in the Language Picker during first-run or via Settings > Toolchains. Play handles that download only for installs that came from Play; every other install (sideload, debug build, `adb install`) fetches the same toolchains as ZIPs over HTTPS from this project's GitHub Releases and checks them against a published sha256 manifest before installing. Either way the payload lands in `filesDir`, never in the APK.
 
 **adjustResize**
 Android `windowSoftInputMode` flag. When the soft keyboard appears, the app window resizes (shrinks) to fit. Essential for VS Code to remain usable with the keyboard open.
@@ -31,7 +31,7 @@ The `@JavascriptInterface`-annotated Kotlin object exposed to WebView JavaScript
 ### C
 
 **code-server**
-An open-source project by Coder that runs VS Code in the browser. VSCodroid does **not** fork it and carries none of its patches; it was evaluated as a base and not used. The server VSCodroid ships is vanilla Code - OSS built from source — see the Code-OSS entry.
+An open-source project by Coder that runs VS Code in the browser. VSCodroid does **not** fork it and carries none of its patches; it was evaluated as a base and not used. The server VSCodroid ships is vanilla Code - OSS built from source, see the Code-OSS entry.
 
 **Code-OSS**
 The open-source (MIT-licensed) version of VS Code, at `github.com/microsoft/vscode`. Microsoft's "Visual Studio Code" product adds proprietary branding, telemetry, and marketplace access on top of Code-OSS. This source is what VSCodroid builds: `scripts/build-vscode-oss.sh` clones it at the commit pinned in `VSCODE_VERSION`, applies the unified diffs in `patches/`, and produces `vscode-reh-web-linux-arm64`; app builds fetch that result with `scripts/fetch-vscode-oss.sh`. The pre-built server on Microsoft's update CDN is a different artifact under different terms that do not permit modifying and redistributing it, so `scripts/verify-server-tree.py` fails any tree whose `LICENSE.txt` is not the MIT one.
@@ -40,7 +40,7 @@ The open-source (MIT-licensed) version of VS Code, at `github.com/microsoft/vsco
 An Android component that opens web content in a lightweight Chrome-powered tab while keeping app context. VSCodroid uses it for GitHub OAuth login and consent flow.
 
 **Cross-compilation**
-Compiling code on one platform (e.g., x86_64 Linux or macOS) to produce binaries for a different platform (e.g., ARM64 Android). VSCodroid cross-compiles the native Node addons it needs for Bionic (`scripts/build-native-addons.sh`). The runtimes and CLI tools are not cross-compiled here at all — Node, Python, git, bash and the rest are taken pre-built from Termux packages by `scripts/download-*.sh`.
+Compiling code on one platform (e.g., x86_64 Linux or macOS) to produce binaries for a different platform (e.g., ARM64 Android). VSCodroid cross-compiles the native Node addons it needs for Bionic (`scripts/build-native-addons.sh`). The runtimes and CLI tools are not cross-compiled here at all, Node, Python, git, bash and the rest are taken pre-built from Termux packages by `scripts/download-*.sh`.
 
 ### E
 
@@ -53,7 +53,7 @@ A native Android View displayed above the soft keyboard. Provides keys not avail
 ### F
 
 **Firebase Test Lab**
-Google Cloud service for running Android instrumentation tests on real and virtual devices. VSCodroid does not use it, and no CI job runs the instrumented tests at all — `android/app/src/androidTest/README.md` records why, and names the moments a person is expected to run them by hand on a device.
+Google Cloud service for running Android instrumentation tests on real and virtual devices. VSCodroid does not use it, and no CI job runs the instrumented tests at all, `android/app/src/androidTest/README.md` records why, and names the moments a person is expected to run them by hand on a device.
 
 **Foreground Service**
 An Android Service that runs with a persistent notification and higher priority than background processes. Used to keep the Node.js server alive when the app is not in the foreground.
@@ -117,7 +117,7 @@ A protocol where one process calls functions in another process over a communica
 Android's mechanism for accessing files outside an app's private directory. Uses system file picker UI. An alternative to broad storage permissions.
 
 **Sideloading**
-Installing an APK outside Google Play (for example from GitHub Releases). There is no separate sideload variant — `android/app/build.gradle.kts` declares no product flavors — and no build bundles a toolchain. What differs is how toolchains arrive — `ToolchainManager` reads the installing package name at runtime and falls back from Play Asset Delivery to an HTTPS download from GitHub Releases when the installer was not Play.
+Installing an APK outside Google Play (for example from GitHub Releases). There is no separate sideload variant, `android/app/build.gradle.kts` declares no product flavors, and no build bundles a toolchain. What differs is how toolchains arrive, `ToolchainManager` reads the installing package name at runtime and falls back from Play Asset Delivery to an HTTPS download from GitHub Releases when the installer was not Play.
 
 **.so (Shared Object)**
 Linux/Android equivalent of a DLL. In VSCodroid, the ".so trick" refers to naming executable binaries with a `.so` extension so they're placed in `jniLibs/` and extracted with execute permission.
@@ -128,7 +128,7 @@ A foreground service type introduced in Android 14 (API 34). For foreground serv
 ### T
 
 **Termux**
-A popular Android terminal emulator and Linux environment. It pioneered the technique of bundling Linux binaries on Android. VSCodroid is a separate, standalone app, but it does more than borrow the idea: the `scripts/download-*.sh` scripts fetch Termux's own `.deb` packages and install the binaries out of them, so Node, Python, git, bash, tmux, make and ssh are Termux builds. Those downloads are verified against Termux's own repository signing chain — a pinned key signs `InRelease`, which carries the digest of the package index, which carries the digest of each `.deb` (`scripts/verify-termux-index.sh`).
+A popular Android terminal emulator and Linux environment. It pioneered the technique of bundling Linux binaries on Android. VSCodroid is a separate, standalone app, but it does more than borrow the idea: the `scripts/download-*.sh` scripts fetch Termux's own `.deb` packages and install the binaries out of them, so Node, Python, git, bash, tmux, make and ssh are Termux builds. Those downloads are verified against Termux's own repository signing chain, a pinned key signs `InRelease`, which carries the digest of the package index, which carries the digest of each `.deb` (`scripts/verify-termux-index.sh`).
 
 **tmux**
 A terminal multiplexer. Allows multiple terminal sessions to run within a single process. VSCodroid bundles it as a standalone tool for terminal users, but does **not** wrap its editor terminals in it: the default profile written by `FirstRunSetup` points at bash, and each terminal spawns bash directly through node-pty on a real PTY. Phantom processes are held down by running the Extension Host and ptyHost as `worker_thread`s instead.

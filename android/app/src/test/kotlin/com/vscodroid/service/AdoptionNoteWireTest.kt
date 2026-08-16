@@ -16,7 +16,7 @@ import java.io.File
  *
  * That gap was measured rather than assumed. Renaming the file to `editor.pid` and
  * the keys to `processId`/`listenPort` in `server.js` leaves all 818 tests green,
- * while on a device `portHeldByOurEditorServer` returns false for ever — so every
+ * while on a device `portHeldByOurEditorServer` returns false for ever, so every
  * launch after a bootstrap dies spawns onto a port the surviving server still
  * holds, which is the hang `LaunchOutcome.CANNOT_BIND` exists to catch. A silent
  * loss of the feature, with the whole suite agreeing it was fine.
@@ -26,7 +26,7 @@ import java.io.File
  * has no compiler, so it needs a test that reads both sides.
  *
  * This reads source text, which is the weaker kind of test. What it buys is the
- * only property at issue — that the same spelling appears on both sides. What it
+ * only property at issue, that the same spelling appears on both sides. What it
  * does not buy: it cannot tell that the writer runs, that the JSON parses, or that
  * the file lands in the directory the reader looks in. `Environment.getServerDir`
  * and `server.js`'s own `SERVER_DIR` are pinned by the third case below, but only
@@ -39,7 +39,7 @@ class AdoptionNoteWireTest {
     private fun source(): String {
         assertTrue(serverJs.isFile) {
             "Could not read ${serverJs.absolutePath}. If the bootstrap moved, point this " +
-                "test at it rather than deleting it -- the wire it checks has no other guard."
+                "test at it rather than deleting it, the wire it checks has no other guard."
         }
         return serverJs.readText()
     }
@@ -57,7 +57,7 @@ class AdoptionNoteWireTest {
     @Test
     fun `the bootstrap writes the JSON keys Kotlin reads`() {
         // The reader asks for these two by name (optInt("pid"), optInt("port")), and
-        // a missing key answers 0 rather than throwing -- so a renamed key reads as
+        // a missing key answers 0 rather than throwing, so a renamed key reads as
         // "no pid" and declines adoption silently, which is the failure this pins.
         val js = source()
         for (key in listOf("pid", "port")) {
@@ -90,7 +90,7 @@ class AdoptionNoteWireTest {
     @Test
     fun `the bootstrap clears the note when the editor server exits`() {
         // Without this the note outlives the process it names, and a pid recycled
-        // into another editor server -- a debug build beside a release one, say --
+        // into another editor server, a debug build beside a release one, say,
         // could be adopted on the strength of a stale record.
         assertTrue(source().contains("clearPidFile")) {
             "assets/server.js no longer clears the note on the child's exit. A note that " +

@@ -115,6 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python stopped working after some app updates, because the interpreter is replaced every time while its libraries were unpacked only on a version change. The app now repairs that at launch.
 - Two app instances could run first-run setup concurrently; setup is now single-flight.
 - Deleting the projects folder from a file manager no longer leaves the app permanently broken until you clear app data.
+- An unreadable `toolchains.json` no longer deletes `toolchain-env.sh` on every launch, which took working Go and Ruby commands out of every new terminal.
 
 **Server lifecycle**
 
@@ -123,6 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A server that is merely slow is no longer treated as failed. At two minutes the app says the start is taking longer than usual and keeps waiting.
 - The app no longer hangs forever when something else holds its port. A start that cannot bind is detected, reported, and the processes behind it shut down.
 - The editor no longer adopts a server that is not answering. The app asks the port whether anything responds before reusing what its record names.
+- A start that ends this app's own stuck server no longer records the healthy replacement as unable to bind, which could spend a restart on a server that was merely slow.
 - Stopping the app now ends an adopted server instead of leaving it running. A bootstrap killed by the system leaves its editor server behind, and that survivor used to hold its memory and one of the 32 process slots Android allows until the app was force-stopped.
 - A server of ours that holds the port without answering is ended before a new one starts, rather than being spawned over into a launch that cannot bind.
 - An emergency port taken from the ephemeral range is no longer remembered, which used to move the workbench to a new address and empty its stored state.
@@ -160,11 +162,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening a device folder no longer leaves a watcher and thread running after the screen they belong to is gone. Rotation during a sync used to restart the watcher that had just been shut down.
 - A folder re-granted while the app is reclaiming lapsed folders is no longer wiped. Each candidate is checked against permissions as they stand at that moment.
 - A folder synced from a device copies only into its own mirror. A provider-supplied name that was not a single path segment could place the file outside it.
+- A folder-sync upload interrupted mid-copy can no longer pass as a device edit on the next open; the mirror is kept and the upload attempted again.
+- A symbolic link inside a mirrored folder is no longer followed by the watcher, which could watch and copy content from outside the granted folder.
+- `mkdir d && mv x d` now moves in one piece once `d` reaches the device, instead of silently leaving the old parent holding everything.
+- A file deleted in the editor no longer leaves a stale record that blocks the rename replacing it or swallows the next save of it.
 - "Open Recent Folder" no longer closes the app. Commands arriving from the editor now move to the main thread before building a dialog.
 
 **Terminal, keyboard and layout**
 
 - Shortcuts using a punctuation key work from the on-screen keyboard. Both input routes now answer from one key table, which gained comma, full stop, hyphen, plus, asterisk, percent, question mark, caret and dollar.
+- Tapping Shift on the key row and then typing on the soft keyboard inserts the character. The interceptor now takes over for Ctrl and Alt chords only.
 - Ctrl+comma opens Settings and Ctrl+space asks for suggestions; both were previously unreachable by touch.
 - The backslash key works. It is reached by holding `/` on the second page of the key row, and the script built for it was not valid.
 - Terminal profile picker was empty, leaving no way to switch terminals ([#3](https://github.com/rmyndharis/VSCodroid/issues/3)).
@@ -203,6 +210,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Open in Browser** told you it had worked when it had not. The bridge method returned nothing, so the relay answered success unconditionally.
 - A link opened from inside the editor no longer disappears when the bridge declines it; the click falls through to the WebView's own handling.
 - A browser launch that failed left the sign-in callback window open for ten minutes, during which any `vscodroid://callback` on the device was accepted.
+- A sign-in page on plain http now completes. Only the Custom Tabs hand-off was recording itself, so a self-hosted provider reached through the system browser had its return refused.
 - Signing in when Android has closed the app mid-browser now tells you what happened instead of silently doing nothing.
 - The **Browse Extensions** step on Get Started could never complete, so the walkthrough stayed permanently unfinished. It waited on a view identifier the workbench does not register.
 - **Serve on Network** appears for people upgrading, not only on a clean install. The app now records which extensions it bundled last time, so a never-bundled identifier cannot read as one you removed.

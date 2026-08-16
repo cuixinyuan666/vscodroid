@@ -12,7 +12,7 @@ import java.io.File
  * thread, and its documentation says so directly: the bound object "runs in
  * another thread and not in the thread that it was constructed in". So a handler
  * that builds a Dialog, shows a Toast or touches a View is on the wrong thread
- * unless it hops, and the failure is not a quiet one -- `ViewRootImpl.checkThread`
+ * unless it hops, and the failure is not a quiet one, `ViewRootImpl.checkThread`
  * throws `CalledFromWrongThreadException` and takes the process with it.
  *
  * One of the five was wrapped and the rest were not. That held for as long as the
@@ -26,7 +26,7 @@ import java.io.File
  * is worth naming what that buys and what it does not.
  *
  * It buys the property that is actually at issue: whether the hop is present at
- * the boundary. There is no seam to extract instead -- the lambdas are built
+ * the boundary. There is no seam to extract instead, the lambdas are built
  * inline in `initBridge`, `runOnUiThread` is a final Activity method, and a
  * unit test on the JVM has no Looper to distinguish threads with even if there
  * were one.
@@ -38,7 +38,7 @@ import java.io.File
  *
  * The exempt entry is deliberate rather than an oversight. `onBackPressed`
  * returns a `Boolean` the caller consumes immediately, and `runOnUiThread`
- * returns `Unit` -- posting it would mean answering before the answer exists.
+ * returns `Unit`, posting it would mean answering before the answer exists.
  * Its body must therefore stay free of UI calls, which is not something this
  * test can check; it is recorded here so the exemption is a decision on the
  * record rather than a gap someone finds later.
@@ -68,7 +68,7 @@ class BridgeCallbackThreadHopTest {
         val start = source.indexOf("val bridge = AndroidBridge(")
         assertTrue(start >= 0) {
             "Could not find the AndroidBridge construction in ${mainActivity.path}. " +
-                "If it moved or was renamed, this test is measuring nothing -- point it " +
+                "If it moved or was renamed, this test is measuring nothing, point it " +
                 "at the new site rather than deleting it."
         }
         val open = source.indexOf('(', start)

@@ -228,7 +228,13 @@ class SafStorageManager(private val context: Context) {
                 }
                 discarded = target
             }
-            if (discarded.deleteRecursively()) removed++
+            if (discarded.deleteRecursively()) {
+                removed++
+                // The mirror's distrust of its own device copies goes with it; see
+                // [SafSyncEngine.clearUploadsUnder] for what an entry that outlives
+                // its mirror costs a later re-grant.
+                syncEngine.clearUploadsUnder(discarded)
+            }
         }
         if (removed > 0) {
             Logger.i(tag, "Reclaimed $removed mirror entr(ies) without a live permission")
@@ -374,6 +380,7 @@ class SafStorageManager(private val context: Context) {
         // The sync engine keeps its record of the folder beside the mirror rather than
         // inside it, so removing the mirror alone leaves the record orphaned.
         File(mirrorDir.path + SafSyncEngine.SYNCED_RECORD_SUFFIX).delete()
+        syncEngine.clearUploadsUnder(mirrorDir)
     }
 
     companion object {

@@ -31,13 +31,13 @@ import java.io.File
  * Not deleting cost the opposite: the device kept a second copy under the old name, and
  * reopening the folder copied it back down, so the old name reappeared in the editor
  * beside the new one and one more copy accumulated per rename. What is pinned here is the
- * third option — renaming the device's own document, which moves the subtree in place and
+ * third option, renaming the device's own document, which moves the subtree in place and
  * so needs neither the delete nor the re-upload.
  *
  * Driven through `handleMirrorEvent` rather than through an observer: constructing a
  * `FileObserver` runs into a stub that a plain JVM test cannot satisfy. That is also why
- * the new name is absent from disk while the event is delivered — `watchTree` builds an
- * observer for a directory that exists — and why the fallback case below creates it
+ * the new name is absent from disk while the event is delivered, `watchTree` builds an
+ * observer for a directory that exists, and why the fallback case below creates it
  * between the event and the write-back, which is the thread that would see it in
  * production anyway.
  */
@@ -86,7 +86,7 @@ class SafDirectoryRenameTest {
      *
      * Which names are listed is load-bearing in both directions. A name that is absent is
      * what a name the device does not have looks like, which is the state the new half of
-     * a rename is normally in — and a case that means to test what happens when the new
+     * a rename is normally in, and a case that means to test what happens when the new
      * name *is* already there has to say so, or it passes because the *old* name failed
      * to resolve instead.
      */
@@ -224,6 +224,166 @@ class SafDirectoryRenameTest {
      * move at all: build the new name from the mirror and leave the old copy alone, rather
      * than deleting a subtree the mirror cannot fully replace.
      */
+    /**
+     * `mkdir lib && mv util lib/` in one write-back tick. At event time the
+     * destination folder's document does not exist yet, its own create job is
+     * still ahead of this one in the queue, so the parent URI the move needs
+     * resolves to nothing. The job used to carry that null into processing, where
+     * the move was skipped entirely while the unchanged name still reported the
+     * rename done: the device kept `util` under the old parent forever, `lib`
+     * landed empty, and the cache for the subtree had already been forgotten. By
+     * processing time the create has run, so the parent is resolvable then.
+     */
+    @Test
+    fun `a move whose destination folder has not reached the device yet waits for it`() {
+        deviceTree(mapOf("root" to listOf("util")))
+        File(mirror, "lib").mkdirs()
+
+        observe(FileObserver.MOVED_FROM or isDirFlag, "util")
+        observe(FileObserver.MOVED_TO or isDirFlag, "lib/util")
+        // The destination folder arrives between the event and the write-back,
+        // which is the order the queue processes them in.
+        deviceTree(mapOf("root" to listOf("util", "lib"), "doc:lib" to emptyList()))
+        drain()
+
+        verify(exactly = 1) { DocumentsContract.moveDocument(any(), any(), any(), any()) }
+        verify(exactly = 0) { DocumentsContract.renameDocument(any(), any(), any()) }
+        verify(exactly = 0) { DocumentsContract.createDocument(any(), any(), any(), any()) }
+    }
+
+    /**
+     * The same shape with a new name, which is the half that landed worse: the
+     * move never ran, and the rename then fired on the document under its *old*
+     * parent, putting `helpers` at the root of the device folder.
+     */
+    @Test
+    fun `a move-and-rename whose destination is late renames in the destination, not the origin`() {
+        deviceTree(mapOf("root" to listOf("util")))
+        File(mirror, "lib").mkdirs()
+
+        observe(FileObserver.MOVED_FROM or isDirFlag, "util")
+        observe(FileObserver.MOVED_TO or isDirFlag, "lib/helpers")
+        deviceTree(mapOf("root" to listOf("util", "lib"), "doc:lib" to emptyList()))
+        drain()
+
+        verify(exactly = 1) { DocumentsContract.moveDocument(any(), any(), any(), any()) }
+        verify(exactly = 1) { DocumentsContract.renameDocument(any(), any(), "helpers") }
+    }
+
+    /**
+     * `rm -rf lib/util` then `mv util lib/util`: the ordinary replace idiom. The
+     * delete job removed the device document but left its cache entry behind, and
+     * the claim gate asked the cache: the dead document id answered for the new
+     * name, the pair went unclaimed, and the device kept the old copy standing
+     * beside a rebuilt `lib/util`, the duplicate the pairing exists to prevent,
+     * resurfacing through the back door of the cache that was never told the
+     * document died.
+     */
+    @Test
+    fun `a document deleted in the editor does not block the rename that replaces it`() {
+        deviceTree(mapOf("root" to listOf("util", "lib"), "doc:lib" to listOf("util")))
+
+        deliver(FileObserver.DELETE or isDirFlag, "lib/util")
+        verify(exactly = 1) { DocumentsContract.deleteDocument(any(), any()) }
+        // The deletion the job performed, as the device would show it.
+        deviceTree(mapOf("root" to listOf("util", "lib"), "doc:lib" to emptyList()))
+
+        observe(FileObserver.MOVED_FROM or isDirFlag, "util")
+        deliver(FileObserver.MOVED_TO or isDirFlag, "lib/util")
+
+        verify(exactly = 1) { DocumentsContract.moveDocument(any(), any(), any(), any()) }
+        verify(exactly = 0) { DocumentsContract.createDocument(any(), any(), any(), any()) }
+    }
+
+    /**
+     * The same staleness one level down and without a rename anywhere: a file
+     * deleted in the editor and then recreated by the next save. The delete job
+     * removed the document and left the cache entry; the save then resolved the
+     * dead id and wrote into it, so the file quietly existed nowhere, the
+     * provider had dropped the document, and the recreate nobody performed was
+     * reported as a successful write-back.
+     *
+     * The ordering pinned here is the observed one, the save arriving after the
+     * delete job has run. A delete and a save enqueued back to back, before the
+     * thread touches either, still resolves the save against the document the
+     * delete is about to remove; that write lands nowhere, and what bounds it is
+     * the upload journal, which the failed write leaves behind so the next open
+     * keeps the mirror and repairs the device copy.
+     */
+    @Test
+    fun `a file recreated after its delete is created, not written into the dead document`() {
+        deviceTree(mapOf("root" to listOf("notes.txt")))
+
+        deliver(FileObserver.DELETE, "notes.txt")
+        deviceTree(mapOf("root" to emptyList()))
+        File(mirror, "notes.txt").writeText("the editor saved it again")
+
+        deliver(FileObserver.MODIFY, "notes.txt")
+
+        verify(exactly = 1) {
+            DocumentsContract.createDocument(any(), any(), any(), "notes.txt")
+        }
+    }
+
+    /**
+     * The cache can also be stale for a document this app never deleted: the
+     * device side is shared, and another app removing a file leaves the entry
+     * behind just the same. The claim decision therefore asks the provider, not
+     * the cache, for whether the new name is really taken.
+     */
+    @Test
+    fun `a stale cache entry does not answer for a document the device no longer holds`() {
+        deviceTree(mapOf("root" to listOf("util", "lib"), "doc:lib" to listOf("util")))
+        // Seed the cache with a live resolution for the subtree, the way any event
+        // under it earlier in the session would have; then the folder it names is
+        // emptied from the device without any job of ours, as another app would.
+        engine.handleMirrorEvent(
+            FileObserver.MODIFY,
+            File(mirror, "lib/util/README.md").apply { parentFile!!.mkdirs(); writeText("x") },
+            mirror, treeUri
+        )
+        File(mirror, "lib/util/README.md").delete()
+        File(mirror, "lib/util").delete()
+        deviceTree(mapOf("root" to listOf("util", "lib"), "doc:lib" to emptyList()))
+
+        observe(FileObserver.MOVED_FROM or isDirFlag, "util")
+        deliver(FileObserver.MOVED_TO or isDirFlag, "lib/util")
+
+        verify(exactly = 1) { DocumentsContract.moveDocument(any(), any(), any(), any()) }
+        verify(exactly = 0) { DocumentsContract.createDocument(any(), any(), any(), any()) }
+    }
+
+    /**
+     * The late-parent resolution reads the cache, and the cache belongs to a
+     * folder. A write-back drain can outlive its folder: the next one's sync has
+     * cleared and refilled the cache for itself by the time the drain gets to a
+     * job whose destination parent was unresolved at event time, and resolving
+     * that job's `lib` against the new folder's cache hands `moveDocument` a
+     * parent from the wrong tree. The resolution declines instead, which costs
+     * the documented stale-copy fallback, exactly what the pre-existing
+     * behaviour was for a destination that never did resolve.
+     */
+    @Test
+    fun `a rename drain from a folder the cache no longer speaks for declines the late parent`() {
+        deviceTree(mapOf("root" to listOf("util")))
+        File(mirror, "lib").mkdirs()
+        val otherTree = mockk<Uri>(relaxed = true)
+
+        observe(FileObserver.MOVED_FROM or isDirFlag, "util")
+        observe(FileObserver.MOVED_TO or isDirFlag, "lib/util")
+        // An event for a different folder repoints the cache before the drain
+        // runs, which is what a folder switch mid-drain looks like.
+        engine.handleMirrorEvent(
+            FileObserver.MODIFY,
+            File(mirror, "x.txt").apply { writeText("x") },
+            mirror, otherTree
+        )
+        deviceTree(mapOf("root" to listOf("util", "lib"), "doc:lib" to emptyList()))
+        drain()
+
+        verify(exactly = 0) { DocumentsContract.moveDocument(any(), any(), any(), any()) }
+    }
+
     @Test
     fun `a provider that will not move still gets the new name`() {
         deviceTree(mapOf("root" to listOf("util", "lib"), "doc:lib" to emptyList()))
@@ -294,7 +454,7 @@ class SafDirectoryRenameTest {
     @Test
     fun `a file that moved away is not offered as a rename source`() {
         // A file's move is already propagated as a delete, so it is not waiting for
-        // anything -- and a directory arriving just after one must not pick it up and
+        // anything, and a directory arriving just after one must not pick it up and
         // rename the file's document onto a directory's name.
         deviceFolderHolding("notes.txt")
 

@@ -1,8 +1,8 @@
 /**
  * Self-check for the Serve on Network port scan and its reachable/local split.
  *
- * The command answers one question -- can another device on this Wi-Fi open
- * this? -- and both ways of getting it wrong cost the user something. Calling a
+ * The command answers one question, can another device on this Wi-Fi open
+ * this?, and both ways of getting it wrong cost the user something. Calling a
  * loopback-only server reachable hands them an address that refuses the
  * connection, and calling a reachable one local-only sends them to restart a
  * server that was already fine.
@@ -13,8 +13,8 @@
  * untrusted_app no access at all to proc_net_tcp_udp, so both reads threw and
  * the catch written for missing IPv6 swallowed them, leaving the command
  * reporting "no dev server" on every device. Two probes recover the same
- * distinction -- loopback finds it, the device's own LAN address decides whether
- * anyone else can -- and inference is exactly the kind of thing that needs a
+ * distinction, loopback finds it, the device's own LAN address decides whether
+ * anyone else can, and inference is exactly the kind of thing that needs a
  * test, which reading /proc did not.
  *
  * scanPorts takes its connector, so nothing here opens a socket: the fake

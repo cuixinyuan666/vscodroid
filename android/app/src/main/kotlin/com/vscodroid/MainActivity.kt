@@ -413,7 +413,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: CancellationException) {
                 // Not a folder that failed. This Activity is being destroyed and
                 // took its scope with it, and the handlers below would read that
-                // as a failed sync — `kotlinx.coroutines.CancellationException`
+                // as a failed sync, `kotlinx.coroutines.CancellationException`
                 // is a `java.util.concurrent` one, which is a plain `Exception`,
                 // so it lands in the catch-all and every non-suspending statement
                 // in it runs.
@@ -428,7 +428,7 @@ class MainActivity : AppCompatActivity() {
                 // old one. Two engines end up watching one mirror, and the
                 // orphaned one reads the `.partial` renames of the next sync as
                 // the user's own edits and pushes them onto the user's documents
-                // — which is the exact damage the stop before the sync exists to
+                // which is the exact damage the stop before the sync exists to
                 // prevent.
                 //
                 // Guarded because the window may already be gone: dismissing a
@@ -908,7 +908,7 @@ class MainActivity : AppCompatActivity() {
             onBackPressed = { false },
             onMinimize = { runOnUiThread { moveTaskToBack(true) } },
             // Every callback here arrives on the WebView's private "JavaBridge"
-            // thread, never the UI thread -- addJavascriptInterface says so in
+            // thread, never the UI thread, addJavascriptInterface says so in
             // as many words. So each one that touches a View, a Dialog or a Toast
             // has to hop, and the hop belongs here rather than inside the
             // handlers: these five are the whole boundary, and a reader checking
@@ -994,7 +994,7 @@ class MainActivity : AppCompatActivity() {
 
         // Redacted rather than rebuilt without the token. This used to log a
         // second string assembled beside the real one, so what kept the token out
-        // of logcat was a person keeping two expressions apart — and the obvious
+        // of logcat was a person keeping two expressions apart, and the obvious
         // edit, logging the URL that is actually loaded, put the credential for
         // every route but `/version` into a release build's logcat, readable by
         // anything holding READ_LOGS. There is one URL now, and the redactor is
@@ -1688,7 +1688,7 @@ internal fun authCallbackIsExpected(
  * The workbench URL for a folder, with the connection token when there is one.
  *
  * One expression, and that is the point of it being a function. The call site
- * used to build two — the URL it loaded and a token-free twin it logged — so the
+ * used to build two, the URL it loaded and a token-free twin it logged, so the
  * token stayed out of logcat only for as long as nobody collapsed them, which is
  * what a merge does and what anyone wanting the real navigation URL in the log
  * would do deliberately. With a single URL there is nothing to keep in step:
@@ -1700,7 +1700,7 @@ internal fun authCallbackIsExpected(
  * the log line looking untouched.
  *
  * An empty or absent token yields the bare URL rather than `tkn=`. The server
- * answers that with "Forbidden." — the caller says so — but a page the user can
+ * answers that with "Forbidden.", the caller says so, but a page the user can
  * retry beats no page, and sending an empty token would be indistinguishable
  * from sending a wrong one.
  */

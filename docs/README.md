@@ -63,13 +63,13 @@ The **planning suite** (01–12) was written before the app existed and is kept 
 as a description of the build. Where one contradicts the code, the code is right. Two forms of note
 appear in them, and they mean different things:
 
-- **A banner at the top** (01, 03, 04, 07, 08, 09, 12 — and on §2 of 10, which is stale where the
+- **A banner at the top** (01, 03, 04, 07, 08, 09, 12, and on §2 of 10, which is stale where the
   rest of that document is not) says the document is a dated record and names what has since
   overtaken it. The body below a banner is mostly left as written, on purpose: a plan, an ADR or a
   risk score is a record of what was thought at the time, and editing it would destroy the record
   rather than update it.
-- **A correction inside the text** — a struck-through clause with what shipped beside it (02), or a
-  rewritten definition (11) — is used where a document's job is to describe rather than to
+- **A correction inside the text**, a struck-through clause with what shipped beside it (02), or a
+  rewritten definition (11), is used where a document's job is to describe rather than to
   remember. 05 and 06 are corrected the same way and carry no banner, because they have been kept
   against the code rather than frozen.
 

@@ -42,7 +42,7 @@ import kotlin.concurrent.thread
  * Both sides now answer through the same `redactToken`. That is worth more than
  * the two hand-written variants it replaced: `navigateToFolder` used to build a
  * second, token-free copy of its URL purely to have something safe to log, and a
- * twin maintained by hand is a twin that drifts — the safe copy stayed correct
+ * twin maintained by hand is a twin that drifts, the safe copy stayed correct
  * only for as long as nobody added a parameter to the real one.
  *
  * Written against the log rather than against a redaction helper on purpose. A

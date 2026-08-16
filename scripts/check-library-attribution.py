@@ -25,7 +25,7 @@ Three checks, in the order a new library trips them:
   2. Every component is named in BOTH attribution documents: docs/LEGAL_NOTICES.md
      and NOTICE.md. Only the first was read for a long time, while NOTICE.md told
      its own readers this script fails the build when a shipped binary is missing
-     from its table -- so the file that claimed to be guarded was the one that was
+     from its table, so the file that claimed to be guarded was the one that was
      not, and the two agreed only by coincidence.
   3. Every component whose licence is GPL/LGPL/AGPL is additionally named in
      LEGAL_NOTICES.md's source-availability section. Attribution alone does not
@@ -37,7 +37,7 @@ The map below is the licence record. Its source is Termux's own
 
 Toolchain packs are covered too, but only where they exist. Their payloads are
 downloaded, not committed, so this has to run AFTER the download step to see
-them -- in release.yml it runs twice for that reason. The count of manifests
+them, in release.yml it runs twice for that reason. The count of manifests
 read is printed, because "0 toolchain libraries" from a tree that has no packs
 and from a tree whose packs were never recorded print the same otherwise.
 """
@@ -178,7 +178,7 @@ def toolchain_libs():
     is one file among thousands and the manifest is the list the app itself
     installs from.
 
-    The manifests are NOT committed -- .gitignore excludes all three, and
+    The manifests are NOT committed, .gitignore excludes all three, and
     toolchain_ruby.json is in git only because it was added before that line was,
     which ignoring does not undo. So what this sees is decided by which download
     scripts have run on this machine: a fresh checkout shows one frozen snapshot
@@ -231,7 +231,7 @@ def attributed_in(text):
 
     Two narrowings, each because the looser version was satisfied by something
     that attributes nothing. A search over the whole document passes on any
-    passing mention -- "Git" appears on sixteen lines in LEGAL_NOTICES.md.
+    passing mention, "Git" appears on sixteen lines in LEGAL_NOTICES.md.
     Narrowing to table rows is not enough: libiconv's "Linked by" cell says "Bash
     and every Git executable". Narrowing to the first cell is still not enough:
     the heading "### @github/copilot (GitHub Copilot CLI)" contains "Git" inside
@@ -317,7 +317,7 @@ def main():
             unlicensed.append(f"{name} ({component})")
         short = [doc for doc, known in docs.items() if component not in known]
         if short:
-            unattributed.append(f"{name} ({component}) -- absent from {', '.join(short)}")
+            unattributed.append(f"{name} ({component}), absent from {', '.join(short)}")
         if any(c in licence.upper() for c in COPYLEFT) and component not in offer:
             unoffered.append(f"{name} ({component}, {licence})")
 
@@ -345,9 +345,9 @@ def main():
     # The manifest count is in the line because the toolchain figure is otherwise
     # unreadable: "0 toolchain libraries" is what a tree with no packs prints and
     # also what a run before the download step prints, and those are opposite
-    # facts. Naming the documents for the same reason -- the count of components
+    # facts. Naming the documents for the same reason, the count of components
     # says nothing about which files were held to it.
-    print(f"ok -- {len(names)} shipped binaries + {len(tc)} toolchain libraries "
+    print(f"ok: {len(names)} shipped binaries + {len(tc)} toolchain libraries "
           f"from {len(manifests)} manifest(s), {len(covered)} components, "
           f"all attributed in {' and '.join(docs)}")
     # The names, not just the count. A count alone cannot answer the question that

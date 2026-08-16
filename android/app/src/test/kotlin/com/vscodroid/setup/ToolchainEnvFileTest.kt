@@ -23,14 +23,14 @@ import java.io.File
  * all.
  *
  * SELinux denies `execute_no_trans` on `app_data_file`, so nothing whose inode
- * lives under `filesDir` can be `execve`d whatever its mode -- and every byte of
+ * lives under `filesDir` can be `execve`d whatever its mode, and every byte of
  * a downloaded toolchain lives there. The only thing that makes `go` or `ruby` a
  * working command is the wrapper this file emits: a shell function that hands the
  * binary to `/system/bin/linker64`, which the app is allowed to execute, and
  * which loads the payload itself.
  *
- * That indirection had no test. The predicate it consults did -- dozens of names
- * against a real bash -- while the line that actually routes through the loader
+ * That indirection had no test. The predicate it consults did, dozens of names
+ * against a real bash, while the line that actually routes through the loader
  * was pinned nowhere, and neither was the ELF guard that decides which names get
  * a wrapper at all. Both are one-line edits that read like leftovers, both leave
  * every other test in this package green, and on a device the result is a picker
@@ -144,7 +144,7 @@ class ToolchainEnvFileTest {
     /**
      * Only ELF objects get a loader wrapper. A script handed to `linker64` is not
      * a program it can load, so wrapping one would replace "this command does not
-     * exist" with a command that exists and always fails -- and it would shadow
+     * exist" with a command that exists and always fails, and it would shadow
      * the interpreter wrapper that does work, since that is written further down
      * the same file.
      */
@@ -163,8 +163,8 @@ class ToolchainEnvFileTest {
     }
 
     /**
-     * A manifest naming a binary that is not on disk -- a partial extraction, or
-     * a file an uninstall took -- produces no wrapper for it either. Same guard,
+     * A manifest naming a binary that is not on disk, a partial extraction, or
+     * a file an uninstall took, produces no wrapper for it either. Same guard,
      * and worth holding separately: this is the case where the wrapper would be
      * syntactically fine and fail only when the user runs it.
      */
@@ -178,6 +178,41 @@ class ToolchainEnvFileTest {
             emptyList<String>(),
             envLines().filter { it.startsWith("ruby()") },
             "a wrapper was written for a binary that is not on disk",
+        )
+    }
+
+    /**
+     * A state file nothing can parse is not "no toolchains installed".
+     *
+     * `readState` answers a damaged file with an empty array because it cannot do
+     * better, and the per-launch regeneration treats empty as "nothing is
+     * installed" and deletes the env file. The devices that have such a file are
+     * the ones upgrading from a version that wrote it with `writeText`: the
+     * truncation window this build closes with `writeAtomically` is exactly the
+     * damage being read back. Deleting over it takes the loader wrappers out of
+     * every new terminal while the several hundred MB they make runnable stay on
+     * disk, and the env file written by the version that installed them is then
+     * the only working record of how to run any of it. The bashrc repair keeps
+     * damaged files it cannot parse for the same reason; this is its toolchain
+     * counterpart.
+     */
+    @Test
+    fun `a state file that cannot be parsed leaves the env file alone`() {
+        every { Logger.w(any(), any()) } just Runs
+
+        elf("usr/opt/ruby/bin/ruby")
+        install("usr/opt/ruby/bin/ruby")
+        regenerate()
+        val writtenByTheInstall = envFile.readText()
+
+        stateFile.writeText("""[{"name":"ruby","installRoot":"usr/op""")
+
+        regenerate()
+
+        assertTrue(envFile.isFile, "the env file was deleted over an unreadable state")
+        assertEquals(
+            writtenByTheInstall, envFile.readText(),
+            "the env file was rewritten over an unreadable state"
         )
     }
 }

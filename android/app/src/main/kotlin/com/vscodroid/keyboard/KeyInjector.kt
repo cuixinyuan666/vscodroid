@@ -103,7 +103,12 @@ class KeyInjector(private val webView: WebView) {
 
                 document.addEventListener('beforeinput', function(e) {
                     var mod = window.__vscodroid;
-                    if (!mod.ctrl && !mod.alt && !mod.shift) return;
+                    // Shift alone is not intercepted: the soft keyboard's own
+                    // insertText is the only thing that types the character, and
+                    // cancelling it in favour of a synthetic keydown leaves the
+                    // tap producing nothing. Shift exists here for the row's own
+                    // keys, which arrive by injectKey with the modifier set.
+                    if (!mod.ctrl && !mod.alt) return;
 
                     var target = document.activeElement || document.body;
                     var init;

@@ -27,7 +27,7 @@ See [Glossary](./11-GLOSSARY.md).
 
 ### 2.1 Product Perspective
 
-VSCodroid is a standalone Android application that brings VS Code to mobile devices. It is built from [Code - OSS](https://github.com/microsoft/vscode) (the MIT-licensed VS Code source) directly: `scripts/build-vscode-oss.sh` clones that source at the commit pinned in `VSCODE_VERSION`, applies the unified diffs in `patches/`, and builds the `vscode-reh-web-linux-arm64` target, which serves the workbench over HTTP and WebSocket. VSCodroid adds a native Android shell (Kotlin) that hosts the VS Code web client in a WebView and manages a bundled Node.js process that runs the VS Code server — all on localhost.
+VSCodroid is a standalone Android application that brings VS Code to mobile devices. It is built from [Code - OSS](https://github.com/microsoft/vscode) (the MIT-licensed VS Code source) directly: `scripts/build-vscode-oss.sh` clones that source at the commit pinned in `VSCODE_VERSION`, applies the unified diffs in `patches/`, and builds the `vscode-reh-web-linux-arm64` target, which serves the workbench over HTTP and WebSocket. VSCodroid adds a native Android shell (Kotlin) that hosts the VS Code web client in a WebView and manages a bundled Node.js process that runs the VS Code server, all on localhost.
 
 Building from source rather than adapting a pre-built server is a licence constraint, not a preference: the server artifact on Microsoft's update CDN is published under terms that do not permit modifying and redistributing it, so `scripts/verify-server-tree.py` fails any tree whose `LICENSE.txt` is not the MIT one. [code-server](https://github.com/coder/code-server) was evaluated as a base and is not used; none of its patches are carried here.
 
@@ -103,7 +103,7 @@ VSCodroid is NOT a cloud IDE, a Termux wrapper, or a custom editor. It is the ac
 | ID | Requirement | Priority | Milestone |
 |----|------------|----------|-----------|
 | FR-TERM-01 | System SHALL provide integrated terminal with bash shell | P0 | M1 |
-| FR-TERM-02 | System SHALL support multiple terminal sessions ~~(via tmux)~~ — one bash per session, each on its own PTY through node-pty. See FR-DEV-04a | P0 | M1 |
+| FR-TERM-02 | System SHALL support multiple terminal sessions ~~(via tmux)~~, one bash per session, each on its own PTY through node-pty. See FR-DEV-04a | P0 | M1 |
 | FR-TERM-03 | System SHALL support terminal input/output with ANSI colors | P0 | M1 |
 | FR-TERM-04 | System SHALL provide Node.js accessible from terminal | P0 | M1 |
 | FR-TERM-05 | System SHALL provide Python 3 accessible from terminal | P1 | M3 |
@@ -245,7 +245,7 @@ VSCodroid is NOT a cloud IDE, a Termux wrapper, or a custom editor. It is the ac
 | NFR-SEC-02 | No telemetry sent to external services | Microsoft telemetry stripped | P0 |
 | NFR-SEC-03 | Server listens on localhost only | No external network exposure | P0 |
 | NFR-SEC-04 | App-private storage for workspace | Android sandbox enforced | P0 |
-| NFR-SEC-05 | All binaries delivered via Play Store (Play install) | Core as .so in base APK; toolchains as on-demand asset packs via Language Picker. ~~Sideload version additionally supports vscodroid pkg from Termux repos~~ — there is no separate sideload build and no `vscodroid pkg`; what a non-Play install does differently is fetch the same toolchain ZIPs over HTTPS from GitHub Releases, against a published sha256 manifest | P0 |
+| NFR-SEC-05 | All binaries delivered via Play Store (Play install) | Core as .so in base APK; toolchains as on-demand asset packs via Language Picker. ~~Sideload version additionally supports vscodroid pkg from Termux repos~~, there is no separate sideload build and no `vscodroid pkg`; what a non-Play install does differently is fetch the same toolchain ZIPs over HTTPS from GitHub Releases, against a published sha256 manifest | P0 |
 | NFR-SEC-06 | Extension sandbox | Extensions run in Extension Host only | P1 |
 
 ### 4.6 Usability (NFR-USE)

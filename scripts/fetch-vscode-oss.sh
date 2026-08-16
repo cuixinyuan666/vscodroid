@@ -35,8 +35,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 VSCODE_VERSION="${VSCODE_VERSION:-$(cat "$ROOT_DIR/VSCODE_VERSION")}"
 # Both halves of the pin, because both are compared below. VSCODE_COMMIT was
-# enforced only inside build-vscode-oss.sh -- a workflow run by hand once per
-# version bump -- so on the side that actually produces an APK it was a file
+# enforced only inside build-vscode-oss.sh, a workflow run by hand once per
+# version bump, so on the side that actually produces an APK it was a file
 # nothing read.
 VSCODE_COMMIT="${VSCODE_COMMIT:-$(cat "$ROOT_DIR/VSCODE_COMMIT")}"
 ARCH="${ARCH:-arm64}"
@@ -230,14 +230,14 @@ echo "=== Pin ==="
 # it was made from into product.json, and both pin files sit beside this script.
 #
 # Nothing on this side compared them. The version half was guarded by accident,
-# through the tarball's filename -- and not even that under VSCODE_OSS_URL,
+# through the tarball's filename, and not even that under VSCODE_OSS_URL,
 # which names any file it likes. The commit half was guarded nowhere: it is
 # checked in build-vscode-oss.sh, which runs on workflow_dispatch, and appears
 # in build.yml and release.yml only as part of a cache key.
 #
 # What that let through: move VSCODE_COMMIT to a fix commit without re-running
 # the "Build Code - OSS server" workflow. The cache key changes, so the fetch
-# runs again -- and downloads the same server-<version> release, built from the
+# runs again, and downloads the same server-<version> release, built from the
 # old source. Every gate downstream stays green, correctly: the tree is intact,
 # correctly shaped and carries every patch fingerprint. It is simply not the
 # source the pin names. write-build-manifest.py then copies the pin file into
@@ -276,12 +276,12 @@ PIN
   before the pin moved has the right name, the right digest and the right patch
   fingerprints. Only product.json records which source it came from.
 
-  Either the pin moved and the server was not rebuilt -- run the "Build Code -
+  Either the pin moved and the server was not rebuilt, run the "Build Code -
   OSS server" workflow and then remove
 
       $TARBALL
 
-  so the new release is fetched instead of this cache -- or VSCODE_COMMIT and
+  so the new release is fetched instead of this cache, or VSCODE_COMMIT and
   VSCODE_VERSION disagree with each other, in which case fix the files.
 EOF
     exit 1

@@ -474,7 +474,7 @@ class NodeService : Service() {
 
                 // Alive, and that is the trap this branch exists to disarm. The
                 // pair spawned onto a taken port never binds and never exits, so
-                // every question about it answers "still starting" -- and the
+                // every question about it answers "still starting", and the
                 // branch below, which waits on liveness and nothing else, then
                 // waits for the life of the app. What the user got was a
                 // placeholder, one "taking too long" toast at two minutes, and
@@ -491,7 +491,7 @@ class NodeService : Service() {
                     // [ProcessManager.startServer] refuses while a process is
                     // alive, so leaving it would turn every remaining attempt
                     // into an immediate NOT_STARTED and spend the budget without
-                    // ever trying again -- and would leave the pair running after
+                    // ever trying again, and would leave the pair running after
                     // the budget was gone. Off the main dispatcher because the
                     // stop waits on the process; this is not a lifecycle callback,
                     // so nothing here depends on holding the main thread.
@@ -511,9 +511,9 @@ class NodeService : Service() {
 
             // A start that produced no process, and one whose process was just
             // stopped up there, both leave nothing behind that will notice this
-            // run ended. Every other outcome does have something -- `startWatchdog`
+            // run ended. Every other outcome does have something, `startWatchdog`
             // fires `onServerCrashed` for every exit code, and only a deliberate
-            // stop suppresses it -- so handing those to the retry chain as well
+            // stop suppresses it, so handing those to the retry chain as well
             // would drive two recoveries for one death.
             //
             // Saying why it failed is not the same as leaving the app able to try
@@ -614,8 +614,8 @@ class NodeService : Service() {
      * That bound is only honest while liveness means something, and there is one
      * case where it does not: a process spawned onto a port something else holds
      * stays alive forever without ever binding, so this loop would ask a stranger
-     * for the rest of the app's life. It is not reached from here any more --
-     * [LaunchOutcome.CANNOT_BIND] takes it before this branch is chosen -- and
+     * for the rest of the app's life. It is not reached from here any more,
+     * [LaunchOutcome.CANNOT_BIND] takes it before this branch is chosen, and
      * that is what the paragraph above rests on rather than an assumption that a
      * live process is a starting one.
      *
@@ -1086,7 +1086,7 @@ internal suspend fun launchOutcome(
  *  - `NOT_STARTED`: no spawn, so no watchdog and no callback. That is the case a
  *    port held by an orphan reaches, which is exactly the case that has to be
  *    able to recover on its own.
- *  - `CANNOT_BIND`: a process exists, but the service has just stopped it --
+ *  - `CANNOT_BIND`: a process exists, but the service has just stopped it,
  *    which sets `isShuttingDown`, and the watchdog suppresses an expected exit.
  *    Leaving it here would be worse than in the first case: the pair is alive and
  *    stays alive, so nothing would ever report anything at all.

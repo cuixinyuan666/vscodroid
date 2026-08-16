@@ -30,7 +30,7 @@ import java.lang.reflect.Method
  * the second.
  *
  * Both enumerate the annotated methods by reflection rather than by a written list, so a
- * method added later is covered too — and by the same reflection the page's own exposure
+ * method added later is covered too, and by the same reflection the page's own exposure
  * uses, so a method added to a base class is covered as well. Which reflection that is, and
  * why the obvious one is wrong, is in `bridgeMethods`.
  */
@@ -143,7 +143,7 @@ class BridgeTokenUniformityTest {
      * *public* methods, inherited ones included, so an annotated method sitting on a base
      * class is callable from the page; `declaredMethods`, which this used, returns only
      * what AndroidBridge itself declares. Both tests below would then run over a set that
-     * excludes exactly the method nobody thought to guard, and pass — a guard reporting on
+     * excludes exactly the method nobody thought to guard, and pass, a guard reporting on
      * a smaller surface than the one it guards, which is the failure it exists to prevent.
      *
      * AndroidBridge has no supertype today, so this changes no count; it changes what

@@ -2,6 +2,7 @@ package com.vscodroid.util
 
 import android.content.Context
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 
 object PortFinder {
@@ -129,9 +130,29 @@ object PortFinder {
      * Android, and a check that happens to agree with the server on one platform
      * is a check that disagrees with it on another.
      */
+    /**
+     * Binds the way the server that will use the port binds: with `SO_REUSEADDR`
+     * set before the bind.
+     *
+     * A plain bind refuses a port whose only occupants are `TIME_WAIT` remnants,
+     * connections the previous holder closed from its own side and the kernel
+     * keeps for a while after the process is gone. The editor server sets
+     * `SO_REUSEADDR` (libuv does it by default), so it can bind exactly those
+     * ports, and a probe that cannot is answering a question nothing asked:
+     * after reaping a stuck server of ours, the remnant of every connection it
+     * dropped reads as "still held", the verdict calls the replacement doomed,
+     * and a healthy start is stopped once for nothing. Setting the option asks
+     * the one question that matters, whether a real listener can go there,
+     * without changing the answer for a port with an active listener: reuse
+     * permits sharing a port with the dead, not with the living.
+     */
     fun isPortAvailable(port: Int): Boolean {
         return try {
-            ServerSocket(port, 0, LOOPBACK).use { true }
+            ServerSocket().use { socket ->
+                socket.reuseAddress = true
+                socket.bind(InetSocketAddress(LOOPBACK, port), 0)
+                true
+            }
         } catch (e: Exception) {
             false
         }

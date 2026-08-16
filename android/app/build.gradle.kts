@@ -41,7 +41,7 @@ android {
         // How much room first-run extraction needs is the size of the asset tree,
         // and that number cannot be written by hand: it moves with every VS Code
         // pin. It was written by hand, as 500 MB, when the tree was a pre-built
-        // 1.96.4 server -- and by 1.133.0 the tree is over 800 MiB, so the gate
+        // 1.96.4 server, and by 1.133.0 the tree is over 800 MiB, so the gate
         // passed devices that then ran out of disk mid-extraction and reported
         // "Setup failed" rather than "not enough room". Measuring it here instead
         // removes the way that goes wrong rather than restating the number.
@@ -63,8 +63,8 @@ android {
         // The biggest single file in that tree, which is what an install that
         // already holds the tree needs rather than the total. Extraction writes
         // through <dest>.tmp~ and renames, so re-unpacking over an existing tree
-        // needs room for one more copy of one file at a time -- currently the
-        // 113 MiB Copilot runtime.node -- and not for a second copy of the tree.
+        // needs room for one more copy of one file at a time, currently the
+        // 113 MiB Copilot runtime.node, and not for a second copy of the tree.
         // FirstRunSetup.requiredExtractionBytes is where the two meet.
         //
         // Measured here for the same reason the total is: it moves with every VS

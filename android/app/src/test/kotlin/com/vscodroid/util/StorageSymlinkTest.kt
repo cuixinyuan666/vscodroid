@@ -18,7 +18,7 @@ import java.nio.file.LinkOption
  * What the storage commands do when they meet a symbolic link.
  *
  * Both of them walk a directory with `isFile`, `isDirectory`, `length` and `listFiles`,
- * and every one of those resolves the link — so both were answering for whatever the
+ * and every one of those resolves the link, so both were answering for whatever the
  * link pointed at, which is routinely somewhere else entirely.
  *
  * Neither situation is exotic. `cacheDir/tmp` is exported as TMPDIR and TMUX_TMPDIR to
@@ -92,7 +92,7 @@ class StorageSymlinkTest {
     @Test
     fun `a dangling link is cleared rather than left holding its directory`() {
         // Neither isFile nor isDirectory is true for one, so the walk used to step over
-        // it — and the directory containing it then failed to delete, quietly, every
+        // it, and the directory containing it then failed to delete, quietly, every
         // time the command ran.
         val crashLogs = File(cacheDir, "crash-logs").apply { mkdirs() }
         val dead = File(crashLogs, "latest")
@@ -111,7 +111,7 @@ class StorageSymlinkTest {
     fun `the breakdown does not charge tools with the size of what the tool links point at`() {
         // usr/bin/node is a link to nativeLibraryDir/libnode.so, and git-core is 146
         // links to one libgit.so. Counting each target put several hundred MB of APK
-        // payload into "tools" and into "total" — bytes that are not in filesDir at all,
+        // payload into "tools" and into "total", bytes that are not in filesDir at all,
         // and that no action offered to the user could ever free.
         val nativeLibs = File(tmp, "nativeLibraryDir").apply { mkdirs() }
         val node = File(nativeLibs, "libnode.so").apply { writeBytes(ByteArray(40_000)) }
@@ -133,7 +133,7 @@ class StorageSymlinkTest {
     @Test
     fun `the breakdown does not walk into a linked directory`() {
         // A link to a directory answers isDirectory=true and listFiles() returns the
-        // target's entries, so this counts a whole tree that lives elsewhere — and
+        // target's entries, so this counts a whole tree that lives elsewhere, and
         // counts it again under whichever component actually contains it.
         val elsewhere = File(tmp, "elsewhere").apply { mkdirs() }
         File(elsewhere, "big.bin").writeBytes(ByteArray(30_000))
