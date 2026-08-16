@@ -230,6 +230,22 @@ jobs:
           bash scripts/build-glibc-shim.sh \
             --scan android/app/src/main/assets/vscode-reh \
             --scan android/app/src/main/assets/extensions
+
+      # Play asks for native debug symbols on every release. The shim is the
+      # one native library this repository compiles, and it is also the only
+      # one anywhere in the bundle that still carries a symbol table: every
+      # other .so arrives stripped by whoever built it, so there are no
+      # symbols to upload for them and nothing this zip can do about that.
+      # The build script does not strip its output, so the asset that ships
+      # is already the unstripped file; the zip is that same binary under the
+      # layout the console's upload expects. Kept from this run for the same
+      # reason mapping.txt is: a rebuild of the tag is a different tree.
+      - name: Package the native debug symbols
+        run: |
+          mkdir -p symbols/arm64-v8a
+          cp android/app/src/main/assets/usr/lib/libglibc-shim.so symbols/arm64-v8a/
+          ( cd symbols && zip -q "$GITHUB_WORKSPACE/app-release-symbols.zip" arm64-v8a/libglibc-shim.so )
+          unzip -l app-release-symbols.zip
       # Runs where the libraries actually exist, which lint.yml is not: it
       # builds stub assets, and a stub tree has nothing to attribute. Berkeley
       # DB shipped under AGPL-3.0 for every release before this check existed,
@@ -442,6 +458,7 @@ jobs:
                    android/app/build/outputs/mapping/release/mapping.txt \
                    toolchain-zips/*.zip \
                    toolchain-zips/toolchains.sha256 \
+                   app-release-symbols.zip \
                    build-manifest.txt; do
             # A glob that matches nothing survives as itself in bash, so -f is
             # what decides and the message then names the pattern that found
@@ -492,6 +509,7 @@ jobs:
             android/app/build/outputs/mapping/release/mapping.txt
             toolchain-zips/*.zip
             toolchain-zips/toolchains.sha256
+            app-release-symbols.zip
             build-manifest.txt
 
   github-release:
@@ -574,5 +592,6 @@ jobs:
             artifacts/**/*.zip
             artifacts/**/toolchains.sha256
             artifacts/**/mapping.txt
+            artifacts/app-release-symbols.zip
             artifacts/checksums.sha256
             artifacts/build-manifest.txt
