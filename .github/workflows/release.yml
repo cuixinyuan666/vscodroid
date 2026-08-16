@@ -350,24 +350,36 @@ jobs:
           VSCODROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew bundleRelease
 
-      # The native debug symbols Play asks for, on the documented path:
-      # ndk.debugSymbolLevel makes the bundle task emit app-release-symbols.zip
-      # beside the AAB, which is the file the console recognises. What AGP put
-      # in it is every jniLib that still had a symbol table (one, at present:
-      # the Termux libraries arrive stripped by their builders). The glibc
-      # shim is the other native library compiled here and it ships as an
-      # asset AGP never sees, so it is appended under the same layout, and it
-      # carries a GNU build-id for exactly this pairing since the flag was
-      # added to its link.
+      # The native debug symbols Play asks for, on the documented path.
+      # ndk.debugSymbolLevel makes the bundle carry them inside itself, as
+      # BUNDLE-METADATA/com.android.tools.build.debugsymbols entries the
+      # console reads at upload with nothing to hand over, and what AGP puts
+      # there is every bundled library that still has a symbol table (one at
+      # present: the Termux libraries arrive stripped by their builders). The
+      # glibc shim is the other native library compiled here and it ships as
+      # an asset AGP never sees, so it is appended into that same metadata,
+      # carrying the GNU build-id its link now stamps for exactly this
+      # pairing. Appending metadata does not touch the signed APK entries
+      # inside, and the standalone zip below carries the same content for a
+      # manual upload the day the console wants one.
       - name: Complete the native debug symbols
         run: |
-          SYMBOLS=android/app/build/outputs/bundle/release/app-release-symbols.zip
-          test -f "$SYMBOLS"
-          mkdir -p symbols/arm64-v8a
+          BUNDLE=android/app/build/outputs/bundle/release/app-release.aab
+          AGP_SYMS=android/app/build/intermediates/native_symbol_tables/release/extractReleaseNativeSymbolTables/out
+          META=BUNDLE-METADATA/com.android.tools.build.debugsymbols
+          test -f "$BUNDLE"
+          test -d "$AGP_SYMS/arm64-v8a"
+          mkdir -p "stage/$META/arm64-v8a" symbols/arm64-v8a
+          cp android/app/src/main/assets/usr/lib/libglibc-shim.so \
+             "stage/$META/arm64-v8a/libglibc-shim.so.sym"
+          cp "$AGP_SYMS"/arm64-v8a/*.sym symbols/arm64-v8a/ 2>/dev/null || true
           cp android/app/src/main/assets/usr/lib/libglibc-shim.so \
              symbols/arm64-v8a/libglibc-shim.so.sym
-          ( cd symbols && zip -q "$GITHUB_WORKSPACE/$SYMBOLS" arm64-v8a/libglibc-shim.so.sym )
-          unzip -l "$SYMBOLS"
+          ( cd stage && zip -q "$GITHUB_WORKSPACE/$BUNDLE" \
+              "$META/arm64-v8a/libglibc-shim.so.sym" )
+          ( cd symbols && zip -q "$GITHUB_WORKSPACE/android/app/build/outputs/bundle/release/app-release-symbols.zip" . -r )
+          echo "--- bundle metadata:"; unzip -l "$BUNDLE" | grep debugsymbols
+          echo "--- standalone:"; unzip -l android/app/build/outputs/bundle/release/app-release-symbols.zip
 
       # Before the release is published, because the alternative is finding out
       # at Play upload with the GitHub release already public -- one version
