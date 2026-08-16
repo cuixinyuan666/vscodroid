@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-16
+
 ### Changed
 
 - **The VS Code server is now built from MIT-licensed Code - OSS source** instead of Microsoft's pre-built server, which could not legally be modified and redistributed inside an APK.
