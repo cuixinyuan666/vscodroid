@@ -10,7 +10,7 @@
     },
     "pathDirs": ["usr/bin"],
     "installRoot": "usr/lib/ruby",
-    "libs": ["libruby.so", "libgmp.so", "libyaml-0.so", "libandroid-execinfo.so", "libffi.so"],
+    "libs": ["libruby.so", "libgmp.so", "libyaml-0.so", "libandroid-execinfo.so"],
     "libSymlinks": {
         "libruby.so.3.4": "libruby.so"
     },

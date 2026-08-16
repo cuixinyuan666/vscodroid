@@ -31,9 +31,10 @@ REQUIRED_PACKAGES=(
     libgmp
     libyaml
     libandroid-execinfo
-    # fiddle, Ruby's stdlib FFI, links libffi and it was never bundled -- the
-    # extension shipped and could not load. Found by the ELF gate below.
-    libffi
+    # fiddle, Ruby's stdlib FFI, links libffi, which the base runtime already
+    # ships for Python's _ctypes in app assets. Not downloaded here: an asset
+    # entry the base module and a pack both carry is a conflict bundletool
+    # refuses, and the base copy is in place before any toolchain installs.
 )
 
 # Soname mapping for shared libraries
@@ -43,12 +44,11 @@ get_sonames() {
         libgmp)                echo "libgmp.so" ;;
         libyaml)               echo "libyaml-0.so" ;;
         libandroid-execinfo)   echo "libandroid-execinfo.so" ;;
-        libffi)                echo "libffi.so" ;;
         *)                     echo "" ;;
     esac
 }
 
-LIB_PACKAGES=(ruby libgmp libyaml libandroid-execinfo libffi)
+LIB_PACKAGES=(ruby libgmp libyaml libandroid-execinfo)
 
 # Tells a real binary from a script by reading the file rather than the name.
 # Used twice: to decide which commands need an interpreter wrapper, and by the
@@ -322,7 +322,7 @@ cat > "$PACK_ASSETS/toolchain_ruby.json" << EOF
     },
     "pathDirs": ["usr/bin"],
     "installRoot": "usr/lib/ruby",
-    "libs": ["libruby.so", "libgmp.so", "libyaml-0.so", "libandroid-execinfo.so", "libffi.so"],
+    "libs": ["libruby.so", "libgmp.so", "libyaml-0.so", "libandroid-execinfo.so"],
     "libSymlinks": {
         "libruby.so.${RUBY_MINOR%.*}": "libruby.so"
     },

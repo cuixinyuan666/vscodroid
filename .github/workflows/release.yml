@@ -311,6 +311,15 @@ jobs:
       - name: Check every shipped toolchain library is attributed
         run: python3 scripts/check-library-attribution.py
 
+      # The one place both trees exist at once. The base runtime and the packs
+      # are filled by different download scripts and nothing compares them
+      # until the whole bundle is assembled, where bundletool answers a shared
+      # entry by refusing the AAB outright; that cost a tag minutes before
+      # publishing once, over libffi.so that the base already shipped for
+      # Python's _ctypes when Ruby's fiddle asked for it again.
+      - name: Refuse an asset the base module and a pack both ship
+        run: python3 scripts/check-pack-overlap.py
+
       # Last step that can see what this build resolved, so it runs here rather
       # than in the release job, which only ever sees the artifacts.
       #
