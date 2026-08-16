@@ -17,7 +17,9 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.net.Socket
 
 /**
  * Tests for [PortFinder] — port discovery, availability checking, and the
@@ -262,6 +264,31 @@ class PortFinderTest {
         fun `returns true for an unused port`() {
             val port = hold(0).use { it.localPort }
             assertTrue(PortFinder.isPortAvailable(port), "Released port $port should be available")
+        }
+
+        @Test
+        fun `a port with only dead connections reads as available`() {
+            // The remnant a reaped server leaves behind: every connection it
+            // closed from its own side lingers in TIME_WAIT after the process is
+            // gone, and the kernel keeps those past the kill. The real listener
+            // this answer is for binds with SO_REUSEADDR, which shares a port
+            // with the dead and not with the living, so the probe has to ask the
+            // same question. A plain bind here refuses the port and reports a
+            // bindable one as held, which is how a healthy restart came to be
+            // called doomed.
+            val listener = ServerSocket(0, 0, InetAddress.getByName("127.0.0.1"))
+            val port = listener.localPort
+            val client = Socket()
+            client.connect(InetSocketAddress(listener.inetAddress, port))
+            val accepted = listener.accept()
+            accepted.close()
+            client.close()
+            listener.close()
+
+            assertTrue(
+                PortFinder.isPortAvailable(port),
+                "remnants of connections the old holder closed must not read as a holder"
+            )
         }
 
         @Test
