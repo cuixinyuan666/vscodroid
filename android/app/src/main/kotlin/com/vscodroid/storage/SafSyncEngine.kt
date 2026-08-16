@@ -66,6 +66,15 @@ class SafSyncEngine(private val context: Context) {
     private val docIdCache = ConcurrentHashMap<String, String>()
 
     /**
+     * The tree [docIdCache]'s entries were resolved against. The cache is cleared
+     * and refilled per folder, and a write-back drain can outlive its folder, so
+     * anything resolving at processing time has to know whether the cache still
+     * speaks for the tree the job belongs to before it reads an answer from it.
+     */
+    @Volatile
+    private var cacheTree: Uri? = null
+
+    /**
      * Directories that have just left the mirror and may be the first half of a rename.
      *
      * inotify reports a rename as MOVED_FROM on the old name and MOVED_TO on the new one
@@ -99,6 +108,7 @@ class SafSyncEngine(private val context: Context) {
 
         // Clear cache for fresh sync
         docIdCache.clear()
+        cacheTree = safUri
 
         // Phase 1: Enumerate all documents in the tree
         val documents = mutableListOf<DocumentInfo>()
@@ -145,6 +155,13 @@ class SafSyncEngine(private val context: Context) {
                 // version, and the upload attempted again, which is also the
                 // repair. The record is consumed by the sync that acted on it;
                 // the re-upload re-marks it if it is cut short again.
+                //
+                // Repaired here rather than queued: the queue belongs to the
+                // watcher's lifecycle, and [startWatching] opens by calling
+                // [stopWatching], whose no-worker branch clears the queue, so a
+                // job offered between the sync and the thread that would run it
+                // is discarded before anything executes it. The sync already
+                // owns this moment; it is on the IO dispatcher and mid-copy.
                 if (localPath.exists() && localPath.absolutePath in unfinishedUploads) {
                     unfinishedUploads.remove(localPath.absolutePath)
                     clearUploadInFlight(localPath.absolutePath)
@@ -154,17 +171,7 @@ class SafSyncEngine(private val context: Context) {
                         "Kept the mirror of ${doc.relativePath}: its device copy was an " +
                             "upload this app did not finish"
                     )
-                    writeBackQueue.offer(
-                        SyncJob(
-                            type = SyncType.MODIFY,
-                            localPath = localPath.absolutePath,
-                            safDocUri = doc.uri,
-                            safParentUri = null,
-                            safTreeUri = safUri,
-                            timestamp = System.currentTimeMillis(),
-                            relativePath = doc.relativePath
-                        )
-                    )
+                    writeLocalToSaf(localPath, doc.uri)
                     filesDone++
                     onProgress(filesDone, totalFiles)
                     continue
@@ -726,13 +733,6 @@ class SafSyncEngine(private val context: Context) {
         }
     }
 
-    /**
-     * The paths with an upload in flight, and the lock that serialises them: the
-     * write-back thread and a sync's consumption both rewrite this file, and a
-     * read-modify-write that interleaves loses whatever the other side added.
-     */
-    private val uploadJournalLock = Any()
-
     private fun uploadJournal(): File = File(context.filesDir, UPLOADS_IN_FLIGHT_FILE)
 
     private fun markUploadInFlight(absolutePath: String) = synchronized(uploadJournalLock) {
@@ -740,7 +740,7 @@ class SafSyncEngine(private val context: Context) {
             val journal = uploadJournal()
             val lines = if (journal.isFile) journal.readLines() else emptyList()
             if (absolutePath !in lines) {
-                journal.writeText((lines + absolutePath).joinToString("\n"))
+                rewriteJournal(lines + absolutePath)
             }
         } catch (e: Exception) {
             Logger.w(tag, "Could not record the upload in flight: ${e.message}")
@@ -751,15 +751,39 @@ class SafSyncEngine(private val context: Context) {
         try {
             val journal = uploadJournal()
             if (journal.isFile) {
-                val kept = journal.readLines().filter { it != absolutePath }
-                // Deleted rather than emptied: an empty file is indistinguishable
-                // from a lost one at the next read, and either way means "nothing
-                // in flight", but a file that is always there invites reading it
-                // as something it no longer is.
-                if (kept.isEmpty()) journal.delete() else journal.writeText(kept.joinToString("\n"))
+                val all = journal.readLines()
+                val kept = all.filter { it != absolutePath }
+                if (kept.size != all.size) rewriteJournal(kept)
             }
         } catch (e: Exception) {
             Logger.w(tag, "Could not clear the upload record: ${e.message}")
+        }
+    }
+
+    /**
+     * Drops every journal entry under [mirrorRoot], for when the mirror itself is
+     * going away.
+     *
+     * An entry outlives its mirror otherwise, and the damage is delayed rather
+     * than avoided: the folder's permission lapses, the mirror is reclaimed with
+     * the entry still recorded, and a re-grant weeks later hashes back to the same
+     * path. The first sync after it copies the device down with the mirror absent,
+     * so the entry is not consumed; an edit made on the device after that is then
+     * read back as this app's own interrupted upload and thrown away in favour of
+     * the stale copy. Reclaiming the mirror has to reclaim its distrust with it.
+     */
+    internal fun clearUploadsUnder(mirrorRoot: File) {
+        synchronized(uploadJournalLock) {
+            try {
+                val journal = uploadJournal()
+                if (!journal.isFile) return
+                val prefix = mirrorRoot.absolutePath + File.separator
+                val all = journal.readLines()
+                val kept = all.filterNot { it.startsWith(prefix) }
+                if (kept.size != all.size) rewriteJournal(kept)
+            } catch (e: Exception) {
+                Logger.w(tag, "Could not clear the upload records under ${mirrorRoot.name}: ${e.message}")
+            }
         }
     }
 
@@ -769,7 +793,32 @@ class SafSyncEngine(private val context: Context) {
             if (journal.isFile) journal.readLines().filter { it.isNotBlank() }.toSet()
             else emptySet()
         } catch (e: Exception) {
+            // Said rather than swallowed: an unreadable journal silently disables
+            // the whole bracket, and that is worth a log line when it happens.
+            Logger.w(tag, "Could not read the upload journal: ${e.message}")
             emptySet()
+        }
+    }
+
+    /**
+     * Replaces the journal in one step, or leaves the previous content exactly
+     * where it was.
+     *
+     * Caller must hold [uploadJournalLock]. The rename is the atomic half; a
+     * truncate-and-write here would lose every bracket at once to a process death
+     * in the middle, which is the one failure this file exists to remember across.
+     */
+    private fun rewriteJournal(lines: List<String>) {
+        val journal = uploadJournal()
+        if (lines.isEmpty()) {
+            journal.delete()
+            return
+        }
+        val tmp = File(journal.parentFile, journal.name + PARTIAL_SUFFIX)
+        tmp.writeText(lines.joinToString("\n"))
+        if (!tmp.renameTo(journal)) {
+            journal.writeText(lines.joinToString("\n"))
+            tmp.delete()
         }
     }
 
@@ -794,7 +843,7 @@ class SafSyncEngine(private val context: Context) {
             // device: it stops at [MAX_UPLOAD_ENTRIES] and excludes whatever
             // [SKIP_DIRECTORIES] kept out of the mirror. That is why a rename does not
             // come through here at all when [handleMirrorEvent] can pair its two halves
-            //, it renames the device's document instead, and why the old name is
+            // it renames the device's document instead, and why the old name is
             // never deleted when it cannot.
             createChildrenInSaf(localFile, docUri, treeUri)
         }
@@ -1055,7 +1104,12 @@ class SafSyncEngine(private val context: Context) {
                 val localFile = File(job.localPath)
                 val targetParentUri = job.safParentUri
                     ?: if (job.safSourceParentUri != null && job.relativePath.isNotEmpty()) {
-                        job.safTreeUri?.let {
+                        // Only while the cache still belongs to this job's tree. A
+                        // drain can outlive its folder, and a cache refilled for the
+                        // next one answers a relative path with the wrong folder's
+                        // documents; declining costs the documented stale-copy
+                        // fallback, which the pre-existing behaviour was anyway.
+                        job.safTreeUri?.takeIf { it == cacheTree }?.let {
                             resolveDocumentUri(it, File(job.relativePath).parent ?: "")
                         }
                     } else {
@@ -1120,6 +1174,10 @@ class SafSyncEngine(private val context: Context) {
      * decided here.
      */
     internal fun handleMirrorEvent(event: Int, localFile: File, rootDir: File, safTreeUri: Uri) {
+        // Set before anything resolves: every fill below belongs to this tree, and
+        // a processing-time reader uses the field to know whether the cache it is
+        // about to read still speaks for the tree its job carries.
+        cacheTree = safTreeUri
         val relativePath = localFile.relativeTo(rootDir).path
 
         val type = when (event and FileObserver.ALL_EVENTS) {
@@ -1193,7 +1251,10 @@ class SafSyncEngine(private val context: Context) {
         )
 
         // The other half. Claiming is refused unless the device has nothing under the new
-        // name, and that question is asked of the provider rather than of [safDocUri]:
+        // name. A null [safDocUri] has already asked: the resolution above missed the
+        // cache and walked the provider on this very event, so the walk is only
+        // repeated where a non-null answer can be stale, which is the cache hit and
+        // the not-yet-visible rename:
         // `renameDocument` handed a name the folder already holds is the same trap as
         // `createDocument`, and providers answer it by inventing "util (1)", which
         // would leave the user two directories again, one of them named nonsense. But
@@ -1208,7 +1269,8 @@ class SafSyncEngine(private val context: Context) {
         val renamedFrom =
             if (isDirectory &&
                 (event and FileObserver.ALL_EVENTS) == FileObserver.MOVED_TO &&
-                !providerHoldsDocument(safTreeUri, relativePath)
+                hasVanishedCandidate() &&
+                (safDocUri == null || !providerHoldsDocument(safTreeUri, relativePath))
             ) claimVanishedDirectory(relativePath, now) else null
         // Resolved after the claim rather than when the directory vanished, so that the
         // provider is only asked on the events that turn out to be renames. Null means
@@ -1256,6 +1318,20 @@ class SafSyncEngine(private val context: Context) {
             currentDocId = findChildDocId(treeUri, currentDocId, segment) ?: return false
         }
         return true
+    }
+
+    /**
+     * Whether any vanished directory is still waiting for its other half, without
+     * consuming anything.
+     *
+     * Asked before the provider walk in the claim decision, because it is a lock
+     * and a size check while the walk is a binder round trip per path segment on
+     * the observer thread, and most directory MOVED_TO events have nothing to
+     * pair with: a folder arriving from outside the mirror, a build tool swapping
+     * trees. Those used to pay the walk for an answer the cheap check settles.
+     */
+    private fun hasVanishedCandidate(): Boolean = synchronized(vanishedLock) {
+        vanishedDirectories.isNotEmpty()
     }
 
     /**
@@ -1332,6 +1408,14 @@ class SafSyncEngine(private val context: Context) {
          * path with an upload in flight. See the journal's users for why it exists.
          */
         internal const val UPLOADS_IN_FLIGHT_FILE = "saf-uploads-in-flight"
+
+        /**
+         * Serialises every access to [UPLOADS_IN_FLIGHT_FILE], across engine
+         * instances: a write-back drain can outlive the activity whose engine
+         * started it, and the next activity's engine reads and rewrites the same
+         * one file on its own monitor otherwise.
+         */
+        private val uploadJournalLock = Any()
 
         /**
          * Suffix of the sibling file recording what the last complete sync found.

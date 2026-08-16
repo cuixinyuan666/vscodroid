@@ -302,6 +302,13 @@ class SafDirectoryRenameTest {
      * dead id and wrote into it, so the file quietly existed nowhere, the
      * provider had dropped the document, and the recreate nobody performed was
      * reported as a successful write-back.
+     *
+     * The ordering pinned here is the observed one, the save arriving after the
+     * delete job has run. A delete and a save enqueued back to back, before the
+     * thread touches either, still resolves the save against the document the
+     * delete is about to remove; that write lands nowhere, and what bounds it is
+     * the upload journal, which the failed write leaves behind so the next open
+     * keeps the mirror and repairs the device copy.
      */
     @Test
     fun `a file recreated after its delete is created, not written into the dead document`() {
@@ -344,6 +351,37 @@ class SafDirectoryRenameTest {
 
         verify(exactly = 1) { DocumentsContract.moveDocument(any(), any(), any(), any()) }
         verify(exactly = 0) { DocumentsContract.createDocument(any(), any(), any(), any()) }
+    }
+
+    /**
+     * The late-parent resolution reads the cache, and the cache belongs to a
+     * folder. A write-back drain can outlive its folder: the next one's sync has
+     * cleared and refilled the cache for itself by the time the drain gets to a
+     * job whose destination parent was unresolved at event time, and resolving
+     * that job's `lib` against the new folder's cache hands `moveDocument` a
+     * parent from the wrong tree. The resolution declines instead, which costs
+     * the documented stale-copy fallback, exactly what the pre-existing
+     * behaviour was for a destination that never did resolve.
+     */
+    @Test
+    fun `a rename drain from a folder the cache no longer speaks for declines the late parent`() {
+        deviceTree(mapOf("root" to listOf("util")))
+        File(mirror, "lib").mkdirs()
+        val otherTree = mockk<Uri>(relaxed = true)
+
+        observe(FileObserver.MOVED_FROM or isDirFlag, "util")
+        observe(FileObserver.MOVED_TO or isDirFlag, "lib/util")
+        // An event for a different folder repoints the cache before the drain
+        // runs, which is what a folder switch mid-drain looks like.
+        engine.handleMirrorEvent(
+            FileObserver.MODIFY,
+            File(mirror, "x.txt").apply { writeText("x") },
+            mirror, otherTree
+        )
+        deviceTree(mapOf("root" to listOf("util", "lib"), "doc:lib" to emptyList()))
+        drain()
+
+        verify(exactly = 0) { DocumentsContract.moveDocument(any(), any(), any(), any()) }
     }
 
     @Test

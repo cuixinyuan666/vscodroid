@@ -13,6 +13,7 @@ import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
+import io.mockk.verify
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -23,7 +24,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  * What an interrupted upload leaves behind, and what the next sync does with it.
@@ -192,14 +192,34 @@ class SafUploadInterruptionTest {
             listed.contains(local.absolutePath),
             "the record was consumed by the sync that acted on it"
         )
-        @Suppress("UNCHECKED_CAST")
-        val queued = SafSyncEngine::class.java.getDeclaredField("writeBackQueue")
-            .apply { isAccessible = true }
-            .get(engine) as ConcurrentLinkedQueue<SyncJob>
-        assertTrue(
-            queued.any { it.localPath == local.absolutePath },
-            "keeping the mirror repairs nothing on the device; the upload has to " +
-                "be attempted again"
+        // Delivery, not enqueueing: the write-back queue belongs to the watcher's
+        // lifecycle, and startWatching opens by clearing it, so a job offered
+        // between the sync and the thread that would run it never executes. The
+        // repair has to have reached the document inside the sync itself.
+        verify(exactly = 1) { resolver.openOutputStream(any(), "wt") }
+    }
+
+    @Test
+    fun `reclaiming a mirror takes its journal entries with it`() {
+        val keptMirror = File(mirror, "kept").apply { mkdirs() }
+        val gone = File(filesDir, "saf-mirrors/gone-hash").apply { mkdirs() }
+        File(gone, "notes.txt").writeText("x")
+        journal.writeText(
+            listOf(
+                File(gone, "notes.txt").absolutePath,
+                File(keptMirror, "other.txt").absolutePath
+            ).joinToString("\n")
+        )
+
+        engine.clearUploadsUnder(gone)
+
+        val listed = if (journal.isFile) journal.readLines() else emptyList()
+        assertEquals(
+            listOf(File(keptMirror, "other.txt").absolutePath), listed,
+            "entries under a mirror being reclaimed must not outlive it; the " +
+                "same folder re-granted weeks later hashes back to the same path, " +
+                "and a surviving entry would throw away the device edits that " +
+                "followed"
         )
     }
 }
