@@ -350,44 +350,38 @@ jobs:
           VSCODROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew bundleRelease
 
-      # The native debug symbols Play asks for, on the documented path.
-      # ndk.debugSymbolLevel makes the bundle carry them inside itself, as
-      # BUNDLE-METADATA/com.android.tools.build.debugsymbols entries the
-      # console reads at upload with nothing to hand over; what AGP embeds is
-      # every bundled library that still has a symbol table (one at present,
-      # the Termux libraries arrive stripped by their builders). The glibc
-      # shim is the other native library compiled here and it ships as an
-      # asset AGP never sees, so it is appended into that same metadata,
-      # carrying the GNU build-id its link now stamps for exactly this
-      # pairing. Every input here is read out of the bundle itself, never
-      # out of the intermediates that produced it: those have no shape worth
-      # depending on, and one silent test against them cost a tag. The
-      # standalone zip carries the same content for a manual upload.
+      # The native debug symbols Play asks for. ndk.debugSymbolLevel stays
+      # on in build.gradle.kts and AGP embeds whatever it finds into the
+      # bundle before signing, which is the documented channel and the only
+      # one that touches the artifact at a legitimate moment: a bundle
+      # modified after signing carries unsigned entries, and Play rejects it
+      # with exactly that wording. Measured locally before it cost anything:
+      # one appended metadata entry turns a verified bundle into one with
+      # entries that are not integrity-checked.
       #
-      # Appending metadata does not touch the signed APK entries inside.
-      - name: Complete the native debug symbols
+      # What AGP finds is read back out of the finished bundle and joined
+      # with the glibc shim, the one native library compiled here, which
+      # ships as an asset AGP never sees and now carries the GNU build-id
+      # its link stamps for the console's pairing. The result is a
+      # standalone zip for the console's manual upload; the bundle itself
+      # leaves this step untouched.
+      - name: Package the native debug symbols
         run: |
           set -euxo pipefail
           BUNDLE=android/app/build/outputs/bundle/release/app-release.aab
           OUT=android/app/build/outputs/bundle/release/app-release-symbols.zip
           META=BUNDLE-METADATA/com.android.tools.build.debugsymbols
           test -f "$BUNDLE"
-          rm -rf pulled stage symbols
+          rm -rf pulled symbols
           rm -f "$OUT"
           unzip -o -q "$BUNDLE" "$META/*" -d pulled/ || test $? -eq 11
-          mkdir -p stage/"$META"/arm64-v8a symbols/arm64-v8a
+          mkdir -p symbols/arm64-v8a
           if [ -d "pulled/$META/arm64-v8a" ]; then
-            cp pulled/"$META"/arm64-v8a/*.sym stage/"$META"/arm64-v8a/ 2>/dev/null || true
             cp pulled/"$META"/arm64-v8a/*.sym symbols/arm64-v8a/ 2>/dev/null || true
           fi
           cp android/app/src/main/assets/usr/lib/libglibc-shim.so \
-             stage/"$META"/arm64-v8a/libglibc-shim.so.sym
-          cp android/app/src/main/assets/usr/lib/libglibc-shim.so \
              symbols/arm64-v8a/libglibc-shim.so.sym
-          ( cd stage && zip -q "$GITHUB_WORKSPACE/$BUNDLE" "$META/arm64-v8a/"*.sym )
           ( cd symbols && zip -qr "$GITHUB_WORKSPACE/$OUT" arm64-v8a )
-          echo "--- bundle metadata:"
-          unzip -l "$BUNDLE" | grep debugsymbols
           echo "--- standalone:"
           unzip -l "$OUT"
 
