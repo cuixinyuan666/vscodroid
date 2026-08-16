@@ -742,8 +742,8 @@ VSCodroid version: X.Y.Z
   Z = Patch (bug fixes, security patches)
 
 Mapping to VS Code version:
-  VSCodroid 1.0.0 → based on VS Code 1.96.x
-  VSCodroid 1.1.0 → based on VS Code 1.97.x
+  VSCodroid 1.0.0 → based on VS Code 1.96.4
+  VSCodroid 1.1.0 → based on VS Code 1.133.0
   etc.
 ```
 
