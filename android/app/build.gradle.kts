@@ -114,6 +114,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // The documented switch behind Play's native-crash support: with
+            // this set, the bundle task emits app-release-symbols.zip beside
+            // the AAB, which is the file the console recognises by name and
+            // layout. Most bundled libraries arrive stripped by their
+            // builders, so what this carries is the symbol table of anything
+            // that still has one; release.yml adds the glibc shim, the one
+            // native library compiled here, into that same zip.
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
         }
         debug {
             isMinifyEnabled = false

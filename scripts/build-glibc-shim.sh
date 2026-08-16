@@ -68,6 +68,13 @@ mkdir -p "$WORK_DIR" "$OUT_DIR"
 # Android 16 requires 16 KB-aligned segments; NDK 27 still defaults to 4 KB.
 PAGE_SIZE_FLAGS=(-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384)
 
+# A GNU build-id on everything compiled here. Play's native crash support
+# pairs an uploaded symbol file with the shipped binary by this note, and a
+# library without one cannot be matched however many symbols it carries:
+# the first attempt at a hand-built symbols zip found that out, uploaded a
+# shim that answered with no build-id and was read as no symbols at all.
+BUILD_ID_FLAG=(-Wl,--build-id=sha1)
+
 echo ""
 echo "--- libglibc-shim.so ---"
 # -soname because the library now looks itself up by name at load time, to fill
@@ -80,7 +87,8 @@ echo "--- libglibc-shim.so ---"
     "$SCRIPT_DIR/glibc-shim.c" \
     -Wl,-soname,libglibc-shim.so \
     -llog \
-    "${PAGE_SIZE_FLAGS[@]}"
+    "${PAGE_SIZE_FLAGS[@]}" \
+    "${BUILD_ID_FLAG[@]}"
 echo "  $(wc -c < "$OUT_DIR/libglibc-shim.so" | tr -d ' ') bytes"
 
 echo ""
@@ -142,7 +150,8 @@ for stub in "${STUBS[@]}"; do
         -Wl,-soname,"$stub" \
         ${version_script[@]+"${version_script[@]}"} \
         -L"$OUT_DIR" -lglibc-shim -llog \
-        "${PAGE_SIZE_FLAGS[@]}"
+        "${PAGE_SIZE_FLAGS[@]}" \
+        "${BUILD_ID_FLAG[@]}"
     printf '  %-18s %8s bytes%s\n' "$stub" "$(wc -c < "$OUT_DIR/$stub" | tr -d ' ')" \
         "$([ -f "$generated" ] && echo '  (versioned forwarders)' || echo '')"
 done
