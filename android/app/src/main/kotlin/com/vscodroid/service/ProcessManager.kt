@@ -429,12 +429,19 @@ class ProcessManager(private val context: Context) {
         // known: from here on the port is occupied whichever case this is. It is
         // what lets the service tell a slow server from one that will never
         // answer, see [spawnedOntoHeldPort] and `NodeService.awaitLateReadiness`.
-        // The reap above is subtracted, because it is the one path on which this
-        // start itself took the holder off the port: a flag answered from the
-        // pre-reap state would call the replacement doomed for the sin of its
-        // predecessor, and a healthy server slower than the readiness budget
-        // would be killed once for nothing, out of the restart budget.
-        spawnedOntoHeldPort = !portIsFree && !reapedThisStart
+        // The reap is subtracted only when the port agrees it is free, because
+        // a signalled pid is not a released socket: the kill returns when the
+        // signal is sent, and the holder can also be a foreign process the reap
+        // never touched, the note naming a wedged child that never bound while
+        // someone else took the port. Answering from the signal alone would call
+        // that spawn healthy while it wedges on EADDRINUSE without exiting, and
+        // the liveness-bounded wait behind the flag would never end: the failure
+        // the restart budget used to report, become a "still starting" that
+        // says nothing. The probe is the same loopback bind test [PortFinder]
+        // already answers, and its residual race, a port freed just after it
+        // reads held, is the one the free-at-first-ask path has always accepted.
+        spawnedOntoHeldPort = !portIsFree &&
+            !(reapedThisStart && PortFinder.isPortAvailable(_port))
         Logger.i(tag, "Starting server on port $_port")
 
         // Ensure TMPDIR is a usable directory — Android may clear cache between

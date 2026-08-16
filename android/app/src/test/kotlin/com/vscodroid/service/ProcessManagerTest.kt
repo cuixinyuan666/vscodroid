@@ -1290,12 +1290,6 @@ class AdoptionTest {
     }
 
     /**
-     * The other call site. A server of ours that holds the port and answers nothing is
-     * refused adoption just above, and leaving it there guarantees the spawn hits
-     * EADDRINUSE: that child does not exit, so the launch ends with two processes where
-     * the user wanted one and the survivor outlives every retry.
-     */
-    /**
      * What the reap does to the spawn that follows it. The flag exists so the
      * service can tell a server that will never bind from one that is merely
      * slow, and it was answered from the state before the reap: a start that
@@ -1303,16 +1297,17 @@ class AdoptionTest {
      * replacement as born doomed, and a healthy server slower than the
      * readiness budget was killed once for nothing, out of the restart budget.
      *
-     * The holder survives the "kill" on purpose, what is asserted is the
-     * flag, not the socket, and a holder that dies with the signal cannot
-     * prove the subtraction was needed.
+     * Subtracted only when the port agrees it is free, because "signalled" is
+     * not "released": the kill returns when the signal is sent, and the socket
+     * closes some time after. The kill here really stops the holder, so the
+     * spawn that follows genuinely has the port to itself.
      */
     @Test
     fun `a start onto a port the reap just freed is not recorded as doomed`() {
         val killed = mutableListOf<Int>()
-        manager.killRecordedProcess = { killed += it }
         val holder = holdingPortSilently()
         recordEditorServer(pid = 7311, port = holder.port)
+        manager.killRecordedProcess = { killed += it; holder.stop() }
 
         manager.startServer()
 
@@ -1324,6 +1319,41 @@ class AdoptionTest {
         )
     }
 
+    /**
+     * The other half, and the half that keeps the reap from buying silence: a
+     * signalled pid is not the only thing that can hold the port. The recorded
+     * server can be a wedged child that never bound it, because the bootstrap
+     * writes the note at the fork and a foreign process took the port first,
+     * and a reap that ends that child leaves the foreign holder exactly where
+     * it was. Treating the signal as the release then records the replacement
+     * as healthy while it wedges on EADDRINUSE without exiting, and the
+     * liveness-bounded wait that follows never ends: the failure the budget
+     * used to report becomes a "still starting" that says nothing, for as long
+     * as the app runs.
+     */
+    @Test
+    fun `a start onto a port something else still holds stays doomed after a reap`() {
+        val killed = mutableListOf<Int>()
+        manager.killRecordedProcess = { killed += it }
+        val holder = holdingPortSilently()
+        recordEditorServer(pid = 7311, port = holder.port)
+
+        manager.startServer()
+
+        assertEquals(listOf(7311), killed, "the reap must have run for this to mean anything")
+        assertTrue(
+            manager.spawnedOntoHeldPort(),
+            "a port the reap did not actually free is still held, and the spawn " +
+                "onto it must stay diagnosable rather than merely slow"
+        )
+    }
+
+    /**
+     * The other call site. A server of ours that holds the port and answers nothing is
+     * refused adoption just above, and leaving it there guarantees the spawn hits
+     * EADDRINUSE: that child does not exit, so the launch ends with two processes where
+     * the user wanted one, and the survivor outlives every retry.
+     */
     @Test
     fun `a server of ours holding the port without serving is ended before spawning`() {
         val killed = mutableListOf<Int>()
