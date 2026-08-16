@@ -1297,20 +1297,32 @@ class AdoptionTest {
      * replacement as born doomed, and a healthy server slower than the
      * readiness budget was killed once for nothing, out of the restart budget.
      *
-     * Subtracted only when the port agrees it is free, because "signalled" is
-     * not "released": the kill returns when the signal is sent, and the socket
-     * closes some time after. The kill here really stops the holder, so the
-     * spawn that follows genuinely has the port to itself.
+     * Driven through the port question rather than a socket, because the
+     * verdict reads the port and a socket's disappearance is not the same
+     * claim on every JVM: closing a listener while another thread sits in
+     * accept() lands at different moments on different ones, and a test that
+     * races its own fixture proves nothing about the code under it. The
+     * question's own semantics, including what TIME_WAIT remnants do to it,
+     * are pinned in [PortFinderTest]; what this pins is the verdict's
+     * arithmetic: held at the first ask, freed by the reap, therefore slow-
+     * allowed rather than doomed.
      */
     @Test
     fun `a start onto a port the reap just freed is not recorded as doomed`() {
         val killed = mutableListOf<Int>()
         val holder = holdingPortSilently()
         recordEditorServer(pid = 7311, port = holder.port)
-        manager.killRecordedProcess = { killed += it; holder.stop() }
+        manager.killRecordedProcess = { killed += it }
+        val asked = intArrayOf(0)
+        mockkObject(PortFinder)
+        // First ask: the holder is there. Second ask, after the reap: not.
+        every { PortFinder.isPortAvailable(holder.port) } answers {
+            asked[0]++ > 0
+        }
 
         manager.startServer()
 
+        assertEquals(2, asked[0], "the port is asked once before the reap and once after it")
         assertEquals(listOf(7311), killed, "the setup is the reap case or the flag proves nothing")
         assertFalse(
             manager.spawnedOntoHeldPort(),
@@ -1329,7 +1341,8 @@ class AdoptionTest {
      * as healthy while it wedges on EADDRINUSE without exiting, and the
      * liveness-bounded wait that follows never ends: the failure the budget
      * used to report becomes a "still starting" that says nothing, for as long
-     * as the app runs.
+     * as the app runs. The port question here never changes its answer, which
+     * is what a holder the reap cannot reach looks like.
      */
     @Test
     fun `a start onto a port something else still holds stays doomed after a reap`() {
@@ -1337,6 +1350,8 @@ class AdoptionTest {
         manager.killRecordedProcess = { killed += it }
         val holder = holdingPortSilently()
         recordEditorServer(pid = 7311, port = holder.port)
+        mockkObject(PortFinder)
+        every { PortFinder.isPortAvailable(holder.port) } returns false
 
         manager.startServer()
 
