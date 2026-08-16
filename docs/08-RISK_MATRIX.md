@@ -4,7 +4,7 @@
 **Version**: 1.0-draft
 **Date**: 2026-02-10
 
-> **Historical document — records the risks as assessed on 2026-02-10, not the ones that
+> **Historical document, records the risks as assessed on 2026-02-10, not the ones that
 > materialised.** Every score below is a probability and impact judged before the app existed,
 > and the decision log in §6 is dated to the day those decisions were taken. Both are kept as
 > the record, so two things a reader would otherwise carry away wrong are named here instead.
@@ -26,8 +26,8 @@
 > argument: an install whose installing package is not `com.android.vending` downloads the same
 > toolchains as ZIPs over HTTPS from this project's GitHub Releases, verified against a published
 > sha256 manifest before install (`ToolchainManager.shouldUseHttpFallback()`,
-> `downloadViaHttp()`). Neither path puts a toolchain in the APK, so T09's contingency — "sideload
-> distribution path with bundled toolchains" — is not the shape the sideload path took.
+> `downloadViaHttp()`). Neither path puts a toolchain in the APK, so T09's contingency, "sideload
+> distribution path with bundled toolchains", is not the shape the sideload path took.
 >
 > For the risks the project actually carries today, read the code and `CONTRIBUTING.md`.
 

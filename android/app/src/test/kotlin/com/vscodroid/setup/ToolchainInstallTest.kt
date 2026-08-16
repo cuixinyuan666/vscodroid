@@ -222,7 +222,7 @@ class ToolchainInstallTest {
      * toolchain, `toolchain-env.sh` is regenerated from a record that predates it
      * so none of its commands exist in a terminal, and no manifest survives to
      * tell an uninstall which files, symlinks and libraries those megabytes are
-     * -- they cannot be removed from the UI at all. Reported as COMPLETED, the
+     * they cannot be removed from the UI at all. Reported as COMPLETED, the
      * picker shows 100% and Done, the first-run queue moves to the next pack, and
      * the card reads "Install" again after the next launch with nothing said.
      *
@@ -235,7 +235,7 @@ class ToolchainInstallTest {
         val pack = File(filesDir, "pack-go").apply { mkdirs() }
         File(pack, "toolchain_go.json").writeText("""{"name":"go","installRoot":"usr/opt/go"}""")
         // Non-empty, so the cleanup delete() cannot quietly reclaim it and let the
-        // write through -- the point is that this write fails.
+        // write through, the point is that this write fails.
         val blocker = File(filesDir, "home/.vscodroid/toolchains.json.tmp~")
         assertTrue(blocker.mkdirs(), "could not stage the blocked temp path")
         File(blocker, "occupied").writeText("x")

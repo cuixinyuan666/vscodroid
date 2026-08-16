@@ -28,8 +28,8 @@ built without them, or shipped without them having run:
     them at all.
 
 The first three are about `.sh` and say so. The JavaScript rule is deliberately
-not folded into them: those three pair four sources -- build.yml, release.yml,
-build-all.sh and CONTRIBUTING.md -- and the JavaScript self-checks have no
+not folded into them: those three pair four sources, build.yml, release.yml,
+build-all.sh and CONTRIBUTING.md, and the JavaScript self-checks have no
 build-all.sh equivalent, so widening the shell pattern to reach them would leave
 that rule vacuous for them while the output went on claiming a coverage it was no
 longer performing. A two-set comparison over a glob is the shape of the omission,
@@ -282,8 +282,8 @@ def _main() -> int:
     # python3.
     #
     # One direction only, and the asymmetry is real rather than an omission: the
-    # release job legitimately runs more -- the toolchain downloads and the ZIP
-    # packaging have no place on a pull request -- so requiring equality would
+    # release job legitimately runs more, the toolchain downloads and the ZIP
+    # packaging have no place on a pull request, so requiring equality would
     # need a hand-written exemption list, which is the fourth copy this file
     # exists to avoid. What escapes: a script that only ever ran on the tag path
     # being dropped from it. Nothing else names that set, so nothing can tell.

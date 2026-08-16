@@ -32,7 +32,7 @@ import java.io.File
  * Behind the pre-flight it was gated by the shortfall it cures. A device with
  * less free space than the asset total returned LOW_STORAGE before the deletion
  * was reached, the trees stayed where they were, and the Retry button measured
- * the same shortfall and made the same decision -- for ever, on precisely the
+ * the same shortfall and made the same decision, for ever, on precisely the
  * installs that had something to reclaim.
  *
  * Free space is stubbed rather than arranged. The pre-flight compares
@@ -109,8 +109,8 @@ class PreExtractionReclaimTest {
     }
 
     /**
-     * The whole point. Setup still refuses -- one deletion does not conjure a
-     * gigabyte -- but it refuses having freed what it could, so the next attempt
+     * The whole point. Setup still refuses, one deletion does not conjure a
+     * gigabyte, but it refuses having freed what it could, so the next attempt
      * measures a different device.
      */
     @Test
@@ -148,7 +148,7 @@ class PreExtractionReclaimTest {
     /**
      * A fresh install has no previous versionCode, so there is no migration to
      * run and nothing to reclaim. Stated because the branch is decided by
-     * `previousVersionCode > 0` and `0 < PIVOT_VERSION_CODE` is true -- reading
+     * `previousVersionCode > 0` and `0 < PIVOT_VERSION_CODE` is true, reading
      * the second test alone, a fresh install looks like it should qualify.
      */
     @Test

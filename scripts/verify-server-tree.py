@@ -30,7 +30,7 @@ REQUIRED = [
     "node_modules/@vscode/ripgrep-universal/bin/linux-arm64/rg",
     # Code - OSS is MIT and this tree is redistributed inside every APK, so the
     # copyright notice has to travel with it. product.json names it too.
-    # Presence is not enough here -- the contents are read further down.
+    # Presence is not enough here, the contents are read further down.
     "LICENSE.txt",
     # The other half of the same obligation, and it was required by nothing.
     # build-vscode-oss.sh copies it under `if [ -f ]`, so an upstream rename
@@ -216,7 +216,7 @@ def main(tree):
     # LICENSE.txt was required to exist and then never opened, which made it the
     # one gate that could not see the thing it was added for. The pivot away from
     # Microsoft's pre-built server happened because that artifact carries
-    # MICROSOFT PRE-RELEASE SOFTWARE LICENSE TERMS -- 13 KB where MIT is 1.1 KB --
+    # MICROSOFT PRE-RELEASE SOFTWARE LICENSE TERMS, 13 KB where MIT is 1.1 KB,
     # under this exact filename, so a tree built from it satisfied the check by
     # having the name. An empty file satisfied it too.
     #
@@ -228,7 +228,7 @@ def main(tree):
     #
     # Not covered, deliberately: whose copyright the notice names. Code - OSS's
     # own LICENSE.txt is Microsoft's copyright under MIT, which is correct and
-    # has to stay -- MIT is what requires it to travel with the copy.
+    # has to stay, MIT is what requires it to travel with the copy.
     licence = None
     lic_path = tree / "LICENSE.txt"
     try:
@@ -246,7 +246,7 @@ def main(tree):
 
     # Presence is checked in REQUIRED; this is the same not-enough that LICENSE.txt
     # had. A zero-byte notices file is what a truncated copy leaves behind, and it
-    # discharges nothing. The contents are not otherwise inspected -- upstream
+    # discharges nothing. The contents are not otherwise inspected, upstream
     # rewrites this file every release and there is no stable sentence in it.
     tpn = tree / "ThirdPartyNotices.txt"
     try:

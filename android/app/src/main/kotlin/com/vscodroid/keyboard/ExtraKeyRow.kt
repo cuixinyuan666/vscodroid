@@ -28,7 +28,7 @@ class ExtraKeyRow @JvmOverloads constructor(
     // toggle map, which is also what a (re)bound button is painted from, so the
     // value handed to KeyInjector and the value on screen are one value rather
     // than two kept equal by hand. Writing one repaints the live button too, so
-    // no site has to remember a second call -- forgetting that is what left this
+    // no site has to remember a second call, forgetting that is what left this
     // row believing Ctrl was held while the map it paints from said otherwise.
     private var ctrlActive: Boolean
         get() = adapter.isToggleActive("Ctrl")

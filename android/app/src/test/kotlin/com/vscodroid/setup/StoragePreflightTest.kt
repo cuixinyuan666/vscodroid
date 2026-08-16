@@ -25,8 +25,8 @@ import java.nio.file.Files
 /**
  * What the first-run storage gate asks for, and of whom.
  *
- * The gate used to ask every install for the whole asset tree plus slack --
- * 874 MiB at the current pin -- whether or not the device already held 810 MiB
+ * The gate used to ask every install for the whole asset tree plus slack,
+ * 874 MiB at the current pin, whether or not the device already held 810 MiB
  * of it. That was survivable only by coincidence: `PIVOT_VERSION_CODE` equals
  * the shipping `versionCode`, so every upgrade that has reached the check so far
  * had its previous server tree deleted a few lines earlier and measured a device
@@ -47,7 +47,7 @@ import java.nio.file.Files
  * they are 810 MiB and 113 MiB on a developer's checkout and zero on the CI
  * runner, which stubs the asset directories empty. With a zero-byte tree every
  * branch of the gate computes the same number and no test could tell them apart
- * -- it would pass in CI while proving nothing, which is why [FirstRunSetup]
+ * it would pass in CI while proving nothing, which is why [FirstRunSetup]
  * takes the two figures as parameters.
  *
  * The scale is small on purpose: `EXTRACTION_SLACK_BYTES` is a real constant this
@@ -114,7 +114,7 @@ class StoragePreflightTest {
      *   matters: `runPreExtractionMigrations` deletes the server tree for
      *   anything older than the pivot, which would empty the tree these tests
      *   stage before the gate ever measured it. 11 is also the case the gate was
-     *   wrong about -- the upgrade that has no reclaim of its own.
+     *   wrong about, the upgrade that has no reclaim of its own.
      */
     private fun context(free: Long, previousVersionCode: Int = 11): Context {
         val prefs = mockk<SharedPreferences>(relaxed = true)
@@ -333,7 +333,7 @@ class StoragePreflightTest {
 
     /**
      * The reason the credit is measured rather than read off the tree's
-     * existence -- and the retry case, in the state it leaves behind. A tree an
+     * existence, and the retry case, in the state it leaves behind. A tree an
      * interrupted attempt half-wrote is present, and present is exactly what an
      * existence test would call complete.
      */
@@ -355,7 +355,7 @@ class StoragePreflightTest {
      * The figure the user is shown has to be the one the run actually wanted.
      * `SplashActivity` builds the message from [FirstRunSetup.requiredStorageMb]
      * the moment a run returns LOW_STORAGE, and a static whole-tree figure there
-     * would tell a device that needs 70 MiB to free 874 -- which is both
+     * would tell a device that needs 70 MiB to free 874, which is both
      * unreachable and untrue.
      */
     @Test

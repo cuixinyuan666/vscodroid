@@ -185,7 +185,7 @@ class LaunchOutcomeTest {
         // The pair that hung the app. Both are alive and neither has answered;
         // only the port tells them apart. A process spawned onto a port something
         // else holds prints EADDRINUSE and then does not exit, so the loop that
-        // waits on liveness waits for the life of the app -- no failure, no
+        // waits on liveness waits for the life of the app, no failure, no
         // restart, nothing on the notification, and a service that believes it is
         // running so relaunching does nothing either.
         val doomed = Steps(started = true, ready = false, alive = true, portHeld = true)
@@ -200,7 +200,7 @@ class LaunchOutcomeTest {
 
     @Test
     fun `a process that answered is never called doomed, whatever the port was doing`() {
-        // The port was taken at the spawn and the server answered anyway -- the
+        // The port was taken at the spawn and the server answered anyway, the
         // holder let go, or it was ours all along. A rule that reads the port
         // before the answer would kill a server that is serving.
         val steps = Steps(started = true, ready = true, alive = true, portHeld = true)
@@ -370,7 +370,7 @@ class RecoverableStopCallSiteTest {
  *
  * [EndsUnreportedTest] pins that the run is handed to the retry budget; this pins
  * the half that makes the retry mean anything. The pair spawned onto a taken port
- * does not exit on its own -- measured: it prints `EADDRINUSE` and stays -- and
+ * does not exit on its own, measured: it prints `EADDRINUSE` and stays, and
  * `ProcessManager.startServer` refuses while a process is alive. So a branch that
  * reported the failure without stopping the process would turn every remaining
  * attempt into an instant `NOT_STARTED`, spend the budget in seconds, and still
@@ -394,7 +394,7 @@ class CannotBindCleanupTest {
      *
      * Not a count of anything, which is the point. A fixed eight-line window stood
      * here, and its comment said it counted statements while it counted
-     * non-comment lines — a distinction with no consequence until the branch
+     * non-comment lines, a distinction with no consequence until the branch
      * grows. It had exactly one line of slack: a statement added anywhere above
      * the last assertion still fitted, and a second one pushed `reportFailure(`
      * past the end of the window, at which point this test reports a missing call
@@ -404,7 +404,7 @@ class CannotBindCleanupTest {
      *
      * Braces cannot drift that way: the window is whatever the branch is, however
      * long it becomes. What they cannot survive is an unbalanced brace inside a
-     * string literal on a code line — `"{"` and nothing to close it — which
+     * string literal on a code line, `"{"` and nothing to close it, which
      * nothing in this branch has today; the failure would be a window running to
      * the end of the file, which the error below names rather than hides.
      */
@@ -430,7 +430,7 @@ class CannotBindCleanupTest {
     @Test
     fun `the doomed pair is stopped where it is diagnosed`() {
         check(nodeService.isFile) {
-            "NodeService.kt not found at ${nodeService.absolutePath} -- this test would " +
+            "NodeService.kt not found at ${nodeService.absolutePath}, this test would " +
                 "otherwise pass by looking at nothing"
         }
         val lines = codeLines()
@@ -632,7 +632,7 @@ class NoticeGateKeyTest {
         val reported = lines.filter { (_, l) -> l.contains("reportFailure(") }
         assertEquals(
             4, reported.size,
-            "expected the declaration plus all three failure outcomes -- a spawn that " +
+            "expected the declaration plus all three failure outcomes, a spawn that " +
                 "failed, a process that died before answering, and one that could never " +
                 "bind. A failure that speaks on every attempt is the defect, and so is " +
                 "one that never speaks:\n" + report(reported),

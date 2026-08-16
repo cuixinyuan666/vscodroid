@@ -207,7 +207,7 @@ class AuthCallbackCallSiteTest {
  *
  * The coupling is the thing worth pinning. `redactToken` keys on the literal
  * `tkn=`, and nothing but this test connects that to the parameter the URL is
- * built with — rename the parameter and the redactor matches nothing while every
+ * built with, rename the parameter and the redactor matches nothing while every
  * log statement still reads as redacted.
  */
 class WorkbenchUrlTest {
@@ -303,7 +303,7 @@ class WorkbenchUrlTest {
  * What is dangerous is a *value*, not a *spelling*: something holding the
  * connection token reaching a `Logger` argument. A check written against one
  * spelling is a check on that spelling wearing the costume of a check on the
- * leak — `"at $url"` fails it, and `"at " + url` walks straight through while the
+ * leak, `"at $url"` fails it, and `"at " + url` walks straight through while the
  * token goes to a release build's logcat, readable by anything holding READ_LOGS.
  *
  * So [TokenTaint] reads the file the way taint reads it. A `val`/`var`
@@ -320,7 +320,7 @@ class WorkbenchUrlTest {
  * What still passes. The first of these is pinned as a case below, so the claim
  * is measured rather than promised, and the rest are the same shape as it:
  *
- *  - a value laundered through something that is not a declaration — appended to
+ *  - a value laundered through something that is not a declaration, appended to
  *    a `StringBuilder`, put in a collection, or assigned to a `var` some lines
  *    after it was declared;
  *  - a declaration split across lines, with `val x =` on one and the value on the
@@ -337,7 +337,7 @@ class WorkbenchUrlTest {
  *
  * Source reading, and the weaker layer for the usual reason: the statement is
  * inside an Activity method, and a plain JVM test can build no Activity. The
- * webview layer needs none of this — `ConnectionTokenLoggingTest` drives its log
+ * webview layer needs none of this, `ConnectionTokenLoggingTest` drives its log
  * statements for real and reads what came out, which catches every spelling at
  * once.
  */
@@ -347,7 +347,7 @@ class NavigationTokenLoggingTest {
 
     private fun source(): List<String> {
         check(mainActivity.isFile) {
-            "MainActivity.kt not found at ${mainActivity.absolutePath} — this test " +
+            "MainActivity.kt not found at ${mainActivity.absolutePath}, this test " +
                 "would otherwise pass by looking at nothing"
         }
         return mainActivity.readLines()
@@ -360,7 +360,7 @@ class NavigationTokenLoggingTest {
         assertEquals(
             emptyList<String>(), offenders,
             "the URL the WebView loads carries the connection token, and only " +
-                "Logger.d is gated on a debuggable build — so this reaches a release " +
+                "Logger.d is gated on a debuggable build, so this reaches a release " +
                 "build's logcat. Print it through redactToken().",
         )
     }
@@ -379,7 +379,7 @@ class NavigationTokenLoggingTest {
             "no log statement in MainActivity prints a token-bearing value through " +
                 "redactToken. Either the navigation log went, or it stopped going " +
                 "through the redactor, or the seeds in TokenTaint no longer recognise " +
-                "where the token enters the file — and in every one of those cases the " +
+                "where the token enters the file, and in every one of those cases the " +
                 "test above is passing by looking at nothing",
         )
     }
@@ -477,8 +477,8 @@ class NavigationTokenLoggingTest {
     fun `a statement the formatter wrapped is read whole`() {
         // Both directions, because line-at-a-time reading gets them both wrong:
         // it misses the leak, since the line holding the URL has no `Logger.` on
-        // it, and — for a reader patched to look at neighbouring lines instead of
-        // whole statements — it would accuse the correct one for the same reason.
+        // it, and, for a reader patched to look at neighbouring lines instead of
+        // whole statements, it would accuse the correct one for the same reason.
         val wrappedRaw = navigateSource(
             """        Logger.i(""",
             """            tag,""",
@@ -517,7 +517,7 @@ class NavigationTokenLoggingTest {
     }
 
     @Test
-    fun `a value laundered through a builder still passes -- a stated limit`() {
+    fun `a value laundered through a builder still passes, a stated limit`() {
         // Pinned rather than described, so the docstring's list of what gets
         // through is measured. Taint is followed through declarations only, and a
         // `StringBuilder` is fed by a call. The redacted statement is kept beside
@@ -563,14 +563,14 @@ class NavigationTokenLoggingTest {
  * be. [codeView] drops string prose while keeping what a `$` interpolation names,
  * so a message can talk about a token without being one. [statements] gathers a
  * `Logger` call across however many lines it was wrapped onto, by counting
- * parentheses on that same prose-free view — which is what keeps a `" ("` in a
+ * parentheses on that same prose-free view, which is what keeps a `" ("` in a
  * message from unbalancing the count. [taintedNames] walks declarations to a
  * fixpoint from the three places the token enters.
  *
  * Its blind spots are the docstring on [NavigationTokenLoggingTest], and one more
  * that belongs to the text scanning rather than to the design: a double quote
- * written inside an interpolation inside a string — `trim('"')` is one, and
- * MainActivity has it — ends the literal early, because handling it properly
+ * written inside an interpolation inside a string, `trim('"')` is one, and
+ * MainActivity has it, ends the literal early, because handling it properly
  * means recursing into interpolations. The damage is bounded to that one
  * statement, and it cannot hide an interpolated name: [leaks] asks twice, once of
  * the prose-free view and once of the raw text, and only the first is affected.
@@ -848,7 +848,7 @@ class RestoreWatcherTest {
  *
  * [RestoreWatcherTest] pins which folder a failure leaves watched; this pins what
  * counts as a failure in the first place. The sync runs in `lifecycleScope`, so
- * destroying the Activity cancels it — a scheduled dark-mode switch, a font-size
+ * destroying the Activity cancels it, a scheduled dark-mode switch, a font-size
  * or language change, or "Don't keep activities" while the user is in another
  * app, none of which the manifest's `configChanges` absorbs. Kotlin's
  * `CancellationException` is a plain `Exception`, so the catch-all sees it and
@@ -878,7 +878,7 @@ class SyncCancellationTest {
     @Test
     fun `the sync handler answers cancellation before it answers failure`() {
         check(mainActivity.isFile) {
-            "MainActivity.kt not found at ${mainActivity.absolutePath} — this test " +
+            "MainActivity.kt not found at ${mainActivity.absolutePath}, this test " +
                 "would otherwise pass by looking at nothing"
         }
         val lines = codeLines()
@@ -918,7 +918,7 @@ class SyncCancellationTest {
 
         assertEquals(
             2, restores,
-            "expected both failure handlers -- permission denied and everything else -- " +
+            "expected both failure handlers, permission denied and everything else, " +
                 "to decide what stays watched; found $restores",
         )
     }

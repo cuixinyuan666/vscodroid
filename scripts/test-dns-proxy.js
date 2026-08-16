@@ -328,7 +328,7 @@ async function main() {
     // tunnel, so a failure AFTER the 200 used to be answered with a 502 written
     // into the tunnelled byte stream. For a TLS session those 47 bytes are read
     // as a record with content type 0x48 ('H'), so the client reports a
-    // protocol failure rather than the reset that actually happened -- turning
+    // protocol failure rather than the reset that actually happened, turning
     // a retryable error into one that is not.
     //
     // A clean close does not reproduce it: the proxy sees 'end', not 'error'.

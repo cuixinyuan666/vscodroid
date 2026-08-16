@@ -16,7 +16,7 @@ class KeyPageAdapter(
 ) : RecyclerView.Adapter<KeyPageAdapter.PageViewHolder>() {
 
     /**
-     * Whether each modifier is currently on -- the only place that answer is kept.
+     * Whether each modifier is currently on, the only place that answer is kept.
      *
      * [onBindViewHolder] rebuilds a page's buttons from nothing and paints them
      * from here, and [ExtraKeyRow] reads the same entries to decide which
@@ -26,9 +26,9 @@ class KeyPageAdapter(
      * They used to be two values, and the copy here was only ever written in one
      * direction: releasing a modifier reached it, switching one on did not, so it
      * said "off" for the whole time a modifier was held. Nothing rebinds a page
-     * as the row stands -- three pages with `offscreenPageLimit = 1` leaves at
+     * as the row stands, three pages with `offscreenPageLimit = 1` leaves at
      * most one detached at a time, and RecyclerView returns a single detached
-     * page from its two-entry view cache already bound -- so the gap never
+     * page from its two-entry view cache already bound, so the gap never
      * surfaced. Enough pages to overflow that cache, or a different limit, turns
      * it into a Ctrl repainted idle while the next key still arrives as Ctrl+key.
      */

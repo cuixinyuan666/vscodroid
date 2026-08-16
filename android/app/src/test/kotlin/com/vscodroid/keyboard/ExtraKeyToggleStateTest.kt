@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test
  * A modifier has two consumers that must never disagree: [KeyPageAdapter]
  * repaints a (re)bound button from the stored state, and [ExtraKeyRow] reads the
  * same question to decide whether the next key goes out as Ctrl+key. When those
- * were two values, only one of them was written on the way *on* -- so a page
+ * were two values, only one of them was written on the way *on*, so a page
  * rebuilt while Ctrl was held would have drawn an idle key over a live modifier,
  * and the next tap would have gone out modified with nothing on screen saying so.
  *
@@ -37,8 +37,8 @@ class ExtraKeyToggleStateTest {
      * The defect, as the store sees it.
      *
      * Switching a modifier on has to be recorded, not just drawn. Drop the write
-     * in `setToggleState` -- which is the state the row was in, because the only
-     * callers passed `false` -- and the "on" case below goes red.
+     * in `setToggleState`, which is the state the row was in, because the only
+     * callers passed `false`, and the "on" case below goes red.
      */
     @Test
     fun `the store keeps a modifier that was switched on, not only one released`() {
@@ -72,7 +72,7 @@ class ExtraKeyToggleStateTest {
      * holds no copy.
      *
      * `ExtraKeyRow` used to carry `ctrlActive`, `altActive` and `shiftActive` as
-     * fields, and every change had to be written twice -- once here for what gets
+     * fields, and every change had to be written twice, once here for what gets
      * injected, once into the adapter for what gets drawn. One of the two writes
      * was missing on the path that switches a modifier on. Reading and writing
      * through the adapter instead leaves nothing to forget, and putting a
@@ -81,7 +81,7 @@ class ExtraKeyToggleStateTest {
      * Reflection rather than source text, so it answers about what was compiled.
      * It reads fields, not behaviour: it cannot see a copy smuggled into a
      * non-boolean field, and it cannot tell that the accessors reach the adapter
-     * rather than something else -- the control below covers only that the class
+     * rather than something else, the control below covers only that the class
      * still has an adapter to reach.
      *
      * If this fails for a boolean that is genuinely not modifier state, that is

@@ -281,13 +281,13 @@ class BashrcAtomicityTest {
      *
      * It carries `script-shell`, which points npm at the bundled bash. Without
      * that line npm falls back to `/bin/sh`, which Android does not have, so every
-     * package with a lifecycle script fails to install — and nothing on screen
+     * package with a lifecycle script fails to install, and nothing on screen
      * connects that to storage.
      *
      * The file also sits outside every repair: `repairTruncatedSetupFiles` covers
      * `.bashrc` and `settings.json`, and an emptied `.npmrc` cannot be told from
      * one a user emptied deliberately. The rewrite here only runs when the content
-     * differs, which an empty file does — but only on a launch with room to write,
+     * differs, which an empty file does, but only on a launch with room to write,
      * which is not the launch that emptied it.
      */
     @Test

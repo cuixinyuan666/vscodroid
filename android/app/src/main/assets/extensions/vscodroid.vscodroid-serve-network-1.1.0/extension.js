@@ -9,7 +9,7 @@ const os = require('os');
  * listening socket and needs no guessing at all. That is the right source and it
  * is unavailable: an Android app process runs in an SELinux domain with no access
  * to the proc_net_tcp_udp type, so both reads throw EACCES. Measured on an API 37
- * emulator by querying the policy directly -- subject untrusted_app_34 against
+ * emulator by querying the policy directly, subject untrusted_app_34 against
  * proc_net_tcp_udp:file returns allowed=0, while the same subject against
  * app_data_file returns a full mask and the shell domain against the same file
  * returns a read mask. So the denial is real and specific, not an artefact of how
@@ -176,14 +176,14 @@ function activate(context) {
                 items.push({
                     label: `$(globe) http://${address}:${port}`,
                     description: name,
-                    detail: 'Reachable from other devices on this network — select to copy',
+                    detail: 'Reachable from other devices on this network, select to copy',
                     url: `http://${address}:${port}`,
                 });
             }
         }
         for (const port of localOnly) {
             items.push({
-                label: `$(circle-slash) port ${port} — this device only`,
+                label: `$(circle-slash) port ${port}, this device only`,
                 detail:
                     'Listening on localhost, so other devices cannot reach it. Restart the server ' +
                     'bound to every interface: Vite `--host 0.0.0.0`, Next.js `-H 0.0.0.0`, ' +
@@ -194,7 +194,7 @@ function activate(context) {
 
         // Always last, always present. Probing a fixed list cannot enumerate, and
         // an empty result means "not on the list I checked" rather than "nothing
-        // is running" -- so the way out has to be offered even when something was
+        // is running", so the way out has to be offered even when something was
         // found, not only when nothing was.
         items.push({
             label: '$(edit) Enter a port number…',
@@ -234,7 +234,7 @@ function activate(context) {
             }
             const url = `http://${addresses[0].address}:${port}`;
             await vscode.env.clipboard.writeText(url);
-            vscode.window.showInformationMessage(`Copied ${url} — open it on the other device.`);
+            vscode.window.showInformationMessage(`Copied ${url}, open it on the other device.`);
             return;
         }
 
@@ -246,7 +246,7 @@ function activate(context) {
         }
 
         await vscode.env.clipboard.writeText(picked.url);
-        vscode.window.showInformationMessage(`Copied ${picked.url} — open it on the other device.`);
+        vscode.window.showInformationMessage(`Copied ${picked.url}, open it on the other device.`);
     });
 
     context.subscriptions.push(command);

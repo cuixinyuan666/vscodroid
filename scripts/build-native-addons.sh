@@ -312,13 +312,13 @@ verify "$SQLITE_OUT" @vscode/sqlite3 || failed=1
 check_pair @vscode/sqlite3 "$SQLITE_VERSION" \
     "$OUTPUT_ROOT/node_modules/@vscode/sqlite3/package.json" || failed=1
 
-# @vscode/spdlog — the file logger, and the one addon here that is replaced
+# @vscode/spdlog, the file logger, and the one addon here that is replaced
 # rather than rebuilt. Its published spdlog.node links libstdc++.so.6, which
 # Bionic does not have and nothing in this repo bundles, so the dlopen fails on
 # every device this ships to. The cost is invisible from the failure: the
 # server's SpdLogLogger catches the import error, keeps every message in an
 # in-memory buffer that only the addon-loaded path ever drains, and reports
-# nothing — so no server, ptyHost, agentHost or extension-host log file is ever
+# nothing, so no server, ptyHost, agentHost or extension-host log file is ever
 # written, and the buffer grows for the life of the Node process.
 #
 # Replaced rather than rebuilt because spdlog's value is fast async C++ logging
@@ -331,7 +331,7 @@ check_pair @vscode/sqlite3 "$SQLITE_VERSION" \
 # wrapper can never be taken, so it is dead code that still has to be reasoned
 # about; and a runtime choice leaves nothing in the artifact saying which logger
 # is live, where a build-time replacement can be read off the tree. The .node is
-# deleted with it so nothing keeps a loader that cannot run — which also empties
+# deleted with it so nothing keeps a loader that cannot run, which also empties
 # the "CANNOT help: spdlog.node needs libstdc++.so.6" line that
 # build-glibc-shim.sh --scan prints, instead of teaching readers to skip it.
 echo ""
@@ -355,7 +355,7 @@ else
 // Covers the surface the packaged bundles call and no more. spdlog's pattern
 // language is NOT parsed: the server asks for one fixed pattern or for none,
 // and those two shapes are the whole vocabulary here, so setPattern() with any
-// other pattern still logs, in the default shape. Writes are synchronous --
+// other pattern still logs, in the default shape. Writes are synchronous,
 // which is what the server's own setFlushOn(0) asks for, and what keeps the
 // last lines before a SIGKILL on disk.
 'use strict';
@@ -422,7 +422,7 @@ class Logger {
 			this._fd = null;
 			// The rename into the last slot is what drops the oldest file.
 			// maxFiles === 1 has no slot to rename into, so the base file is
-			// truncated instead -- also what spdlog does.
+			// truncated instead, also what spdlog does.
 			for (let i = this._maxFiles - 1; i > 0; i--) {
 				if (fs.existsSync(this._rotated(i - 1))) {
 					fs.renameSync(this._rotated(i - 1), this._rotated(i));
@@ -497,7 +497,7 @@ JSEOF
 
     cat > "$WORK_DIR/spdlog-shim-check.mjs" <<'JSEOF'
 // Proves the shim writes. The failure it replaces was silent, so a shim that is
-// merely present and broken would be the same silence with more steps -- and
+// merely present and broken would be the same silence with more steps, and
 // nothing downstream would catch it: verify-server-tree.py only reads e_machine
 // from binaries, and the server itself treats an unusable logger as normal.
 import fs from "node:fs";

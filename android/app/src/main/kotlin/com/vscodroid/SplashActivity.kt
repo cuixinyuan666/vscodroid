@@ -76,7 +76,7 @@ class SplashActivity : AppCompatActivity() {
         // a full disk turns that write into an exception. Behind it sat the
         // repair that repoints git and the Claude Code wrapper at the directory
         // the app has just moved to, and the reclaim of SAF mirrors whose
-        // permission the user withdrew — the only pass here that gives disk back.
+        // permission the user withdrew, the only pass here that gives disk back.
         // A full disk therefore stopped its own remedy, and did it again on every
         // launch.
         repair("tool symlinks") { setup.setupToolSymlinks() }
@@ -89,7 +89,7 @@ class SplashActivity : AppCompatActivity() {
         // truncated one, and every writer skipped it because it was there;
         // this clears and rewrites it so the appenders have something whole
         // to append to. It is confined to evidence that cannot be a user's
-        // own edit -- see the method for where that line is drawn.
+        // own edit, see the method for where that line is drawn.
         repair("the truncated-file repair") { setup.repairTruncatedSetupFiles() }
         repair("the npm wrappers") { setup.createNpmWrappers() }
         repair("the toolchain env sourcing") { setup.ensureToolchainEnvSourcing() }
@@ -102,7 +102,7 @@ class SplashActivity : AppCompatActivity() {
         // A toolchain keeps the manifest it was installed with, so a
         // packaging fix never reaches an install that already exists. This
         // gives those binaries back the execute bit they should have had.
-        // It returns immediately — the walk itself runs on the toolchain
+        // It returns immediately, the walk itself runs on the toolchain
         // I/O thread, because the trees involved have thousands of files
         // and this block is on the main thread.
         repair("the toolchain repair pass") { ToolchainManager(this).repairInstalledToolchains() }
@@ -161,7 +161,7 @@ class SplashActivity : AppCompatActivity() {
      * [what] names the repair in the log, and that is the second half of the
      * reason this exists: the single catch it replaced logged one message for
      * thirteen calls, so the trace said something had failed without saying
-     * which -- and the next line of the log was whatever the app did after
+     * which, and the next line of the log was whatever the app did after
      * skipping the rest.
      *
      * Swallowing is still deliberate. Every one of these runs on the main thread
