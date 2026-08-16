@@ -45,7 +45,7 @@ class SafRenamePairingTest {
     @Test
     fun `a directory that left too long ago is not a rename`() {
         // The pair is milliseconds apart in the kernel's own queue; the window is slack
-        // for a busy observer thread. Past it, an arrival is an arrival -- joining it to
+        // for a busy observer thread. Past it, an arrival is an arrival, joining it to
         // a departure that happened a minute earlier would rename a document the user
         // moved away deliberately.
         assertNull(sourceFor("helpers", vanished("util", ago = window + 1)))

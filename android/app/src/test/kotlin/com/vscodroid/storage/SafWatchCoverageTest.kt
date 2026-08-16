@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Files
 
 /**
  * Which directories the mirror watch has to cover.
@@ -101,6 +102,39 @@ class SafWatchCoverageTest {
 
         assertEquals(emptyList<File>(), SafSyncEngine.watchableDirectories(root, limit = 0))
         assertEquals(emptyList<File>(), SafSyncEngine.watchableDirectories(root, limit = -1))
+    }
+
+    @Test
+    fun `a symlink to a directory is not watched, and neither is anything under it`() {
+        // The upload walk refuses links with its own words: "a link inside one is
+        // attacker-supplied in the ordinary case", and following it would copy files
+        // from outside the folder the user granted. The watch has the same exposure
+        // and one more: inotify follows a symlinked path, so watching one spends the
+        // descriptor budget on the target tree, and every change there arrives as an
+        // event under a mirror-relative path that shouldWriteBack happily serves.
+        makeDir("real/outside")
+        Files.createSymbolicLink(File(root, "docs").toPath(), File(root, "real").toPath())
+
+        assertEquals(
+            listOf(".", "real", "real/outside"),
+            covered(),
+            "a link is content the mirror happened to receive, not a door into " +
+                "somewhere else the user did not grant"
+        )
+    }
+
+    @Test
+    fun `a root that is itself a symlink yields nothing`() {
+        makeDir("target")
+        val linkedRoot = File(root, "alias")
+        Files.createSymbolicLink(linkedRoot.toPath(), File(root, "target").toPath())
+
+        assertEquals(
+            emptyList<File>(),
+            SafSyncEngine.watchableDirectories(linkedRoot, limit = 64),
+            "the root is the one path whose link reaches outside the granted folder " +
+                "by construction; the upload walk already refuses it"
+        )
     }
 
     @Test
