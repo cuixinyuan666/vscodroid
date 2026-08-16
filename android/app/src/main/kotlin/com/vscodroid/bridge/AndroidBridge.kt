@@ -54,14 +54,14 @@ private const val DRAIN_JOIN_MILLIS = 1_000L
 internal const val AUTH_TAB_WINDOW_MILLIS = 10 * 60 * 1000L
 
 /**
- * When this app last handed an https URL to a browser.
+ * When this app last handed a URL to a browser.
  *
  * Any of them, not only a sign-in, and that is not a slip: nothing here can tell
- * an authorisation page from a documentation link, since both arrive as an https
- * URL through the same bridge method. Opening a link therefore widens the window
- * as much as starting a sign-in does. It still bounds an entry point that had no
- * bound at all, to the ten minutes after the user last left for a browser rather
- * than to every moment the app is running.
+ * an authorisation page from a documentation link, since both arrive through the
+ * same bridge method on either of its two launch paths. Opening a link therefore
+ * widens the window as much as starting a sign-in does. It still bounds an entry
+ * point that had no bound at all, to the ten minutes after the user last left
+ * for a browser rather than to every moment the app is running.
  *
  * The `vscodroid://callback` relay had nothing to test but the shape of the URI,
  * and its VIEW filter is exported and BROWSABLE, so the value it writes into the
@@ -190,14 +190,18 @@ class AndroidBridge(
         return try {
             val uri = Uri.parse(url)
             val isLocalhost = uri.host == "127.0.0.1" || uri.host == "localhost"
+            // Recorded before the launch, not after: both halves below hand off to
+            // another process, and a browser that answers instantly would otherwise
+            // be able to return before the window it needs is open. Both, and not
+            // only the Custom Tabs half, because both return by the same
+            // `vscodroid://callback`: a sign-in page on plain http, the shape this
+            // method exists to serve on a LAN, that arms nothing hangs with the
+            // callback refused and nothing said.
+            armedFrom = AuthTabWindow.openedAt()
+            AuthTabWindow.opened(SystemClock.elapsedRealtime())
             // Use system browser for localhost URLs (dev server preview needs full browser),
             // Chrome Custom Tabs for https (keeps user in-app, handles OAuth redirects).
             if (uri.scheme == "https" && !isLocalhost) {
-                // Recorded before the launch, not after: launchUrl hands off to
-                // another process, and a browser that answers instantly would
-                // otherwise be able to return before the window it needs is open.
-                armedFrom = AuthTabWindow.openedAt()
-                AuthTabWindow.opened(SystemClock.elapsedRealtime())
                 val customTabsIntent = CustomTabsIntent.Builder()
                     .setShowTitle(true)
                     .build()

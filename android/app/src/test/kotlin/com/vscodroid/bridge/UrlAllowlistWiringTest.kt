@@ -3,6 +3,7 @@ package com.vscodroid.bridge
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
 import com.vscodroid.util.Logger
 import io.mockk.Runs
 import io.mockk.every
@@ -66,6 +67,12 @@ class UrlAllowlistWiringTest {
         // to these cases is which branch of openExternalUrl runs, and that turns
         // on scheme and host, so both are answered explicitly per URL.
         mockkStatic(Uri::class)
+        // Every browser hand-off now arms the callback window, so every launch
+        // reads the monotonic clock, and the stub throws where the https-only
+        // arming never reached.
+        mockkStatic(SystemClock::class)
+        every { SystemClock.elapsedRealtime() } returns 1L
+
 
         // Intent is a stub too, and openExternalUrl builds one inside a try/catch:
         // without this the constructor throws, the catch swallows it, and
