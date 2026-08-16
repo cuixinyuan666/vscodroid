@@ -231,7 +231,7 @@ class ProcessManagerTest {
     fun `a start onto a free port is not recorded as doomed`() {
         // Control. A flag that answered true unconditionally would satisfy the
         // test above while killing every slow but healthy start after thirty
-        // seconds -- the failure running the other way, and the worse of the two.
+        // seconds, the failure running the other way, and the worse of the two.
         manager.portField = PortFinder.findAvailablePort()
 
         assertTrue(startAndAwaitWatchdog())
@@ -661,7 +661,7 @@ private var ProcessManager.cachedTokenField: String?
  *
  * The machines this suite runs on have no `/proc`, so without redirecting it the
  * adoption tests could only ever exercise the branch where the recorded process
- * is missing — passing, while never once adopting anything.
+ * is missing, passing, while never once adopting anything.
  */
 private var ProcessManager.procDirField: File
     get() = field("procDir").get(this) as File
@@ -1015,7 +1015,7 @@ class AdoptionTest {
         // port answers. This fixture supplies both.
         //
         // The ownership half is still decided from the note and never by asking
-        // the holder -- `the ownership test never sends the connection token to
+        // the holder, `the ownership test never sends the connection token to
         // the port holder` pins that at the socket. What the start adds is a
         // liveness question, and the assertions below pin exactly what it may ask:
         // /version, which the server answers before it checks the token, and
@@ -1070,7 +1070,7 @@ class AdoptionTest {
         assertTrue(manager.startServer(), "declining to adopt still has to start something")
 
         // Before the latch, deliberately. An adopted start spawns nothing, so the
-        // watchdog never fires and the latch below times out -- which would report
+        // watchdog never fires and the latch below times out, which would report
         // this as a stuck watchdog and send the reader to the wrong file. The two
         // assertions that name the defect go first.
         assertFalse(
@@ -1187,7 +1187,7 @@ class AdoptionTest {
         // session, while the workbench on screen looks healthy.
         //
         // The app cannot repair that from here, which is exactly why the line has
-        // to exist -- it is the only thing connecting the symptom to the cause,
+        // to exist, it is the only thing connecting the symptom to the cause,
         // and Logger.w is not gated on a debuggable build.
         val warnings = mutableListOf<String>()
         every { Logger.w(any(), any()) } answers { warnings += secondArg<String>() }
@@ -1295,6 +1295,35 @@ class AdoptionTest {
      * EADDRINUSE: that child does not exit, so the launch ends with two processes where
      * the user wanted one and the survivor outlives every retry.
      */
+    /**
+     * What the reap does to the spawn that follows it. The flag exists so the
+     * service can tell a server that will never bind from one that is merely
+     * slow, and it was answered from the state before the reap: a start that
+     * had just taken this app's own holder off the port recorded its
+     * replacement as born doomed, and a healthy server slower than the
+     * readiness budget was killed once for nothing, out of the restart budget.
+     *
+     * The holder survives the "kill" on purpose, what is asserted is the
+     * flag, not the socket, and a holder that dies with the signal cannot
+     * prove the subtraction was needed.
+     */
+    @Test
+    fun `a start onto a port the reap just freed is not recorded as doomed`() {
+        val killed = mutableListOf<Int>()
+        manager.killRecordedProcess = { killed += it }
+        val holder = holdingPortSilently()
+        recordEditorServer(pid = 7311, port = holder.port)
+
+        manager.startServer()
+
+        assertEquals(listOf(7311), killed, "the setup is the reap case or the flag proves nothing")
+        assertFalse(
+            manager.spawnedOntoHeldPort(),
+            "a port this start freed itself is free as far as the spawn is " +
+                "concerned, and the server it spawned must be allowed to be slow"
+        )
+    }
+
     @Test
     fun `a server of ours holding the port without serving is ended before spawning`() {
         val killed = mutableListOf<Int>()

@@ -88,8 +88,8 @@ class ProcessManager(private val context: Context) {
      * Whether the running process was spawned onto a port that was already taken,
      * and therefore cannot ever serve.
      *
-     * The editor server it forks prints `EADDRINUSE` and then does **not** exit --
-     * measured on an API 36 emulator, same pids at 0, 5, 15, 30 and 60 seconds --
+     * The editor server it forks prints `EADDRINUSE` and then does **not** exit,
+     * measured on an API 36 emulator, same pids at 0, 5, 15, 30 and 60 seconds,
      * so the bootstrap does not exit either and [isRunning] answers true for as
      * long as nothing kills it. Liveness therefore says nothing here, and the
      * caller that waits on liveness would wait forever: see
@@ -223,7 +223,7 @@ class ProcessManager(private val context: Context) {
         // on that one answer: whether to adopt, and whether the spawn further
         // down has any chance of binding. Asking twice would let the port change
         // hands in between and record a doomed spawn as a healthy one. A port
-        // this call allocates is free by construction -- PortFinder either
+        // this call allocates is free by construction, PortFinder either
         // verified the remembered one or scanned for another.
         val portIsFree = if (_port == 0) {
             _port = PortFinder.getOrAllocatePort(context)
@@ -262,20 +262,20 @@ class ProcessManager(private val context: Context) {
             // half: it is written at the fork, so it names a process that was
             // asked to bind the port rather than one that did.
             // [recordedServerIsServing] asks the port itself before this branch is
-            // taken -- see there for what a note alone lets through, and why the
+            // taken, see there for what a note alone lets through, and why the
             // two questions are not interchangeable.
             Logger.i(tag, "Port $_port already served by a server of ours; adopting it")
             // Said out loud because nothing else in the app can see it, and the
             // symptom it produces points nowhere near here. `assets/dns-proxy.js`
             // runs INSIDE the bootstrap and hands the child its address once, at
             // fork time (`assets/server.js`); reaching this branch means that
-            // bootstrap is gone -- a start is refused while ours is alive, so an
+            // bootstrap is gone, a start is refused while ours is alive, so an
             // adopted server is by construction one whose parent died. The proxy
             // died with it, and the survivor still has the dead address in its
             // environment, which nothing can change in a running process. So
-            // everything in it that honours HTTPS_PROXY -- the Open VSX gallery,
+            // everything in it that honours HTTPS_PROXY, the Open VSX gallery,
             // the agent host, and git, npm and curl in every terminal, since they
-            // inherit that environment -- fails to reach the network for as long
+            // inherit that environment, fails to reach the network for as long
             // as this session lasts, while the workbench itself looks perfectly
             // healthy. Restarting the app is the only cure, and this line is the
             // only way to tell that is what is wrong. Not fixable from here: it
@@ -307,8 +307,9 @@ class ProcessManager(private val context: Context) {
         // not "wait for it to come up" but a failed launch, because nothing here can bind
         // the port while it is held. A server killed a second early is restarted by the
         // line below; one left alone is not.
+        var reapedThisStart = false
         if (!portIsFree && portHeldByOurEditorServer()) {
-            reapRecordedEditorServer("holding port $_port without serving")
+            reapedThisStart = reapRecordedEditorServer("holding port $_port without serving")
         }
 
         // Reaching here means the port was free, or was held by something that is
@@ -383,8 +384,8 @@ class ProcessManager(private val context: Context) {
         // build is nowhere at all.
         //
         // What the spawn below now does NOT do is last forever. A pair that
-        // cannot bind stays alive indefinitely -- the measurement above is the
-        // proof -- so every question the app asks about it answers "still
+        // cannot bind stays alive indefinitely, the measurement above is the
+        // proof, so every question the app asks about it answers "still
         // starting", and the launch path waits on liveness. [spawnedOntoHeldPort]
         // is what ends that: the service reads it when the start poll gives up on
         // a live process, kills the pair and spends a restart instead of watching
@@ -427,8 +428,13 @@ class ProcessManager(private val context: Context) {
         // Recorded before the spawn, because this is the last moment it can be
         // known: from here on the port is occupied whichever case this is. It is
         // what lets the service tell a slow server from one that will never
-        // answer -- see [spawnedOntoHeldPort] and `NodeService.awaitLateReadiness`.
-        spawnedOntoHeldPort = !portIsFree
+        // answer, see [spawnedOntoHeldPort] and `NodeService.awaitLateReadiness`.
+        // The reap above is subtracted, because it is the one path on which this
+        // start itself took the holder off the port: a flag answered from the
+        // pre-reap state would call the replacement doomed for the sin of its
+        // predecessor, and a healthy server slower than the readiness budget
+        // would be killed once for nothing, out of the restart budget.
+        spawnedOntoHeldPort = !portIsFree && !reapedThisStart
         Logger.i(tag, "Starting server on port $_port")
 
         // Ensure TMPDIR is a usable directory — Android may clear cache between
@@ -549,13 +555,13 @@ class ProcessManager(private val context: Context) {
      * It handed the connection token to whoever held the port. Binding a loopback
      * port on Android needs no permission at all, so a process that has just taken
      * the port from a killed server is precisely the party that must not be given
-     * the token — and it was given the token before anything about it was known.
+     * the token, and it was given the token before anything about it was known.
      * The doc claimed the opposite ("a process that accepts it either is one of
      * ours or has read a file nothing outside this app can"), which is only true
      * of a test that asks the holder to PRODUCE the token; this one presented it.
      *
      * And "not a refusal" is not a test. 200, 302, 404 and 500 all passed it, so
-     * anything that accepts a TCP connection and answers something was adopted —
+     * anything that accepts a TCP connection and answers something was adopted,
      * after which readiness is a bare 200 from `/version`, and the WebView is
      * pointed at it with the bridge attached.
      *
@@ -571,7 +577,7 @@ class ProcessManager(private val context: Context) {
      * existed.
      *
      * What it does NOT establish is that the recorded process is the one holding
-     * the socket — that would need /proc/net/tcp, which SELinux denies an app
+     * the socket, that would need /proc/net/tcp, which SELinux denies an app
      * outright (measured: untrusted_app against proc_net_tcp_udp returns an empty
      * mask). Nor does it establish that the recorded process ever held it: the
      * note is written at the fork, before the child has had the chance to listen
@@ -580,7 +586,7 @@ class ProcessManager(private val context: Context) {
      * So this answers one question of the two, and [recordedServerIsServing]
      * answers the other before [startServer] adopts anything. This doc used to
      * end by calling the gap narrow and saying [startAdoptionWatch] caught what
-     * fell through it; the watch does notice, and noticing is not catching —
+     * fell through it; the watch does notice, and noticing is not catching,
      * it reports the server lost, the restart adopts the same note again, and the
      * budget is spent on a loop. Neither question is sufficient alone.
      */
@@ -601,8 +607,8 @@ class ProcessManager(private val context: Context) {
             return false
         }
 
-        // /proc/<pid> is readable for this app's own processes -- the same access
-        // process-monitor.js already relies on -- and unreadable for anyone
+        // /proc/<pid> is readable for this app's own processes, the same access
+        // process-monitor.js already relies on, and unreadable for anyone
         // else's, so a pid that has been recycled into another app's process
         // reads as absent rather than as a match.
         val cmdline = try {
@@ -703,8 +709,8 @@ class ProcessManager(private val context: Context) {
      * the port, because `assets/server.js` writes it at the fork.
      *
      * That gap has a process that fits it exactly. A server spawned onto a port
-     * something else holds prints `EADDRINUSE` and then does not exit — measured
-     * on an API 36 emulator, same pids at 0, 5, 15, 30 and 60 seconds — so a
+     * something else holds prints `EADDRINUSE` and then does not exit, measured
+     * on an API 36 emulator, same pids at 0, 5, 15, 30 and 60 seconds, so a
      * bootstrap SIGKILLed by the OOM killer or the phantom-process limit, which
      * is the case adoption exists for, can leave behind a child that is alive,
      * is an editor server, matches the note, and has never held the port. Adopting
@@ -717,8 +723,8 @@ class ProcessManager(private val context: Context) {
      * Asking the port is safe in the way the ownership test that preceded it was
      * not: `/version` is answered before the connection-token check, so the probe
      * carries no token and discloses nothing to whoever is on the other end. What
-     * it establishes is only that the port serves — attributing that answer to the
-     * recorded pid would need the /proc/net/tcp read SELinux refuses — which is
+     * it establishes is only that the port serves, attributing that answer to the
+     * recorded pid would need the /proc/net/tcp read SELinux refuses, which is
      * why both halves are required and neither is sufficient.
      *
      * Refusing here is not final and deletes nothing, so a recorded server that
@@ -1138,7 +1144,7 @@ internal const val EDITOR_PID_FILE = "editor-server.pid"
  *
  * A pid on its own proves nothing after it has been recycled, and Android reuses
  * them freely. This is checked against `/proc/<pid>/cmdline`, which is readable
- * for this app's own processes and not for anyone else's -- so another app's
+ * for this app's own processes and not for anyone else's, so another app's
  * process reads as absent rather than as a match, and the check fails closed.
  */
 internal const val EDITOR_ENTRY_POINT = "server-main.js"
