@@ -428,7 +428,7 @@ class MainActivity : AppCompatActivity() {
                 // old one. Two engines end up watching one mirror, and the
                 // orphaned one reads the `.partial` renames of the next sync as
                 // the user's own edits and pushes them onto the user's documents
-                //, which is the exact damage the stop before the sync exists to
+                // which is the exact damage the stop before the sync exists to
                 // prevent.
                 //
                 // Guarded because the window may already be gone: dismissing a

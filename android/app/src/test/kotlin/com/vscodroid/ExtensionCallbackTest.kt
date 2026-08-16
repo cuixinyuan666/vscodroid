@@ -181,13 +181,23 @@ class AuthCallbackCallSiteTest {
         // second launch site added later without recording would leave that
         // sign-in's return refused, and the symptom is a sign-in that quietly
         // never completes rather than anything that fails loudly.
+        //
+        // Counted inside openExternalUrl itself rather than over the whole file,
+        // and counting both ways out of it: launchUrl for the Custom Tabs half
+        // and startActivity for the ACTION_VIEW half. A whole-file count of the
+        // first form alone was green while the second launch site armed nothing,
+        // because startActivity also appears outside this method for launches
+        // that are not browsers at all.
         check(bridge.isFile) { "AndroidBridge.kt not found at ${bridge.absolutePath}" }
 
         val lines = code(bridge)
-        val launches = lines.count { it.contains("launchUrl(") }
-        val arms = lines.count { it.contains("AuthTabWindow.opened(") }
+        val method = lines.dropWhile { !it.contains("fun openExternalUrl") }
+            .takeWhile { !it.trimStart().startsWith("}") }
+        check(method.any { it.contains("launchUrl(") }) { "no browser launch found in openExternalUrl" }
 
-        assertTrue(launches >= 1, "expected at least one browser launch; found $launches")
+        val launches = method.count { it.contains("launchUrl(") || it.contains("startActivity(") }
+        val arms = method.count { it.contains("AuthTabWindow.opened(") }
+
         assertEquals(
             launches, arms,
             "each browser launch must record that it happened, or the callback it " +

@@ -168,6 +168,19 @@ class ToolchainEnvFileTest {
      * and worth holding separately: this is the case where the wrapper would be
      * syntactically fine and fail only when the user runs it.
      */
+    @Test
+    fun `a missing binary gets no wrapper`() {
+        install("usr/opt/ruby/bin/ruby")
+
+        regenerate()
+
+        assertEquals(
+            emptyList<String>(),
+            envLines().filter { it.startsWith("ruby()") },
+            "a wrapper was written for a binary that is not on disk",
+        )
+    }
+
     /**
      * A state file nothing can parse is not "no toolchains installed".
      *
@@ -200,19 +213,6 @@ class ToolchainEnvFileTest {
         assertEquals(
             writtenByTheInstall, envFile.readText(),
             "the env file was rewritten over an unreadable state"
-        )
-    }
-
-    @Test
-    fun `a missing binary gets no wrapper`() {
-        install("usr/opt/ruby/bin/ruby")
-
-        regenerate()
-
-        assertEquals(
-            emptyList<String>(),
-            envLines().filter { it.startsWith("ruby()") },
-            "a wrapper was written for a binary that is not on disk",
         )
     }
 }
