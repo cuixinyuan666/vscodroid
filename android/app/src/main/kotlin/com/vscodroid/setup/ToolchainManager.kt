@@ -614,8 +614,8 @@ class ToolchainManager(private val context: Context) {
             // The record is what the install consists of, as far as everything
             // else is concerned. Without it getInstalledToolchains() does not
             // name the toolchain, the environment below is regenerated from a
-            // record that predates it -- readState() re-reads the file, so it
-            // reads back the old one -- and no manifest survives to tell
+            // record that predates it, readState() re-reads the file, so it
+            // reads back the old one, and no manifest survives to tell
             // uninstallLocked which files, symlinks and libraries the ~160 MB
             // just copied consists of. Reporting COMPLETED on top of that is the
             // part that makes it silent: the picker shows 100% and Done, the
@@ -1084,7 +1084,17 @@ class ToolchainManager(private val context: Context) {
      * existed.
      */
     private fun regenerateEnvFileLocked() {
-        val installed = readState()
+        val installed = readableState()
+        if (installed == null) {
+            // Damage is not absence. The state file this could not parse was written
+            // by a build that truncated it in place, and the devices carrying one
+            // are upgrading from exactly that build. Reading it as "no toolchains"
+            // deletes the env file below, the only working record of how to run
+            // what is still on disk, and every launch deletes it again. Leaving
+            // the last good file is what the bashrc repair does for the same damage.
+            Logger.w(tag, "toolchains.json is unreadable; keeping the env file as it stands")
+            return
+        }
         if (installed.length() == 0) {
             if (envFile.exists()) envFile.delete()
             return
@@ -1357,6 +1367,24 @@ class ToolchainManager(private val context: Context) {
         } catch (e: Exception) {
             Logger.w(tag, "Failed to read toolchains.json: ${e.message}")
             JSONArray()
+        }
+    }
+
+    /**
+     * [readState] for the caller that cannot afford damage to read as absence.
+     *
+     * Returns null when the file exists and nothing can parse it, and an empty
+     * array only when there is genuinely no record: the empty branch of
+     * [regenerateEnvFileLocked] deletes the env file, which is right for a
+     * machine with nothing installed and wrong for one whose record is a
+     * half-written relic of the version that installed everything.
+     */
+    private fun readableState(): JSONArray? {
+        if (!stateFile.exists()) return JSONArray()
+        return try {
+            JSONArray(stateFile.readText())
+        } catch (e: Exception) {
+            null
         }
     }
 
