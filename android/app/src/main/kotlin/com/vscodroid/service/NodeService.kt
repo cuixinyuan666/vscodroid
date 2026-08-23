@@ -24,6 +24,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.core.content.edit
+import android.annotation.SuppressLint
 
 /**
  * What a client that binds after a start attempt has to be told, and whether
@@ -60,6 +62,12 @@ data class StartupNotice(val message: String, val terminal: Boolean)
  * caller that does not is the watchdog, and [setupProcessCallbacks] hands its
  * report to the scope rather than acting on the watchdog thread.
  */
+// InlinedApi: FOREGROUND_SERVICE_TYPE_SPECIAL_USE is an int constant that the
+// compiler inlines, so no field is looked up at run time and API 33 cannot fail
+// on it. It is passed to ServiceCompat.startForeground, which is what decides
+// whether the platform is told a type at all. The manifest declares the same
+// type, and both permissions it needs are held.
+@SuppressLint("InlinedApi")
 class NodeService : Service() {
 
     private val tag = "NodeService"
@@ -165,8 +173,11 @@ class NodeService : Service() {
         setupProcessCallbacks()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int =
-        when (startCommand(intent?.action, isServiceRunning, ::promoteToForeground)) {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
+        return when (startCommand(action, isServiceRunning) {
+            promoteToForeground(forSetup = action == ACTION_HOLD)
+        }) {
             StartCommand.STOP_REQUESTED -> {
                 shutdown()
                 START_NOT_STICKY
@@ -191,11 +202,34 @@ class NodeService : Service() {
             // START_NOT_STICKY because the system re-delivering this is how it got
             // here: asking to be brought back would repeat a refusal rather than
             // recover from one.
+            StartCommand.HOLD -> {
+                Logger.i(tag, "Holding the process for first-run setup")
+                // NOT sticky. A hold exists only for the run that asked for it,
+                // and a process the system restarts has no setup behind it: it
+                // would come back holding itself open over nothing.
+                START_NOT_STICKY
+            }
+
+            StartCommand.RELEASE_HOLD -> {
+                if (isServiceRunning) {
+                    // A server took over while setup ran, which is the ordinary
+                    // path: the hold is already irrelevant and the card is the
+                    // server's.
+                    START_STICKY
+                } else {
+                    Logger.i(tag, "First-run setup is done; giving the hold back")
+                    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                    START_NOT_STICKY
+                }
+            }
+
             StartCommand.STAND_DOWN -> {
                 stopSelf()
                 START_NOT_STICKY
             }
         }
+    }
 
     override fun onDestroy() {
         Logger.i(tag, "Service destroying")
@@ -354,11 +388,21 @@ class NodeService : Service() {
      * arrives in the report naming itself, rather than being swallowed as a
      * quiet no-op.
      */
-    private fun promoteToForeground(): Boolean = try {
+    private fun promoteToForeground(forSetup: Boolean = false): Boolean = try {
         ServiceCompat.startForeground(
             this,
             VSCodroidApp.NOTIFICATION_ID,
-            createNotification(),
+            if (forSetup) {
+                // Its own face, because the server one says a server is running
+                // and none is. Same id, so the card the server puts up later
+                // replaces this one rather than arriving beside it.
+                createNotification(
+                    title = getString(R.string.notification_title_setup),
+                    text = getString(R.string.notification_text_setup),
+                )
+            } else {
+                createNotification()
+            },
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         )
         true
@@ -427,10 +471,10 @@ class NodeService : Service() {
      * What that cost is not theoretical, because the terminal state deliberately
      * leaves the service alive so the next `onStartCommand` can recover in place
      * on the same instance. The abandoned coroutine is usually parked in
-     * [awaitLateReadiness], whose loop is bounded by process liveness and whose
-     * sleep runs to [LATE_READY_SLOW_POLL_MS]; when the new attempt spawns a
-     * process, `isRunning()` answers true again and the old loop simply carries on
-     * against it. It is then free to call [announceReady] -- resetting the restart
+     * [awaitLateReadiness], whose loop is bounded by whether a server of ours is
+     * still there and whose sleep runs to [LATE_READY_SLOW_POLL_MS]; when the new
+     * attempt produces one, that answer turns true again and the old loop simply
+     * carries on against it. It is then free to call [announceReady] -- resetting the restart
      * budget and firing `onServerReady` for an attempt it is not watching -- and
      * free to post `status_server_slow_start` at its own ninety-second mark, over
      * a notice the new attempt had just cleared. `MainActivity` returns without
@@ -523,7 +567,14 @@ class NodeService : Service() {
             val outcome = launchOutcome(
                 start = { withContext(Dispatchers.IO) { processManager.startServer() } },
                 awaitReady = { withContext(Dispatchers.IO) { processManager.waitForReady() } },
-                isAlive = { processManager.isRunning() },
+                // [ProcessManager.hasLiveServer] and not `isRunning()`, which is
+                // `serverProcess?.isAlive` and is structurally false for an adopted
+                // server: that branch returns without ever assigning a Process,
+                // because there is none. A slow adopted server asked the narrower
+                // question therefore lands in DIED_BEFORE_ANSWERING, which
+                // [endsUnreported] treats as already owned by the crash path, so
+                // nothing retries it and the user gets one toast over a placeholder.
+                isAlive = { processManager.hasLiveServer() },
                 portWasHeld = { processManager.spawnedOntoHeldPort() },
             )
             when (outcome) {
@@ -536,10 +587,15 @@ class NodeService : Service() {
 
                 // The poll is bounded; the server is not obliged to agree. A
                 // process that is still alive has not failed at anything -- it is
-                // slow, and this project's own device harness budgets 120 seconds
-                // for the same event that this gives up on at 30
-                // (scripts/device-test.sh, TIMEOUT=120). Reporting a failure for
-                // it would be a false alarm, and, worse, stopping here used to
+                // slow. This used to say the device harness budgets 120 seconds
+                // for the same event, which is not what that number measures:
+                // `scripts/device-test.sh` spends TIMEOUT on the wait for
+                // first-run setup, and its readiness wait is
+                // `derive_ready_budget_seconds`, which reads
+                // READY_POLL_TIMEOUT_MS and the restart constants out of these
+                // sources. The harness follows the app rather than disagreeing
+                // with it. Reporting a failure for a live process would still be
+                // a false alarm, and, worse, stopping here used to
                 // make it permanent: nothing else in the app ever probes again, so
                 // a server that bound its port at t=35s stayed unreachable for as
                 // long as it ran.
@@ -672,20 +728,19 @@ class NodeService : Service() {
         startupNotice = null
         Logger.i(tag, "Server is ready on port ${processManager.port}")
         // Unconditional, and that is the fix for what the guarded version got
-        // wrong. [degradableNotificationText] derives the line from
-        // [ProcessManager.isAdopted] every time the card is built, so re-posting
-        // is always right and never needs to know which way the state moved.
-        // Guarding on isAdopted() only covered becoming adopted: when an adopted
-        // server stops answering the watch clears the flag and a normal respawn
-        // follows, and nothing re-posted, so a healthy session kept telling the
-        // user its network was gone.
+        // wrong. [degradableNotificationText] derives the line every time the
+        // card is built, so re-posting is always right and never needs to know
+        // which way the state moved. A guard that fired only when the condition
+        // arrived covered half of it: nothing re-posted when it went away, so a
+        // healthy session kept telling the user something was wrong with it.
         //
         // Deliberately not [reportStartupNotice], which is the path that reads
         // "the server is not serving": MainActivity toasts one of those and
-        // returns WITHOUT loading the editor. An adopted server is serving, and
-        // the user should get their editor. What is wrong is narrower than the
-        // startup path can express, so it goes on the card instead, where it
-        // lasts as long as the condition does rather than for a toast.
+        // returns WITHOUT loading the editor. A server running on a ceiling the
+        // app chose for it is serving, and the user should get their editor. What
+        // is wrong is narrower than the startup path can express, so it goes on
+        // the card instead, where it lasts as long as the condition does rather
+        // than for a toast.
         refreshNotification()
         onServerReady?.invoke(processManager.port)
     }
@@ -701,11 +756,17 @@ class NodeService : Service() {
      * out were a crash or a kill. A server that was running and serving could not
      * be reached.
      *
-     * Bounded by liveness rather than by time, which is the honest bound: while
-     * the process is alive the answer can still change, and when it dies the
-     * watchdog takes over -- `onServerCrashed` drives the restart, so this loop
-     * leaves quietly rather than reporting a failure the crash path is about to
-     * report properly.
+     * Bounded by whether a server of ours is still there rather than by time,
+     * which is the honest bound: while there is one the answer can still change,
+     * and when it goes the watchdog takes over -- `onServerCrashed` drives the
+     * restart, so this loop leaves quietly rather than reporting a failure the
+     * crash path is about to report properly.
+     *
+     * "Still there" and not `isRunning()`, which is the process and only the
+     * process. An adopted server has none, so the narrower question ended this
+     * loop on its first turn for a server that was serving; the watch inside
+     * [ProcessManager] is what reports an adopted one going away, through the
+     * same `onServerCrashed`.
      *
      * That bound is only honest while liveness means something, and there is one
      * case where it does not: a process spawned onto a port something else holds
@@ -740,7 +801,13 @@ class NodeService : Service() {
         val startedAt = SystemClock.elapsedRealtime()
         var noticed = false
 
-        while (processManager.isRunning()) {
+        // The same question the launch outcome asks, and for the same reason: an
+        // adopted server has no Process, so `isRunning()` would end this loop on
+        // its first turn for a server that is perfectly capable of answering a
+        // moment later. The adoption watch inside [ProcessManager] is what bounds
+        // the adopted half, reporting through the crash path, which cancels this
+        // job.
+        while (processManager.hasLiveServer()) {
             delay(lateReadinessPollMs(SystemClock.elapsedRealtime() - startedAt))
 
             val ready = withContext(Dispatchers.IO) { processManager.probeReadiness() }
@@ -762,7 +829,11 @@ class NodeService : Service() {
                 reportStartupNotice(getString(R.string.status_server_slow_start))
             }
         }
-        Logger.w(tag, "Server process exited before it ever answered")
+        // "No server of ours" rather than "the process exited", because this loop
+        // is bounded by [ProcessManager.hasLiveServer] and an adopted server has
+        // no process at all: it leaves here when the adoption watch clears the
+        // flag just as readily as when a spawned process dies.
+        Logger.w(tag, "No server of ours is left to answer; nothing more to ask")
     }
 
     /**
@@ -943,7 +1014,7 @@ class NodeService : Service() {
             val before = prefs.getInt(PREF_HEAP_KILLS, 0)
             val charged = heapKillsAfter(exitCode, overrideRaisedCeiling = true, current = before)
             if (charged == before) return@withContext null
-            prefs.edit().putInt(PREF_HEAP_KILLS, charged).commit()
+            prefs.edit(commit = true) { putInt(PREF_HEAP_KILLS, charged) }
             charged
         } ?: return
         Logger.w(tag, "Server killed with a user heap ceiling in effect ($after of $HEAP_OVERRIDE_KILL_BUDGET)")
@@ -1054,15 +1125,45 @@ class NodeService : Service() {
     /**
      * The running card's line, derived rather than remembered.
      *
-     * Adoption is discovered after the first `startForeground`, so the card is
-     * built once before the answer exists and again after. Holding the answer in
-     * a field would mean [refreshNotification] rebuilding with defaults and
-     * quietly reverting it, which is the shape of bug that outlives whoever
-     * wrote it. Asking [ProcessManager] each time cannot drift.
+     * The condition it reports is raised by a crash and the card is rebuilt on
+     * the readiness that follows the restart, so the card is built once before
+     * the answer exists and again after. Holding the answer in a field would mean
+     * [refreshNotification] rebuilding with defaults and quietly reverting it,
+     * which is the shape of bug that outlives whoever wrote it. Asking
+     * [ProcessManager] each time cannot drift.
+     *
+     * The suspended heap ceiling is here rather than only in [chargeHeapOverride]
+     * because that path cannot reach a user who is not looking. It raises the
+     * message through [reportStartupNotice], which fires a callback that is null
+     * with no activity bound and records a notice that the retry's own
+     * [launchServer] clears as its first statement -- so the whole of it can last
+     * one backoff, two seconds at the first attempt. The suspension itself lasts
+     * until the user edits the value. This card is where a condition that outlives
+     * a toast belongs.
+     *
+     * An adopted server used to have a line of its own here, telling the user
+     * the session had no network. That was true while `assets/server.js` bound
+     * the DNS proxy inside the bootstrap: an adopted server is by construction
+     * one whose bootstrap is gone, so it went on pointing HTTPS_PROXY at a closed
+     * port for the rest of its life. The proxy is now preloaded into the child
+     * that bootstrap forks and lives exactly as long as it does, so the proxy the
+     * survivor lost is back and that particular line has nothing left to report.
+     * Check those two files before adding one back.
+     *
+     * Narrowly the proxy, and not adoption in general. `assets/server.js` still
+     * `require()`s `assets/process-monitor.js` in the BOOTSTRAP rather than
+     * preloading it into the child, so an adopted server does run its whole
+     * session with no phantom-process sweep and no idle language-server reclaim.
+     * That is a real difference from a spawned session and it is unsurfaced;
+     * whether it deserves a surface at all is a separate question from the one
+     * this line answered. `ProcessManager.isAdopted` is still the right question
+     * for whether we CONTROL the server; it stopped being a question about the
+     * network.
      */
-    private fun degradableNotificationText(): String =
-        if (processManager.isAdopted()) getString(R.string.notification_text_adopted)
-        else getString(R.string.notification_text)
+    private fun degradableNotificationText(): String = when {
+        processManager.heapOverrideIgnored() -> getString(R.string.heap_override_suspended)
+        else -> getString(R.string.notification_text)
+    }
 
     /**
      * Builds the notification shown while the server is running, and (with
@@ -1112,6 +1213,15 @@ class NodeService : Service() {
         val builder = NotificationCompat.Builder(this, VSCodroidApp.NOTIFICATION_CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
+            // The expanded form of the same line, because without a style the card
+            // renders ONE truncated line in both its collapsed and expanded state.
+            // The longest thing that reaches here is `heap_override_suspended`, a
+            // little over 160 characters, and the half that goes missing is the
+            // actionable half: the name of the settings key to change, which is
+            // the whole point of the sentence. This card is the only
+            // surface that outlives both the toast and the startup notice, so a
+            // message truncated here is a message the user never gets.
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingOpen)
             .setOngoing(serverRunning)
@@ -1151,6 +1261,33 @@ class NodeService : Service() {
     companion object {
         /** Intent action to gracefully stop the server and this service. */
         const val ACTION_STOP = "com.vscodroid.action.STOP_SERVER"
+
+        /**
+         * Hold the process while first-run setup writes, without starting a server.
+         *
+         * Extraction copies 810 MiB out of the APK and takes minutes, and until
+         * this existed the only thing keeping the process alive through it was an
+         * Activity the user could leave. A stopped Activity's process is among the
+         * first the low-memory killer takes, and what it takes is the middle of a
+         * write; the run then resumes rather than restarting, but resuming still
+         * costs the user the wait twice.
+         *
+         * Deliberately NOT [ACTION_STOP]'s opposite: this promotes to the
+         * foreground and starts nothing. [isServiceRunning] stays false, which is
+         * what lets the real start that follows be answered with
+         * [StartCommand.SERVE] rather than [StartCommand.ALREADY_SERVING]. Getting
+         * that wrong is silent and total: the editor would open on a server that
+         * was never launched.
+         */
+        const val ACTION_HOLD = "com.vscodroid.action.HOLD_FOR_SETUP"
+
+        /**
+         * Release the hold [ACTION_HOLD] took.
+         *
+         * Ends the service when nothing is serving, and is a no-op when something
+         * is, because by then the foreground status belongs to the server.
+         */
+        const val ACTION_RELEASE_HOLD = "com.vscodroid.action.RELEASE_SETUP_HOLD"
     }
 }
 
@@ -1187,10 +1324,16 @@ internal const val LATE_READY_SLOW_POLL_MS = 30_000L
  * How long the late poll runs before the app says the start is taking too long.
  *
  * Ninety seconds here, on top of the thirty the start poll has already spent:
- * two minutes in total, which is what `scripts/device-test.sh` budgets for this
- * same event (`TIMEOUT=120`). The app had been disagreeing with its own harness
- * by a factor of four. If `ProcessManager.waitForReady`'s default timeout moves,
- * this is the other half of that sum.
+ * two minutes before the app says anything at all.
+ *
+ * That total used to be justified as matching `scripts/device-test.sh`'s
+ * `TIMEOUT=120`, and it does not: that number is the harness's wait for
+ * first-run setup to finish, and its readiness wait is
+ * `derive_ready_budget_seconds`, which is computed from READY_POLL_TIMEOUT_MS,
+ * [MAX_RESTARTS], [RESTART_DELAY_MS] and [MAX_BACKOFF_SHIFT] and comes out around
+ * four minutes. The harness reads these constants; nothing reads this one. So the
+ * ninety seconds is a choice about when a person waiting deserves to be told
+ * something, not a figure matched to anything, and moving it moves nothing else.
  *
  * It is a moment to speak, not a moment to stop. The message is raised and
  * recorded once and the loop carries on, so a server that answers afterwards
@@ -1334,6 +1477,12 @@ internal enum class StartCommand {
 
     /** The foreground promotion was refused, so nothing is started. */
     STAND_DOWN,
+
+    /** Promote and hold the process for first-run setup, starting no server. */
+    HOLD,
+
+    /** Give that hold back. */
+    RELEASE_HOLD,
 }
 
 /**
@@ -1361,6 +1510,16 @@ internal fun startCommand(
     promote: () -> Boolean,
 ): StartCommand = when {
     action == NodeService.ACTION_STOP -> StartCommand.STOP_REQUESTED
+    action == NodeService.ACTION_RELEASE_HOLD -> StartCommand.RELEASE_HOLD
+    // Ahead of the `serviceRunning` arm on purpose. A hold asked for while a
+    // server is already up needs no promotion and must not be mistaken for one:
+    // the process is held by that server, and answering SERVE here would start a
+    // second one.
+    action == NodeService.ACTION_HOLD -> when {
+        serviceRunning -> StartCommand.ALREADY_SERVING
+        promote() -> StartCommand.HOLD
+        else -> StartCommand.STAND_DOWN
+    }
     serviceRunning -> StartCommand.ALREADY_SERVING
     promote() -> StartCommand.SERVE
     else -> StartCommand.STAND_DOWN
