@@ -669,6 +669,21 @@ VSCodroid typically uses 400-700 MB of RAM. On devices with 4 GB or less, you ma
 
 Extensions exclusive to the Microsoft Marketplace (such as Microsoft C/C++ and some other Microsoft-published extensions) are not available on Open VSX. Check Open VSX for community-maintained alternatives. GitHub Copilot Chat is not affected: it ships built in and works on device.
 
+### Claude Code Reports "terminated by signal SIGSYS"
+
+An Android app may only make the system calls the platform's C library exposes,
+and a call outside that list is not an error a program can recover from: the
+kernel stops it there. The Claude Code extension carries its own program, whose
+runtime asks for `epoll_pwait2`, and that call is on the list only from Android
+15 onward.
+
+VSCodroid answers that one call itself, so sign-in and everyday use work on
+Android 13 and 14 as well. If the panel still reports `Claude Code process
+terminated by signal SIGSYS`, or `claude` in a terminal prints `Bad system
+call`, a newer release of the extension is asking for a call VSCodroid does not
+answer yet. Please report it with your Android version and the extension
+version; there is nothing to change on your side.
+
 ### Extensions That Bundle a Compiled Program
 
 Extensions written in JavaScript, TypeScript or WebAssembly work. An extension

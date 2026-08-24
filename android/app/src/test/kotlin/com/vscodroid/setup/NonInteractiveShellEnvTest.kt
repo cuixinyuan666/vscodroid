@@ -114,6 +114,43 @@ class NonInteractiveShellEnvTest {
     }
 
     /**
+     * The terminal's half of what makes Claude Code run on Android 13 and 14.
+     *
+     * Android's app seccomp filter refuses `epoll_pwait2` (syscall 441) on those
+     * releases, and a refused syscall is a kill rather than the ENOSYS a runtime
+     * could fall back from, so the CLI dies the moment its event loop starts.
+     * Measured with a ptrace tracer on this project's own emulators: the same
+     * binary and the same loader die on Android 13 and run on Android 17, and a
+     * CLI four months older behaves identically, so it follows the platform and
+     * not the extension version.
+     *
+     * `libclaude-launch.so` is what answers it, by putting `libseccomp-shim.so`
+     * into LD_PRELOAD before exec'ing musl's loader. Calling that loader directly
+     * here, which is what this line used to do and is the obvious shape, starts
+     * the CLI without the shim and puts the kill straight back. Pinned because
+     * nothing else in a terminal run would say so: the failure surfaces as bash's
+     * bare "Bad system call", four layers from this line.
+     */
+    @Test
+    fun `the claude wrapper starts the CLI through the launcher that carries the shim`() {
+        FirstRunSetup(context).createBashEnvFile()
+
+        val written = bashEnvFile().readText()
+        val wrapper = written.substringAfter("claude()", "").substringBefore("\n}")
+        assertTrue(wrapper.isNotEmpty(), "the claude wrapper is gone")
+        assertTrue(
+            wrapper.contains("libclaude-launch.so"),
+            "the wrapper does not go through the launcher, so the CLI starts without the " +
+                "seccomp shim and is killed on Android 13 and 14",
+        )
+        assertTrue(
+            wrapper.contains("159"),
+            "the wrapper does not read the status a SIGSYS kill leaves (128+31), so a call " +
+                "the shim does not cover reaches the user as bash's bare \"Bad system call\"",
+        )
+    }
+
+    /**
      * It is rewritten, not appended to, so a change to what the functions say
      * reaches an install that already has the file. Appending was how `.bashrc`
      * had to be handled -- that file is the user's -- and copying that habit here
