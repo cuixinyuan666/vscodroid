@@ -63,6 +63,36 @@ class SafSyncEngine(private val context: Context) {
     @Volatile private var isWatching = false
 
     /**
+     * Held across a whole [startWatching], [stopWatching] or [shutdown].
+     *
+     * The three decide between them whether this engine is live, and each of them takes
+     * several steps to say so: [startWatching] publishes a session, sets [isWatching] and
+     * then registers up to [MAX_WATCHED_DIRECTORIES] watches, and it opens by calling
+     * [stopWatching], which blocks up to [DRAIN_GRACE_MS] joining the previous drain.
+     * Run against each other those interleave, and the outcome is decided by whichever
+     * of the two [isWatching] writes lands last: a stop finishing inside a start's inner
+     * drain leaves observers registered, a worker polling and [isWatching] true, on an
+     * engine whose owner is gone. The Activity serialises its own three calls, but the
+     * one in `onDestroy` runs on a detached thread deliberately outside that mutex, so
+     * the serialisation has to be here, where every caller passes.
+     *
+     * Reentrant, which [startWatching] relies on: it calls [stopWatching] while holding
+     * this, and Java monitors admit the thread that already owns them.
+     */
+    private val lifecycleLock = Any()
+
+    /**
+     * Whether [shutdown] has been called, after which no start is honoured again.
+     *
+     * Ordering the calls is not enough on its own. The Activity's teardown is the last
+     * word about an engine nothing can reach afterwards -- the replacement Activity
+     * builds its own [SafSyncEngine], so its stop cannot reach this one -- and a start
+     * that arrives after it belongs to a coroutine of the Activity that has gone. It is
+     * refused rather than run late, because there is no one left to stop what it starts.
+     */
+    @Volatile private var shutDown = false
+
+    /**
      * One observer per watched directory, keyed by that directory.
      *
      * Holding them here is not only bookkeeping: [FileObserver]'s shared ObserverThread
@@ -511,16 +541,30 @@ class SafSyncEngine(private val context: Context) {
                         // guard for the symmetric case already exists
                         // ([setAsideDivergedMirror]); this is the same guard facing
                         // the other way, and the one provider read it costs is paid
-                        // only where the record shows the device moved. A copy that
-                        // fails leaves both sides as they are: the mirror keeps its
-                        // edit, unvouched, and the next open tries again.
+                        // wherever the record cannot vouch for the path: where it
+                        // shows the device moved, and where it says nothing at all.
+                        // Silence is the arm below's own leavings, so a file written
+                        // back once pays that read on every open after it, and a
+                        // second mirror edit before the next open fetches this app's
+                        // own older bytes, which differ, and keeps them beside the
+                        // file. That is the known false positive [setAsideDivergedMirror]
+                        // already names for the three other producers of silence.
+                        //
+                        // A copy that fails leaves both sides as they are: the mirror
+                        // keeps its edit, unvouched, and the next open tries again. The
+                        // fetch failing is therefore a deferral, not a loss, but it is a
+                        // deferral of the user's own save and nothing but this log says
+                        // so, which for a persistent cause is indistinguishable from the
+                        // save never happening.
                         val deviceChanged =
                             previouslyRecorded?.let { deviceChangedSinceRecord(it, doc) } == true
                         if (deviceChanged && !setAsideDeviceCopy(doc, localPath)) {
                             Logger.w(
                                 tag,
-                                "Not writing ${doc.relativePath} back: its device copy " +
-                                    "changed since the last sync and could not be set aside",
+                                "Not writing ${doc.relativePath} back: the record cannot " +
+                                    "vouch for its device copy and that copy could not be " +
+                                    "read to set aside, so the mirror keeps the edit and " +
+                                    "the next open tries again",
                             )
                         } else {
                             if (deviceChanged) setAside++
@@ -739,18 +783,39 @@ class SafSyncEngine(private val context: Context) {
      * exactly, which `filesDir` never is; it would cost a spare `.device-` copy per
      * reopen, not a byte.
      *
-     * A record that does not name the path answers false, and that is the pre-existing
-     * behaviour rather than a claim of safety. The record is silent about a path this
-     * app wrote back and never re-read, which is what the caller's own branch leaves
-     * behind, and about a document the device gained under a name the mirror also
-     * gained; nothing on disk tells those two apart, and only the second is a stranger's
-     * bytes. The unusable record, absent or in a format this build cannot read, answers
-     * false for the reason [setAsideDivergedMirror] gives: its silence says nothing.
+     * A record that parses but does not name the path answers **true**, and so does a
+     * line whose time field will not parse. Silence here is not evidence that the device
+     * document is ours: the record is silent about a path this app wrote back and never
+     * re-read, which is exactly what the caller's own write-back branch leaves behind,
+     * and about a document the device gained under a name the mirror also gained.
+     * Nothing on disk tells those apart, and one of them is a stranger's bytes. Answering
+     * false meant the write-back arm disarmed the guard for every later pass over the
+     * same path, so the second foreign edit was destroyed by a `"wt"` open with no copy
+     * kept anywhere.
+     *
+     * True is not free, and the three costs are worth stating because the arm below
+     * manufactures the silence that triggers them. One provider read per affected path
+     * per open, forever, since nothing here re-records the path. A `.device-` copy kept
+     * whenever the bytes differ, which includes the case where the device holds this
+     * app's own earlier push and the mirror has been edited again since: that copy is a
+     * stale duplicate of the user's own file, and it is the same known false positive
+     * [setAsideDivergedMirror] already names for the other three producers of silence.
+     * And a fetch that fails withholds the write-back, which defers the user's save
+     * rather than losing it. False costs the user someone else's edit outright, which is
+     * why true is still the right answer.
+     *
+     * This writes nothing to the record, deliberately. Every fix that adds a line here
+     * is the one [reconcileDeletions] and `SafReconcileDeletionsTest` exist to refuse.
+     *
+     * The unusable record, absent or in a format this build cannot read, still answers
+     * false, at the call site rather than here, for the reason [setAsideDivergedMirror]
+     * gives: its silence says nothing, and a mirror that was never vouched for at all is
+     * not the same claim as one vouched for and then written past.
      */
     private fun deviceChangedSinceRecord(recorded: Set<String>, doc: DocumentInfo): Boolean {
         val prefix = escapeRecordPath(doc.relativePath) + '\t'
-        val line = recorded.firstOrNull { it.startsWith(prefix) } ?: return false
-        val recordedModified = line.split('\t').getOrNull(1)?.toLongOrNull() ?: return false
+        val line = recorded.firstOrNull { it.startsWith(prefix) } ?: return true
+        val recordedModified = line.split('\t').getOrNull(1)?.toLongOrNull() ?: return true
         return recordedModified != doc.lastModified
     }
 
@@ -1317,28 +1382,41 @@ class SafSyncEngine(private val context: Context) {
     /**
      * Starts watching the mirror directory for changes and syncing them back to SAF.
      * Must be called after [initialSync] completes.
+     *
+     * A no-op once [shutdown] has run; see [shutDown] for why that is a refusal rather
+     * than a start that happens to be late.
      */
     fun startWatching(mirrorDir: File, safUri: Uri) {
-        stopWatching()
+        synchronized(lifecycleLock) {
+            if (shutDown) {
+                Logger.i(
+                    tag,
+                    "Not watching ${mirrorDir.name}: this engine's owner is gone and " +
+                        "nothing could stop the watcher again",
+                )
+                return
+            }
+            stopWatching()
 
-        // Published before any observer exists, because an observer fires into whatever
-        // session is current and this is the one its jobs belong to.
-        val opening = WatchSession()
-        session = opening
-        isWatching = true
-        watchTree(mirrorDir, mirrorDir, safUri)
+            // Published before any observer exists, because an observer fires into whatever
+            // session is current and this is the one its jobs belong to.
+            val opening = WatchSession()
+            session = opening
+            isWatching = true
+            watchTree(mirrorDir, mirrorDir, safUri)
 
-        // Background thread to process this session's write-back queue. Handed over
-        // before it starts, so a stop arriving at once cannot find a null worker for a
-        // thread that is already running.
-        val worker = thread(start = false, name = "saf-writeback", isDaemon = true) {
-            runWriteBackLoop(opening) { opening.running }
+            // Background thread to process this session's write-back queue. Handed over
+            // before it starts, so a stop arriving at once cannot find a null worker for a
+            // thread that is already running.
+            val worker = thread(start = false, name = "saf-writeback", isDaemon = true) {
+                runWriteBackLoop(opening) { opening.running }
+            }
+            opening.worker = worker
+            worker.start()
+
+            val watched = synchronized(watchersLock) { watchers.size }
+            Logger.i(tag, "File watcher started for ${mirrorDir.absolutePath} ($watched directories)")
         }
-        opening.worker = worker
-        worker.start()
-
-        val watched = synchronized(watchersLock) { watchers.size }
-        Logger.i(tag, "File watcher started for ${mirrorDir.absolutePath} ($watched directories)")
     }
 
     /**
@@ -1397,63 +1475,83 @@ class SafSyncEngine(private val context: Context) {
      * Stops the file watcher and drains the write-back queue.
      */
     fun stopWatching() {
-        isWatching = false
-        synchronized(watchersLock) {
-            watchers.values.forEach { it.stopWatching() }
-            watchers.clear()
-        }
-        // The folder being closed keeps the queue its jobs are in, and the folder opened
-        // next gets an empty one, whether or not the drain below finishes in time.
-        val closing = session
-        session = WatchSession()
-        closing.running = false
-
-        // Wake the thread out of its sleep, then wait for it to drain remaining writes.
-        // An idle queue drains in microseconds, so this costs only what there is to lose.
-        val worker = closing.worker
-        closing.worker = null
-        worker?.interrupt()
-        try { worker?.join(DRAIN_GRACE_MS) } catch (_: InterruptedException) {}
-
-        if (worker != null && worker.isAlive) {
-            // Still draining. Emptying the queue from here would throw away exactly the
-            // writes the drain exists to save, and would do it in the case where there
-            // are the most of them: a burst of saves, or one slow provider. The thread
-            // owns this session's queue until it finishes, and nothing else can reach
-            // it: the queue went with the session, so the folder opened next offers its
-            // jobs somewhere this drain never polls. Addressing was never the question.
-            // Two threads polling one queue was: each write opens its document with
-            // "wt", which truncates at open, so the two interleave inside one document.
-            Logger.w(tag, "Write-back still draining after ${DRAIN_GRACE_MS}ms; leaving it to finish")
-        } else {
-            // Anything still here arrived after the drain took its last look, which is
-            // the one window an event observed while the folder was open can still fall
-            // into. Counted rather than dropped in silence: the mirror keeps the file and
-            // the record cannot vouch for it, so nothing is destroyed, but the save is
-            // not on the device and only reopening the folder puts it there. A user
-            // asking why needs this line to exist in a bug report.
-            val dropped = closing.queue.size
-            closing.queue.clear()
-            closing.abandoned = true
-            if (dropped > 0) {
-                Logger.w(tag, "$dropped write-back(s) arrived after the drain ended")
+        synchronized(lifecycleLock) {
+            isWatching = false
+            synchronized(watchersLock) {
+                watchers.values.forEach { it.stopWatching() }
+                watchers.clear()
             }
+            // The folder being closed keeps the queue its jobs are in, and the folder opened
+            // next gets an empty one, whether or not the drain below finishes in time.
+            val closing = session
+            session = WatchSession()
+            closing.running = false
+
+            // Wake the thread out of its sleep, then wait for it to drain remaining writes.
+            // An idle queue drains in microseconds, so this costs only what there is to lose.
+            val worker = closing.worker
+            closing.worker = null
+            worker?.interrupt()
+            try { worker?.join(DRAIN_GRACE_MS) } catch (_: InterruptedException) {}
+
+            if (worker != null && worker.isAlive) {
+                // Still draining. Emptying the queue from here would throw away exactly the
+                // writes the drain exists to save, and would do it in the case where there
+                // are the most of them: a burst of saves, or one slow provider. The thread
+                // owns this session's queue until it finishes, and nothing else can reach
+                // it: the queue went with the session, so the folder opened next offers its
+                // jobs somewhere this drain never polls. Addressing was never the question.
+                // Two threads polling one queue was: each write opens its document with
+                // "wt", which truncates at open, so the two interleave inside one document.
+                Logger.w(tag, "Write-back still draining after ${DRAIN_GRACE_MS}ms; leaving it to finish")
+            } else {
+                // Anything still here arrived after the drain took its last look, which is
+                // the one window an event observed while the folder was open can still fall
+                // into. Counted rather than dropped in silence: the mirror keeps the file and
+                // the record cannot vouch for it, so nothing is destroyed, but the save is
+                // not on the device and only reopening the folder puts it there. A user
+                // asking why needs this line to exist in a bug report.
+                val dropped = closing.queue.size
+                closing.queue.clear()
+                closing.abandoned = true
+                if (dropped > 0) {
+                    Logger.w(tag, "$dropped write-back(s) arrived after the drain ended")
+                }
+            }
+            // docIdCache is deliberately not cleared here. A drain that outlived the wait
+            // still needs the mappings of the folder it is finishing, and [initialSync]
+            // clears the cache itself before anything reads it for the next one.
+            //
+            // The half-renames are cleared, and the difference is that nothing consumes them
+            // after this point: a MOVED_TO of the next folder must not be able to claim a
+            // directory that left the previous one, which would rename a document in a folder
+            // the user has closed.
+            //
+            // Which is the same instant their upload records stop being able to move: a claim
+            // is the only thing that carries a line to the directory's new path. Retired here
+            // rather than left standing, because after this nothing can; see
+            // [consumeStaleUploadsUnder].
+            dropVanished { true }
+            Logger.i(tag, "File watcher stopped")
         }
-        // docIdCache is deliberately not cleared here. A drain that outlived the wait
-        // still needs the mappings of the folder it is finishing, and [initialSync]
-        // clears the cache itself before anything reads it for the next one.
-        //
-        // The half-renames are cleared, and the difference is that nothing consumes them
-        // after this point: a MOVED_TO of the next folder must not be able to claim a
-        // directory that left the previous one, which would rename a document in a folder
-        // the user has closed.
-        //
-        // Which is the same instant their upload records stop being able to move: a claim
-        // is the only thing that carries a line to the directory's new path. Retired here
-        // rather than left standing, because after this nothing can; see
-        // [consumeStaleUploadsUnder].
-        dropVanished { true }
-        Logger.i(tag, "File watcher stopped")
+    }
+
+    /**
+     * Stops the watcher for good: the same teardown as [stopWatching], plus the promise
+     * that no later [startWatching] will undo it.
+     *
+     * For the owner that is going away rather than switching folders. The two differ
+     * only in what may follow: a folder switch stops one watcher and starts the next on
+     * the same engine, while a teardown has no next. A start still on its way when this
+     * runs -- the one in a coroutine of the Activity being destroyed, which is not
+     * cancellable once it is inside the engine -- would otherwise finish afterwards and
+     * leave observers and a drain running on an engine no one holds any more.
+     */
+    fun shutdown() {
+        synchronized(lifecycleLock) {
+            shutDown = true
+            stopWatching()
+        }
     }
 
     // -- Internal: Watch Registration --
@@ -1895,15 +1993,21 @@ class SafSyncEngine(private val context: Context) {
     internal var onUploadIncomplete: (File, Int, Boolean) -> Unit = { _, _, _ -> }
 
     /**
-     * Told when a directory deleted in the editor was left standing on the device,
-     * because it still holds documents this sync never copied in.
+     * Told when something deleted in the editor was left standing on the device,
+     * because it holds content this sync never copied in: a directory holding such a
+     * document, or the document itself.
      *
      * Its own seam for the reason [onDocumentsNotCopied] has one: [onWriteBackFailed]
      * says the app holds the only copy, and here the opposite is true. The mirror copy
      * is gone, the device holds the only one, and a notice worded the other way would
      * send the user looking inside the app for files that are safe where they are.
+     *
+     * The flag is what the sentence turns on and it cannot be recovered downstream:
+     * the entry is already unlinked when the event arrives, so nothing left on disk
+     * can be asked whether it was a directory. "It holds files that never reached the
+     * editor" is the right sentence for one case and false for the other.
      */
-    internal var onDirectoryKeptOnDevice: (File) -> Unit = {}
+    internal var onKeptOnDevice: (file: File, isDirectory: Boolean) -> Unit = { _, _ -> }
 
     /**
      * How much room is left where the mirror lives.
@@ -1935,8 +2039,8 @@ class SafSyncEngine(private val context: Context) {
      * The notice is [onWriteBackFailed]'s and it fits: the file did not reach the device
      * folder, and the copy inside the app is the only one of it that exists. What the
      * device holds under that name is a different document, which is why this refuses.
-     * The directory guard does not come through here, because for it the opposite is
-     * true; see [keepUnreadDirectory].
+     * A refused delete does not come through here, because for it the opposite is
+     * true; see [keepUnread].
      */
     private fun refuseUnreadDocument(localFile: File, describedAs: String) {
         Logger.w(
@@ -1962,21 +2066,25 @@ class SafSyncEngine(private val context: Context) {
     }
 
     /**
-     * Declines to delete the device directory at [relativePath], because it holds
-     * documents this sync never read, and says so.
+     * Declines to delete what the device holds at [relativePath], because it is, or it
+     * holds, a document this sync never read, and says so.
      *
      * Not through [refuseUnreadDocument]: that one announces on [onWriteBackFailed],
      * whose wording says the app holds the only copy, and here the app holds none.
-     * Not through [refusalsAnnounced] either: a directory is deleted once per deletion,
-     * and a user who recreates it and deletes it again is owed the notice again.
+     * Not through [refusalsAnnounced] either, and that is the second half of the same
+     * point: something is deleted once per deletion, and a user who recreates it and
+     * deletes it again is owed the notice again. Spending that budget here also costs
+     * the notice its owner needs, since the next save of a recreated name is refused
+     * as a write and is the one occasion on which "the only copy is inside VSCodroid"
+     * is both true and urgent.
      */
-    private fun keepUnreadDirectory(localFile: File, relativePath: String) {
+    private fun keepUnread(localFile: File, relativePath: String, isDirectory: Boolean) {
         Logger.w(
             tag,
-            "Not deleting $relativePath from the device: it holds documents this sync " +
+            "Not deleting $relativePath from the device: it holds content this sync " +
                 "never read",
         )
-        onDirectoryKeptOnDevice(localFile)
+        onKeptOnDevice(localFile, isDirectory)
     }
 
     private fun uploadJournal(): File = File(context.filesDir, UPLOADS_IN_FLIGHT_FILE)
@@ -2887,9 +2995,19 @@ class SafSyncEngine(private val context: Context) {
 
         if (!shouldWriteBack(relativePath, isDirectory)) return
 
-        // Placed here rather than in the four write-back branches: this covers
-        // CREATE, MODIFY, DELETE and both halves of a move in one statement, and
-        // stops the job being queued at all.
+        // Placed here rather than in the write-back branches: this covers CREATE,
+        // MODIFY and the arriving half of a move in one statement, and stops the job
+        // being queued at all.
+        //
+        // A delete is excluded and handled below instead, and the exclusion is the
+        // whole of why the type is read here at all. Both refusals are correct and
+        // they are correct for opposite reasons: a refused write leaves the edit
+        // inside the app, a refused delete leaves the document on the device and
+        // nowhere else. Answering for a delete here said the first sentence about
+        // the second situation, sending the user into the app after a file the app
+        // had never held, and spent that path's one refusal notice on it, so the
+        // save that came afterwards, the one that really did stay inside the app,
+        // was silent for the rest of the session.
         //
         // The provider is asked rather than trusted from the set alone, because
         // the set is a memory of what this sync could not read and the document
@@ -2901,7 +3019,8 @@ class SafSyncEngine(private val context: Context) {
         // outer one is not a duplicate: it is what keeps [providerHoldsDocument] off
         // the common path. [createOneInSaf] needs no such guard, because there the
         // provider's answer is already in hand.
-        if (localFile.absolutePath in unfetched &&
+        if (type != SyncType.DELETE &&
+            localFile.absolutePath in unfetched &&
             writeWouldReplaceUnreadDocument(
                 localFile.absolutePath,
                 providerHoldsDocument(safTreeUri, relativePath),
@@ -2957,13 +3076,22 @@ class SafSyncEngine(private val context: Context) {
             return
         }
 
-        // An outright delete of a directory, which on a directory document is
-        // `deleteDocument` taking everything beneath it on the device. The mirror is
-        // not all of it: a child skipped for size, or one whose copy failed, was never
-        // in the mirror, so the editor showed the directory without it, the user
-        // deleted what they could see, and the device lost a 60 MB archive nothing on
-        // screen had mentioned. The guard above cannot see this one: it tests the
-        // directory's own path, and [unfetched] holds files only.
+        // A delete the device holds the only copy of, at either level.
+        //
+        // On a directory document `deleteDocument` takes everything beneath it on the
+        // device, and the mirror is not all of it: a child skipped for size, or one
+        // whose copy failed, was never in the mirror, so the editor showed the
+        // directory without it, the user deleted what they could see, and the device
+        // lost a 60 MB archive nothing on screen had mentioned. A file arrives here for
+        // the same reason one step down: what the user deleted in the editor was a
+        // mirror entry that was never the document, and the document on the device is
+        // the only copy of itself.
+        //
+        // Matched by prefix for a directory, since a directory holds what is under it
+        // and [unfetched] holds files only, and by exact path for a file, since its own
+        // path is the only one that names it. The separator is appended so `docs` does
+        // not answer for `docs2`, and any depth below counts; on the file side
+        // exactness is what stops an unread `notes.md.bak` from keeping `notes.md`.
         //
         // Below the MOVED_FROM hold rather than above it, deliberately. A directory
         // with unread children is renamed by the same event pair as any other, and
@@ -2971,24 +3099,27 @@ class SafSyncEngine(private val context: Context) {
         // path that carries those children to the new name. Refusing the MOVED_FROM
         // would have left the pair unclaimed: the new name created from the mirror
         // without them, the old one standing on the device with them. Only an
-        // outright DELETE therefore reaches here as a directory.
+        // outright DELETE therefore reaches here as a directory. A file has no pair to
+        // protect, so both halves of its delete, the unlink and the move away, reach
+        // this and are kept the same way.
         //
-        // The provider is asked for the reason the file guard asks it: the set is a
-        // memory, and the directory may have been deleted on the device since, in
+        // The provider is asked for the reason the write guard asks it: the set is a
+        // memory, and the document may have been deleted on the device since, in
         // which case there is nothing left to keep. Only a provider that positively
-        // answers "gone" lets the delete through. The file guard folds a failed
+        // answers "gone" lets the delete through. The write guard folds a failed
         // lookup into "not held", and there that costs a duplicate name; here it would
-        // cost `deleteDocument` on a subtree the set says holds an unread document, so
-        // a provider that cannot answer keeps. The separator is appended so
-        // `docs` does not answer for `docs2`, and any depth below counts. One scan of
-        // a set that is normally empty, on the observer thread; the binder walk is
-        // paid only on a match.
-        if (type == SyncType.DELETE && isDirectory) {
-            val below = localFile.absolutePath + File.separator
-            if (unfetched.any { it.startsWith(below) } &&
-                providerHoldsDirectory(safTreeUri, relativePath) != false
-            ) {
-                keepUnreadDirectory(localFile, relativePath)
+        // cost `deleteDocument` on the one copy the set says nothing else has, so
+        // a provider that cannot answer keeps. One scan of a set that is normally
+        // empty, on the observer thread; the binder walk is paid only on a match.
+        if (type == SyncType.DELETE) {
+            val holdsUnread = if (isDirectory) {
+                val below = localFile.absolutePath + File.separator
+                unfetched.any { it.startsWith(below) }
+            } else {
+                localFile.absolutePath in unfetched
+            }
+            if (holdsUnread && providerHolds(safTreeUri, relativePath) != false) {
+                keepUnread(localFile, relativePath, isDirectory)
                 return
             }
         }
@@ -3143,18 +3274,20 @@ class SafSyncEngine(private val context: Context) {
      * device *not* holding a name has to ask the device.
      */
     /**
-     * Whether the device still holds a directory at [relativePath]: true, false, or null
-     * when the provider could not be asked.
+     * Whether the device still holds anything at [relativePath]: true, false, or null
+     * when the provider could not be asked. Type-agnostic, because it walks display
+     * names, which is what the delete guard needs: it asks the same question of a
+     * directory and of the document inside one.
      *
      * [providerHoldsDocument] folds a query that threw, or a cursor the provider would
      * not give, into "not held", which suits its caller: the cost of being wrong there
-     * is a duplicate name. The directory guard in [handleMirrorEvent] cannot take that
+     * is a duplicate name. The delete guard in [handleMirrorEvent] cannot take that
      * answer, because for it "not held" means the delete goes through, and the delete
-     * is `deleteDocument` on a subtree the sync knows it never fully read. So this walk
+     * is `deleteDocument` on content the sync knows it never read. So this walk
      * reports the three cases apart, and the guard treats only a positive "gone" as
      * permission.
      */
-    private fun providerHoldsDirectory(treeUri: Uri, relativePath: String): Boolean? {
+    private fun providerHolds(treeUri: Uri, relativePath: String): Boolean? {
         var currentDocId = DocumentsContract.getTreeDocumentId(treeUri)
         for (segment in relativePath.split("/")) {
             val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, currentDocId)

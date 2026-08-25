@@ -291,6 +291,91 @@ class PackReleaseOutcomeTest {
         verify(timeout = 10_000, exactly = 1) { packManager.removePack("toolchain_java") }
     }
 
+    /** A manager reporting into [sink], settling [latch] on a terminal status. */
+    private fun managerReporting(latch: CountDownLatch, sink: MutableList<Int>) =
+        ToolchainManager(context).apply {
+            onStateChange = { _, status, _, _ ->
+                sink.add(status)
+                if (status == AssetPackStatus.COMPLETED || status == AssetPackStatus.FAILED) {
+                    latch.countDown()
+                }
+            }
+        }
+
+    /** Exactly [bytes] free, so a gate's arithmetic decides the outcome. */
+    private fun room(bytes: Long) {
+        mockkConstructor(StatFs::class)
+        every { anyConstructed<StatFs>().availableBytes } returns bytes
+    }
+
+    /** Eight readable megabytes inside the delivered tree, so the credit is legible. */
+    private fun fattenDelivery(pack: String, name: String) {
+        val lib = File(filesDir, "delivered/$pack/usr/opt/$name/lib").apply { mkdirs() }
+        File(lib, "rt").writeBytes(ByteArray(8_000_000))
+    }
+
+    /** 8,000,007 bytes: the fattened file plus the "payload" [deliver] writes. */
+    private val orphanBytes = 8_000_007L
+
+    /**
+     * The orphan is placed on disk rather than made by a failing install, and the
+     * difference is the whole point of the case.
+     *
+     * A record write that fails now reclaims what it copied, so that exit no longer
+     * leaves one. Two sources still do, and neither has a code path that can clear
+     * them: a process killed partway through the copy, which nothing persists intent
+     * before, and a device already carrying an orphan from a build before the reclaim
+     * existed. For both, the tree is on disk and no record names it, which is exactly
+     * what is built here. Driving a failing install instead would measure the reclaim
+     * and call it the credit.
+     */
+    @Test
+    fun `an orphaned tree the copy writes over is credited to the space gate`() {
+        playHolds("toolchain_java")
+        deliver("toolchain_java", "java")
+        fattenDelivery("toolchain_java", "java")
+
+        val orphan = File(filesDir, "usr/opt/java/lib").apply { mkdirs() }
+        File(orphan, "rt").writeBytes(ByteArray(8_000_000))
+        File(File(filesDir, "usr/opt/java"), "payload").writeBytes(ByteArray(7))
+        assertEquals(
+            orphanBytes,
+            com.vscodroid.util.StorageManager.dirSize(File(filesDir, "usr/opt/java")),
+            "the orphan is not the size this case's arithmetic assumes",
+        )
+
+        // Strictly between the credited demand (206,000,000 - 8,000,007) and the
+        // uncredited one (206,000,000).
+        room(200_000_000L)
+        val secondOut = Collections.synchronizedList(mutableListOf<Int>())
+        val second = CountDownLatch(1)
+        managerReporting(second, secondOut).reconcileDeliveredPacks()
+        assertTrue(second.await(10, TimeUnit.SECONDS), "the second pass never reported an outcome")
+        assertEquals(
+            listOf(AssetPackStatus.COMPLETED), secondOut,
+            "the gate charged for bytes the copy writes over",
+        )
+        verify(timeout = 10_000, exactly = 1) { packManager.removePack("toolchain_java") }
+    }
+
+    /** The control: the same tight figure with nothing on disk to credit must refuse. */
+    @Test
+    fun `the same room with no tree on disk is still refused`() {
+        playHolds("toolchain_java")
+        deliver("toolchain_java", "java")
+        fattenDelivery("toolchain_java", "java")
+
+        room(200_000_000L)
+        val out = Collections.synchronizedList(mutableListOf<Int>())
+        val settledHere = CountDownLatch(1)
+        managerReporting(settledHere, out).reconcileDeliveredPacks()
+        assertTrue(settledHere.await(10, TimeUnit.SECONDS), "the pass never reported an outcome")
+        assertEquals(
+            listOf(AssetPackStatus.FAILED), out,
+            "the gate passed with nothing on disk to credit, so it was weakened rather than corrected",
+        )
+    }
+
     /**
      * The outcome of the delete reaches a channel.
      *
