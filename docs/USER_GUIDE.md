@@ -23,8 +23,8 @@ A practical guide to using VSCodroid -- the full VS Code IDE running natively on
 
 ### What Happens on First Open
 
-1. **Install**. Download from the [Play Store](#) or [GitHub Releases](https://github.com/rmyndharis/VSCodroid/releases). The core download is roughly 270 MB, and you need about 865 MB free for the extraction that follows.
-2. **Binary extraction** -- On first launch, VSCodroid extracts bundled tools (Node.js, Python, Git, Bash, and others) to internal storage. About 770 MB lands on disk, unpacked one file at a time behind a progress bar, so allow minutes rather than seconds on a slower device. The ~865 MB above is that payload plus the working room setup insists on before it will start. It happens on the first launch and again after every app update, because the extraction is keyed on the app version rather than on what is already unpacked. An update needs far less free space than a fresh install (the app credits what it already holds, so roughly 210 MB rather than 865 MB), but it does re-copy the files and it does take minutes. A first run that is interrupted and retried on the same version is the one case that does not start over: files already the right size are left alone.
+1. **Install**. Download from the [Play Store](#) or [GitHub Releases](https://github.com/rmyndharis/VSCodroid/releases). The core download is roughly 270 MB, and you need about 905 MB free for the extraction that follows.
+2. **Binary extraction** -- On first launch, VSCodroid extracts bundled tools (Node.js, Python, Git, Bash, and others) to internal storage. About 805 MB lands on disk, unpacked one file at a time behind a progress bar, so allow minutes rather than seconds on a slower device. The ~905 MB above is that payload plus the working room setup insists on before it will start. It happens on the first launch and again after every app update, because the extraction is keyed on the app version rather than on what is already unpacked. An update needs far less free space than a fresh install (the app credits what it already holds, so roughly 220 MB rather than 905 MB), but it does re-copy the files and it does take minutes. A first run that is interrupted and retried on the same version is the one case that does not start over: files already the right size are left alone.
 3. **Language Picker** -- A prompt asks "What do you code in?" with options for Ruby and Java. This is the only time you are *asked*, but not your only chance to choose: touch and hold the app icon and pick **Manage toolchains** to add or remove them later. Whatever you select downloads there on the setup screen, one at a time; a download that fails is skipped and the rest continue. Skip goes straight to the editor.
 4. **Ready** -- The VS Code editor loads with terminal, file explorer, and all bundled tools available immediately.
 
@@ -287,7 +287,6 @@ Extensions are downloaded from Open VSX and persist across app restarts.
 
 These extensions come bundled with VSCodroid:
 
-- **Material Icon Theme** -- file and folder icons
 - **ESLint** -- JavaScript/TypeScript linting
 - **Prettier** -- code formatting
 - **Tailwind CSS IntelliSense** -- Tailwind autocomplete
@@ -765,26 +764,39 @@ shipping a compiled program. A single download covering all platforms is not
 proof of the opposite: some extensions carry a compiled helper inside that one
 package, and the helper is the part that can fail.
 
-### The Interface Is English Only
+### The Interface Follows Your Phone's Language
 
-Menus, commands, settings descriptions and dialogs are in English, and no setting
-changes that. A language pack from Open VSX installs and enables normally,
-**Configure Display Language** lists it, and choosing it offers to reload. The
-editor comes back in English.
+Menus, commands, settings descriptions and dialogs come up in the language the
+phone is set to. There is nothing to turn on and nothing to install: change the
+language in Android's Settings, then start VSCodroid.
 
-The translated text is not on the device, and there is nowhere to fetch it from.
-The editor loads its interface strings from two places at startup: an English
-bundle that ships inside the app, and a translated bundle downloaded from an
-address held in the editor's product configuration. The open-source editor source
-carries no such address and VSCodroid adds none, so the download URL is empty and
-only the English bundle ever loads. The editor's server side is started with
-English fixed as well, so an extension's own commands and settings stay English
-too.
+Thirteen languages ship inside the app: Chinese (Simplified and Traditional),
+Czech, French, German, Italian, Japanese, Korean, Polish, Portuguese (Brazil),
+Russian, Spanish and Turkish. A phone set to Portuguese gets the Brazilian
+translation wherever it is, because that is the only Portuguese the editor has
+been translated into. Any other language leaves the interface in English.
 
-Nothing reports any of this. The language pack shows as installed and enabled;
-the only sign is that the words do not change. If you have already picked a
-language, **Clear Display Language Preference** from the Command Palette puts the
-setting back.
+The translations are the ones the desktop editor uses, built into the app from
+Microsoft's `vscode-loc` packs. A display-language pack from Open VSX is neither
+needed nor used, and installing one adds no language to the list above.
+
+VSCodroid's own screens follow the same list: the setup progress, the toolchain
+picker, and the notifications and dialogs the app puts on screen are translated
+into those thirteen languages too. On Android 13 and later they can be set
+separately from the phone, under Settings, Apps, VSCodroid, Language, and the
+editor follows that choice as well.
+
+Two things stay English whatever the phone is set to:
+
+- Anything an extension contributes: its command titles, its settings
+  descriptions, its messages. An extension carries its own translations, and the
+  bundled ones carry English only, the welcome walkthrough included.
+- The occasional string the translation packs do not cover, roughly one in fifty.
+
+Changing the language while VSCodroid is running takes effect on the spot: the
+editor reloads in the new one. What does not change is anything already written,
+including the terminal's output and the app's own notifications from before the
+change.
 
 ### No Multi-window
 
@@ -792,7 +804,7 @@ VS Code's web client runs as a single window. You cannot open multiple VS Code w
 
 ### Storage
 
-Core installation extracts approximately 770 MB to internal storage. With both toolchains installed, expect around 960 MB. Setup needs about 865 MB free before it starts, which is more than it ends up occupying because extraction needs room to work; the app quotes that figure if it refuses to start. Beyond it, keep a few hundred MB free for node_modules, build artifacts and caches.
+Core installation extracts approximately 805 MB to internal storage. With both toolchains installed, expect around 990 MB. Setup needs about 905 MB free before it starts, which is more than it ends up occupying because extraction needs room to work; the app quotes that figure if it refuses to start. Beyond it, keep a few hundred MB free for node_modules, build artifacts and caches.
 
 ---
 

@@ -119,7 +119,8 @@ If you are **ready to learn**, you should be able to **start today**.
 ## ✨ Features
 
 - **Real VS Code**: Monaco Editor, Workbench UI, Command Palette, and all the features you know.
-- **Extension Support**: Install themes, linters, language support, and more from [Open VSX](https://open-vsx.org). The editor's own interface is English only.
+- **Extension Support**: Install themes, linters, language support, and more from [Open VSX](https://open-vsx.org).
+- **Interface In Your Language**: The editor's interface follows the phone's language, in thirteen of them (Chinese Simplified and Traditional, Czech, French, German, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Spanish, Turkish), with no language pack to install. The app's own screens are translated too; text contributed by extensions stays English.
 - **Integrated Terminal**: Full bash terminal with real PTY support (tmux, bash line editing and the Node and Python REPLs all work).
 - **Batteries Included**: Node.js, Python 3, Git, npm, SSH, and essential tools bundled out of the box.
 - **Offline-First**: Code without an internet connection. Everything runs locally on your device.
@@ -178,7 +179,7 @@ flowchart TD
 | Architecture | arm64-v8a                          |
 | WebView      | Chrome 105+                        |
 | RAM          | 4 GB recommended                   |
-| Storage      | ~865 MB free to install            |
+| Storage      | ~905 MB free to install            |
 
 ## 🚀 Getting Started
 
@@ -236,7 +237,7 @@ adb install android/app/build/outputs/apk/debug/app-debug.apk
 | -------------------------------------- | -------------------- |
 | Play Store download (core)             | ~270 MB              |
 | + Each toolchain (on-demand)           | 10-55 MB per language |
-| Free space required to install         | ~865 MB              |
+| Free space required to install         | ~905 MB              |
 | Extracted to internal storage (core)   | ~769 MB              |
 | Extracted, plus both toolchains        | ~952 MB              |
 | RAM usage (typical)                    | ~400-700 MB          |

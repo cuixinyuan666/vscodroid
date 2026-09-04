@@ -28,6 +28,21 @@
     <string name="notification_title_stopped">VSCodroid server stopped</string>
     <string name="notification_text_stopped">Server crashed repeatedly. Please restart the app.</string>
     <string name="extracting_message">Extracting core files\u2026</string>
+
+    <!-- The steps first-run setup reports while it unpacks, shown under the
+         progress bar on the splash screen. They are also the %1$s in
+         [error_setup_failed_at], which names the step that failed, so a
+         translation lands in two places at once. describeFailure trims a
+         trailing period, space or ellipsis off the name before quoting it. -->
+    <string name="setup_step_directories">Creating directories\u2026</string>
+    <string name="setup_step_server">Extracting server files\u2026</string>
+    <string name="setup_step_bootstrap">Extracting server bootstrap\u2026</string>
+    <string name="setup_step_tools">Extracting tools\u2026</string>
+    <string name="setup_step_git">Setting up git\u2026</string>
+    <string name="setup_step_symlinks">Setting up tools\u2026</string>
+    <string name="setup_step_extensions">Setting up extensions\u2026</string>
+    <string name="setup_step_environment">Configuring environment\u2026</string>
+    <string name="setup_step_done">Done!</string>
     <string name="error_server_start">Failed to start development server</string>
     <string name="error_server_timeout">Server took too long to start</string>
 
