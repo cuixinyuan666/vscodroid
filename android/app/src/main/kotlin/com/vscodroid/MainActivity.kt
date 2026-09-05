@@ -1274,7 +1274,28 @@ class MainActivity : AppCompatActivity() {
                     if (target != mirrorDir.absolutePath) {
                         Logger.i(tag, "The granted folder holds a workspace; opening that")
                     }
-                    navigateToFolder(serverPort, target)
+                    // Readiness rather than the port, for the reason recreateWebView
+                    // gives: a device-folder sync can run for minutes, and a server
+                    // that died during it leaves `serverPort` set with nothing behind
+                    // it, so navigating puts a connection-refused page in front of the
+                    // folder the user just picked.
+                    //
+                    // But the folder is NOT dropped for it, which is the mistake the
+                    // first version of this guard made. The grant is taken and the
+                    // mirror is copied by the time we are here, so refusing to
+                    // navigate throws away minutes of the user's copy and says
+                    // nothing at all -- worse than the error page it avoids, because
+                    // an error page can at least be read. It is remembered instead
+                    // and the server is asked back: retryServerStart puts up the
+                    // loading page, whose URL names no folder, so onServerReady's
+                    // loadVSCode falls through the chain to this one.
+                    if (nodeService?.isServerReady() == true) {
+                        navigateToFolder(serverPort, target)
+                    } else {
+                        Logger.i(tag, "The server is not serving; opening the folder once it is")
+                        rememberWorkspaceFolder(target)
+                        retryServerStart()
+                    }
                 }
             } catch (e: CancellationException) {
                 // Not a folder that failed. This Activity is being destroyed and
@@ -2370,6 +2391,13 @@ class MainActivity : AppCompatActivity() {
         // restarts the server, needs the readiness that follows to load.
         rendererCrashLoopShown = control == RELOAD_URL
         val retry = getString(R.string.error_server_retry)
+        // This app deciding to replace a dead editor, which is exactly the
+        // distinction navigationIsOurs draws. Unmarked, the workbench's unload
+        // veto over a backup the dead server cannot accept puts the platform's
+        // leave-page modal in front of this load, and its Cancel branch aborts
+        // the navigation -- taking away the RETRY_URL button that is the only
+        // control able to start the server again.
+        markAppNavigation()
         webView?.loadDataWithBaseURL(
             null,
             """<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"></head>
@@ -4030,11 +4058,26 @@ class MainActivity : AppCompatActivity() {
             showRendererCrashLoop()
             return
         }
-        if (serverPort > 0) {
+        // Readiness, not the port, and the two differ for the whole of a restart
+        // and for ever after a server that gave up. `serverPort` is written in
+        // onServerReady and in BindDecision.Load and is never cleared, so it
+        // stays non-zero through a crash loop and past enterTerminalState. The
+        // renderer dying under the same memory pressure that killed the server
+        // then navigated the new WebView at a socket nothing is listening on,
+        // replacing the gave-up page -- which carries the only Retry control --
+        // with a connection-refused page that nothing clears, since
+        // onReceivedError only logs. This is the same pair of branches the
+        // RELOAD_URL handler already uses, and for the reason argued there.
+        if (serverPort > 0 && nodeService?.isServerReady() == true) {
             // Always via loadVSCode so initBridge re-registers on the new WebView;
             // loading the old URL directly would leave it without the bridge. The
             // folder is carried over from the URL the destroyed WebView was showing.
             loadVSCode(serverPort, folderFromUrl(lastUrl), fromUrl = lastUrl)
+        } else {
+            // A server still coming up answers this start ALREADY_SERVING and
+            // onServerReady navigates when it is up; one that has given up has no
+            // callback coming and needs the page that can restart it.
+            retryServerStart()
         }
     }
 
