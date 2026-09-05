@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-09-06
+
+### Fixed
+
+- OpenCode in the terminal is OpenCode again. Packaging stripped the compiled app off the bundled binary, so `opencode` started as Bun 1.2.13 and printed Bun's help.
+- The portrait full-screen pager shows the current page. The rule that hid the other panes also hid the active one, so pinch-in was a grey screen.
+
 ## [1.2.1] - 2026-09-06
 
 ### Added
@@ -936,7 +943,8 @@ This release represents the cumulative work across milestones M0 through M5, bri
 - Health check polling for server readiness
 - Android intent handling for "Open with VSCodroid"
 
-[Unreleased]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/rmyndharis/VSCodroid/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/rmyndharis/VSCodroid/compare/v1.0.0...v1.1.0

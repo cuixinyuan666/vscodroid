@@ -22,9 +22,11 @@
     }
 
     function ensureStyle() {
-        if (document.getElementById(STYLE_ID)) return;
-        var s = document.createElement('style');
-        s.id = STYLE_ID;
+        var s = document.getElementById(STYLE_ID);
+        if (!s) {
+            s = document.createElement('style');
+            s.id = STYLE_ID;
+        }
         s.textContent = [
             'body.vscodroid-pager .part.activitybar { display: none !important; }',
             'body.vscodroid-pager .part.titlebar { display: none !important; }',
@@ -34,7 +36,8 @@
             'body.vscodroid-pager .monaco-workbench .part.auxiliarybar {',
             '  visibility: hidden !important;',
             '}',
-            'body.vscodroid-pager .vscodroid-pager-active {',
+            'body.vscodroid-pager .monaco-workbench .part.vscodroid-pager-active,',
+            'body.vscodroid-pager .split-view-view.vscodroid-pager-active {',
             '  position: fixed !important;',
             '  top: 0 !important;',
             '  left: 0 !important;',
@@ -42,8 +45,14 @@
             '  bottom: 22px !important;',
             '  width: auto !important;',
             '  height: auto !important;',
+            '  max-width: none !important;',
+            '  max-height: none !important;',
             '  visibility: visible !important;',
             '  z-index: 100000 !important;',
+            '  overflow: visible !important;',
+            '}',
+            'body.vscodroid-pager .split-view-view.vscodroid-pager-active .part {',
+            '  visibility: visible !important;',
             '}',
             'body.vscodroid-pager .part.statusbar {',
             '  z-index: 100001 !important;',
@@ -66,7 +75,7 @@
             '}',
             '#' + DOTS_ID + ' i.on { background: rgba(255,255,255,0.95); }'
         ].join('\n');
-        document.documentElement.appendChild(s);
+        if (!s.parentNode) document.documentElement.appendChild(s);
     }
 
     function ensureDots() {
@@ -150,7 +159,13 @@
         if (page.id === 'chat') clickActivity('chat');
         clearActive();
         var el = document.querySelector(page.sel);
-        if (el) el.classList.add('vscodroid-pager-active');
+        if (el) {
+            el.classList.add('vscodroid-pager-active');
+            var host = el.parentElement;
+            if (host && host.classList && host.classList.contains('split-view-view')) {
+                host.classList.add('vscodroid-pager-active');
+            }
+        }
         paintDots();
     }
 

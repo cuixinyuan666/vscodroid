@@ -136,8 +136,8 @@ android {
         // browser simply times out.
         @Suppress("OldTargetApi")
         targetSdk = 36
-        versionCode = 14
-        versionName = "1.2.1"
+        versionCode = 15
+        versionName = "1.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -324,6 +324,12 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            // OpenCode is a Bun standalone: the compiled app is appended after
+            // the ELF. AGP's strip rewrite ends at elf_end and drops that
+            // overlay, so the packaged file is vanilla Bun 1.2.13 instead of
+            // OpenCode 1.17.9. Measured on 1.2.1-debug: 141_823_216 bytes in
+            // jniLibs became 97_428_896 on device, overlay 0.
+            keepDebugSymbols.add("**/libopencode.so")
         }
     }
 

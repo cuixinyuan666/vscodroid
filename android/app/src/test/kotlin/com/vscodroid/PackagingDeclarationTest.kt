@@ -68,6 +68,12 @@ class PackagingDeclarationTest {
                 "nativeLibraryDir stops naming a directory anything can execve. " +
                 "The APK still installs and opens; nothing in it runs."
         )
+        assertTrue(
+            packaging.contains("keepDebugSymbols.add(\"**/libopencode.so\")"),
+            "libopencode.so is stripped after packaging. The Bun overlay that " +
+                "makes it OpenCode lives after the ELF, and strip drops it, so " +
+                "the installed file is vanilla Bun."
+        )
     }
 
     /**

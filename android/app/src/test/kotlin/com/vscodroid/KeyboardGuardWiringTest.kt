@@ -79,7 +79,7 @@ class KeyboardGuardWiringTest {
         val pager = File("src/main/assets/vscodroid-pager.js")
         assertTrue(pager.isFile, "vscodroid-pager.js is missing from assets")
         val text = pager.readText()
-        for (name in listOf("pinch", "EDGE_PX", "vscodroid-pager")) {
+        for (name in listOf("pinch", "EDGE_PX", "vscodroid-pager", "part.vscodroid-pager-active")) {
             assertTrue(text.contains(name), "pager script no longer mentions `$name`")
         }
     }
