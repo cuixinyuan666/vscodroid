@@ -136,8 +136,8 @@ android {
         // browser simply times out.
         @Suppress("OldTargetApi")
         targetSdk = 36
-        versionCode = 13
-        versionName = "1.2.0"
+        versionCode = 14
+        versionName = "1.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -1101,7 +1101,7 @@ val verifyBundledBinaries = tasks.register<Exec>("verifyBundledBinaries") {
 //   * Environment.kt names libnode.so, libbash.so, libgit.so, libldmusl.so and
 //     libexec-trampoline.so directly;
 //   * FirstRunSetup.setupToolSymlinks() maps bash, git, node, python3, python,
-//     rg, tmux, make, ssh and ssh-keygen onto their lib*.so, and
+//     rg, tmux, make, ssh, ssh-keygen and opencode onto their lib*.so, and
 //     setupGitCore() maps every git-remote-<protocol> onto libgit-remote-curl.so.
 // A missing one is not a degraded feature: the symlink resolves to nothing, and
 // a PATH lookup for the command fails with ENOENT, which on a device is
@@ -1121,12 +1121,15 @@ val requiredJniLibs = listOf(
     "libldmusl.so",
     "libmake.so",
     "libnode.so",
+    "libopencode.so",
+    "libopentui.so",
     "libpython.so",
     "libripgrep.so",
     "libseccomp-shim.so",
     "libssh.so",
     "libssh-keygen.so",
     "libtmux.so",
+    "libtmpfix.so",
 )
 
 // Which script places each of the above, so the failure below can name the one
@@ -1140,12 +1143,15 @@ val jniLibProducers = mapOf(
     "libldmusl.so" to "scripts/download-musl-loader.sh",
     "libmake.so" to "scripts/download-termux-tools.sh",
     "libnode.so" to "scripts/download-node.sh",
+    "libopencode.so" to "scripts/fetch-opencode.sh",
+    "libopentui.so" to "scripts/fetch-opencode.sh",
     "libpython.so" to "scripts/download-python.sh",
     "libripgrep.so" to "scripts/fetch-vscode-oss.sh",
     "libseccomp-shim.so" to "scripts/build-claude-shim.sh",
     "libssh.so" to "scripts/download-termux-tools.sh",
     "libssh-keygen.so" to "scripts/download-termux-tools.sh",
     "libtmux.so" to "scripts/download-termux-tools.sh",
+    "libtmpfix.so" to "scripts/build-exec-trampoline.sh",
 )
 
 val verifyRequiredBinaries = tasks.register("verifyRequiredBinaries") {

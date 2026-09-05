@@ -98,6 +98,10 @@ python3 scripts/build-nls-bundles.py
 #    musl-linked and Android has no loader for it.
 ./scripts/download-musl-loader.sh
 
+# 8b. OpenCode CLI (Android aarch64). Not in git; fetched from the
+#     opencode-payload release.
+./scripts/fetch-opencode.sh
+
 # 9. The Node runtime. After step 4, which places the libraries it links against
 ./scripts/download-node.sh
 
@@ -195,7 +199,10 @@ VSCodroid/
 │   │   │   │   ├── libldmusl.so          # musl loader (runs the Claude Code CLI)
 │   │   │   │   ├── libclaude-launch.so   # Starts that CLI with the shim preloaded
 │   │   │   │   ├── libseccomp-shim.so    # Answers the syscall Android 13/14 refuse
-│   │   │   │   └── libexec-trampoline.so # Starts a toolchain command (SELinux)
+│   │   │   │   ├── libexec-trampoline.so # Starts a toolchain command (SELinux)
+│   │   │   │   ├── libopencode.so        # OpenCode CLI (Bun standalone)
+│   │   │   │   ├── libopentui.so         # OpenCode TUI native helper
+│   │   │   │   └── libtmpfix.so          # Rewrites /tmp for OpenCode
 │   │   │   └── res/                   # Android resources, layouts
 │   │   └── build.gradle.kts
 │   ├── toolchain_ruby/            # Ruby on-demand asset pack
@@ -203,6 +210,7 @@ VSCodroid/
 │   └── settings.gradle.kts
 ├── scripts/                       # Download and build scripts
 │   ├── fetch-vscode-oss.sh           # Fetch the built Code - OSS server tree
+│   ├── fetch-opencode.sh             # Fetch the bundled OpenCode CLI
 │   ├── build-vscode-oss.sh           # Build it from source (CI / Docker only)
 │   ├── download-termux-tools.sh      # Download bash, git, tmux, make, openssh + libs
 │   ├── download-node.sh              # Termux nodejs-lts -> libnode.so
@@ -283,10 +291,11 @@ checkouts differed.
 | `download-python.sh` | Downloads Python + deps from Termux. The version is whatever the Termux index currently carries, detected at download time rather than pinned here | `jniLibs/arm64-v8a/`, `assets/usr/lib/python<major.minor>/` |
 | `download-extensions.sh` | Downloads marketplace extensions from Open VSX. Every entry must be pinned as `publisher.name@version#sha256`, and the resolved version must equal the pin: the cleanup sweep names each directory from the pin while the extraction names it from what Open VSX returned, so a difference makes the sweep delete the tree on every run. The digest is the one the VSIX must hash to, recorded here rather than fetched from the registry that also serves the bytes; the published `files.sha256` is still read, and a disagreement under a fixed version fails the build | `assets/extensions/` |
 | `download-musl-loader.sh` | Extracts musl's dynamic loader from the Alpine package. The Claude Code CLI ships as a musl binary and Android has no loader for it. The version comes from the branch index at download time rather than being pinned here, so the run records which one it installed. `ALPINE_BRANCH` must name a branch Alpine still supports: an unsupported one keeps serving a correctly signed index for years, so the signature check alone cannot notice. The index is also refused when it is more than 30 days old (`ALPINE_INDEX_MAX_AGE_DAYS`), read from the tar member time inside the signed bytes | `jniLibs/arm64-v8a/libldmusl.so`, `toolchains/musl/resolved-musl.tsv` |
+| `fetch-opencode.sh` | Downloads the patched OpenCode Android aarch64 zip from this fork's `opencode-payload` release, verifies the sha256, and installs `libopencode.so` and `libopentui.so`. The binary is not in git | `jniLibs/arm64-v8a/libopencode.so`, `jniLibs/arm64-v8a/libopentui.so`, `assets/usr/share/doc/opencode/` |
 | `build-native-addons.sh` | Cross-compiles node-pty, `@parcel/watcher` and `@vscode/sqlite3` for Bionic using the NDK, with 16 KB page alignment. Checks each `.node` against the JavaScript version shipped beside it | `assets/vscode-reh/node_modules/*/build/Release/*.node` |
 | `build-glibc-shim.sh` | Scans the packaged tree for addons built against glibc and generates versioned stub libraries so Bionic's loader accepts them. Run last: `download-termux-tools.sh` wipes the directory the stubs live in | `assets/usr/lib/libglibc-shim.so` and per-soname stubs |
 | `build-claude-shim.sh` | Cross-compiles two files with the NDK. `libseccomp-shim.so` is freestanding and is preloaded into the Claude Code CLI: it catches the SIGSYS Android raises for `epoll_pwait2`, which bionic exposes only from android15, and answers it with `epoll_pwait`, so the CLI runs on Android 13 and 14 instead of being killed. `libclaude-launch.so` is what `claudeCode.claudeProcessWrapper` names; it puts the shim into `LD_PRELOAD` and execs musl's loader, because a setting holds a path rather than an environment. The script refuses a shim that names any library, since one libc in a process that already has another is the failure it exists to avoid | `jniLibs/arm64-v8a/libseccomp-shim.so`, `jniLibs/arm64-v8a/libclaude-launch.so` |
-| `build-exec-trampoline.sh` | Cross-compiles `exec-trampoline.c` with the NDK, 16 KB-aligned, as `libexec-trampoline.so`. One symlink per toolchain command points at it from `usr/libexec/tcbin`, which sits ahead of `usr/bin` on PATH, so a bare-name lookup reaches a file the app may execute instead of a payload SELinux refuses. It reads `toolchain-exec.tsv` and hands the named binary to `/system/bin/linker64`. Without it a toolchain command works only from bash, since the loader indirection exists nowhere else | `jniLibs/arm64-v8a/libexec-trampoline.so` |
+| `build-exec-trampoline.sh` | Cross-compiles `exec-trampoline.c` with the NDK, 16 KB-aligned, as `libexec-trampoline.so`. One symlink per toolchain command points at it from `usr/libexec/tcbin`, which sits ahead of `usr/bin` on PATH, so a bare-name lookup reaches a file the app may execute instead of a payload SELinux refuses. It reads `toolchain-exec.tsv` and hands the named binary to `/system/bin/linker64`. Without it a toolchain command works only from bash, since the loader indirection exists nowhere else. Also builds `libtmpfix.so` from `tmpfix.c`, preloaded only into OpenCode | `jniLibs/arm64-v8a/libexec-trampoline.so`, `jniLibs/arm64-v8a/libtmpfix.so` |
 | `package-toolchains.sh` | Zips the toolchain asset-pack directories for the GitHub Release that non-Play installs download from. It takes the list from `ToolchainRegistry.kt` rather than carrying one, refuses a pack whose tree is larger than the `estimatedSize` recorded for it (in 4 KiB blocks, the unit that KDoc's `du -sk` reports, since both install pre-flights reserve against that figure), and a full run first deletes any ZIP the registry names no toolchain for, so a withdrawn one is not published beside the current ones | `toolchain-zips/toolchain_*.zip` |
 | `download-ruby.sh` | Downloads Ruby + deps from Termux | `toolchain_ruby/src/main/assets/` |
 | `download-java.sh` | Downloads OpenJDK 17 + deps from Termux | `toolchain_java/src/main/assets/` |

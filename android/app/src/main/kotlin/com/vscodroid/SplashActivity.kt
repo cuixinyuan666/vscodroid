@@ -101,6 +101,7 @@ class SplashActivity : AppCompatActivity() {
         // A full disk therefore stopped its own remedy, and did it again on every
         // launch.
         repair("tool symlinks") { setup.setupToolSymlinks() }
+        repair("OpenCode files") { setup.setupOpenCode() }
         repair("git core") { setup.setupGitCore() }
         repair("the git CA bundle") { setup.setupGitCaBundle() }
         repair("the ripgrep symlink") { setup.setupRipgrepVscodeSymlink() }

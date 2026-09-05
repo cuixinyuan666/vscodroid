@@ -119,6 +119,10 @@ object Environment {
             // mksh running a make recipe, or a "type": "process" task. See
             // [getExecTablePath] for why it is exported rather than compiled in.
             "VSCODROID_EXEC_TABLE" to getExecTablePath(context),
+            "VSCODROID_NATIVE_LIB_DIR" to nativeLibDir,
+            "OPENTUI_LIB_PATH" to "$nativeLibDir/libopentui.so",
+            "OPENCODE_DISABLE_TUI_AUDIO" to "1",
+            "ANDROID_ROOT" to "/system",
             "TERM" to term,
             "TERMINFO" to "$filesDir/usr/share/terminfo",
             "LANG" to "en_US.UTF-8",

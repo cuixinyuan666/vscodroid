@@ -78,6 +78,7 @@ concurrency:
 jobs:
   build-release:
     name: Build Release
+    if: ${{ secrets.KEYSTORE_BASE64 != '' }}
     runs-on: ubuntu-latest
     # Two Gradle release builds plus ~360 MB of toolchain downloads. Raised
     # before the first tag rather than after one times out at 90%.
@@ -446,6 +447,9 @@ jobs:
       # is musl's loader, which is the only way that CLI starts on Android.
       - name: Download musl loader
         run: bash scripts/download-musl-loader.sh
+
+      - name: Fetch OpenCode CLI
+        run: bash scripts/fetch-opencode.sh
 
       # Before the native addons on purpose: build-native-addons.sh pairs its
       # headers against the runtime this step installs, and fails closed when

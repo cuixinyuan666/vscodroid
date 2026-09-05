@@ -12,6 +12,7 @@ Versions are deliberately not listed unless pinned in this repository: most comp
 | GitHub Copilot Chat extension | See the license files inside `extensions/copilot/` in the server tree; its `@github/copilot` SDK dependency carries GitHub, Inc.'s own `LICENSE.md` | Produced by the same Code - OSS build |
 | VS Code Language Packs (vscode-loc) | MIT; the generated bundles carry no notice of their own, so the copyright and permission text is in `docs/LEGAL_NOTICES.md` | https://github.com/microsoft/vscode-loc at the commit pinned in `VSCODE_LOC_COMMIT`; `scripts/build-nls-bundles.py` merges its translations into the editor's message array and writes `assets/nls/<locale>.json` |
 | Node.js | MIT | Termux build of `nodejs-lts`, https://github.com/nodejs/node |
+| OpenCode | MIT | Android aarch64 build of https://github.com/sst/opencode (Guysoft packaging), installed as `libopencode.so` by `scripts/fetch-opencode.sh`; OpenTUI helper is `libopentui.so` |
 | npm | Artistic License 2.0 | https://github.com/npm/cli |
 | Python | PSF License | Termux build, https://www.python.org |
 | pip | MIT | Shipped in Python's `site-packages`; its own `LICENSE.txt` and `AUTHORS.txt` travel with it in `pip-*.dist-info/licenses/` |
@@ -75,7 +76,8 @@ anything here can run it.
 
 Excluded as first-party: `libglibc-shim.so` and its companion stubs, which carry
 glibc's soname but are built from this repository's own source, and
-`libexec-trampoline.so`, built from `scripts/exec-trampoline.c` here.
+`libexec-trampoline.so`, built from `scripts/exec-trampoline.c` here, and
+`libtmpfix.so`, built from `scripts/tmpfix.c` here.
 
 Naming a project is not the notice. MIT, the BSD family, ISC, NCSA, the ICU
 licence and Apache-2.0 section 4 all ask for the copyright and permission text to
@@ -122,6 +124,7 @@ verbatim; `docs/LEGAL_NOTICES.md` records which text covers which component.
 | nghttp3 | MIT | libcurl |
 | ngtcp2 | MIT | libcurl, ngtcp2 |
 | Node.js | MIT | bundled tool in its own right |
+| OpenCode | MIT | bundled tool in its own right |
 | OpenSSH | BSD | bundled tool in its own right |
 | OpenSSL | Apache-2.0 | Git, Node.js, OpenSSH, OpenSSL, Python, ldns, libcrypt, libcurl, libssh2, ngtcp2 |
 | PCRE2 | BSD-3-Clause | Git |

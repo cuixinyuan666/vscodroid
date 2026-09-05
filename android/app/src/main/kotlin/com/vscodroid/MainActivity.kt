@@ -12,6 +12,7 @@ import android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE
 import android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
 import android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.os.Bundle
 import android.net.Uri
@@ -38,6 +39,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import com.vscodroid.util.drawBehindSystemBars
 import com.vscodroid.util.CrashReporter
@@ -2056,6 +2058,23 @@ class MainActivity : AppCompatActivity() {
             insets
         }
         ViewCompat.requestApplyInsets(view)
+        view.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            val density = resources.displayMetrics.density
+            val edge = (24f * density).toInt().coerceAtLeast(1)
+            val maxH = (200f * density).toInt()
+            val h = v.height
+            val w = v.width
+            if (h <= 0 || w <= 0) return@addOnLayoutChangeListener
+            val height = minOf(maxH, h)
+            val top = ((h - height) / 2).coerceAtLeast(0)
+            ViewCompat.setSystemGestureExclusionRects(
+                v,
+                listOf(
+                    Rect(0, top, edge, top + height),
+                    Rect(w - edge, top, w, top + height),
+                ),
+            )
+        }
     }
 
     private fun setupExtraKeyRow() {
@@ -2064,29 +2083,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Back sends the app to the background.
+     * Three-button Back sends the app to the background. An edge swipe does not.
      *
-     * It used to ask the page first, and the answer could only ever be no. The
-     * round trip was Kotlin to JavaScript to `AndroidBridge.onBackPressed` and
-     * back, and that bridge method returns whatever the `onBackPressed`
-     * constructor lambda answers, which [initBridge] passes as `{ false }`.
-     * Nothing else defines it: no patch, no bundled extension and no injected
-     * script installs a page-side handler, so the workbench was never consulted
-     * about anything and every back press paid an `evaluateJavascript` to be told
-     * what was already known.
+     * Gesture navigation fires [OnBackPressedCallback.handleOnBackStarted] and
+     * then [handleOnBackPressed]. Three-button Back only fires the second. The
+     * portrait pager uses the left and right edges to change pages, and this
+     * phone's system Back is the same gesture, so treating every back as
+     * minimise sent the app to the launcher the moment a page was turned.
      *
-     * Removing it also fixes what the round trip cost when there was no page. The
-     * call was made through `webView?`, and the minimise sat inside its result
-     * callback, so with the WebView gone (between [recreateWebView] tearing one
-     * down and building the next) nothing ran at all and back did nothing.
-     *
-     * Dismissing editor UI with back would be a real improvement and is not this:
-     * it needs something the workbench answers, and the extra key row's Esc key is
-     * what closes a palette today.
+     * [ViewCompat.setSystemGestureExclusionRects] on the WebView container is
+     * the other half: Android still owns a 200 dp strip per edge, but the
+     * callback must not minimise even when the system delivers the event.
      */
+    private var backGestureInFlight = false
+
     private fun setupBackNavigation() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackStarted(backEvent: BackEventCompat) {
+                backGestureInFlight = true
+            }
+
+            override fun handleOnBackCancelled() {
+                backGestureInFlight = false
+            }
+
             override fun handleOnBackPressed() {
+                val fromGesture = backGestureInFlight
+                backGestureInFlight = false
+                if (fromGesture) return
                 moveTaskToBack(true)
             }
         })
@@ -3064,6 +3088,7 @@ class MainActivity : AppCompatActivity() {
         injectMemoryPressureHandler()
         // Fix #2: Inject touch target enlargement CSS for phone-sized screens
         injectTouchTargetCSS()
+        injectPortraitPager()
         // Keeps the soft keyboard down until the user aims at text
         injectKeyboardGuard()
         // Fix #7: Override window.open() to route through AndroidBridge
@@ -3080,6 +3105,16 @@ class MainActivity : AppCompatActivity() {
         // onNewIntent goes straight into this page, which is the only page that
         // can consume one.
         workbenchLoaded = true
+    }
+
+    private fun injectPortraitPager() {
+        val js = try {
+            assets.open("vscodroid-pager.js").bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } catch (e: Exception) {
+            Logger.w(tag, "Portrait pager script missing: ${e.message}")
+            return
+        }
+        webView?.evaluateJavascript(js, null)
     }
 
     /**

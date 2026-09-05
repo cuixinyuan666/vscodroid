@@ -258,6 +258,7 @@ class BashrcAtomicityTest {
         assertTrue(written.contains("npm()"), "the npm function was not appended")
         assertTrue(written.contains("npx()"), "the npx function was not appended")
         assertTrue(written.contains("claude()"), "the claude function was not appended")
+        assertTrue(written.contains("opencode()"), "the opencode function was not appended")
         assertTrue(written.contains("alias ll="), "the append lost what was already there")
     }
 

@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-06
+
 ### Added
 
+- OpenCode is bundled and on PATH. Type `opencode` in the terminal; `opencode run` works without a separate install.
+- In portrait, pinch in with two fingers for a full-screen pager (files, editor, terminal). Pinch out to leave. Swipe from the left or right edge to change pages. Edge-swipe no longer sends the app to the launcher; the three-button Back key still does.
 - A device folder holding one `.code-workspace` now opens as that workspace. Android's picker can only hand back a folder, so a workspace on device storage was reachable only by finding the file in the explorer and opening it from there.
 - **VSCodroid: Open Recent Folder** is now on the remote indicator in the status bar. Typing its name into the Command Palette was the only way to reach the device folder picker, which is why people could not find it.
 - The editor's interface now follows your phone's language: Chinese (Simplified and Traditional), Czech, French, German, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Spanish and Turkish. Nothing to install, and a language nobody has translated the editor into stays English.
@@ -932,7 +936,8 @@ This release represents the cumulative work across milestones M0 through M5, bri
 - Health check polling for server readiness
 - Android intent handling for "Open with VSCodroid"
 
-[Unreleased]: https://github.com/rmyndharis/VSCodroid/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/rmyndharis/VSCodroid/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/rmyndharis/VSCodroid/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/rmyndharis/VSCodroid/compare/v0.2.9...v1.0.0

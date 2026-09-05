@@ -479,7 +479,9 @@ resolve against them, but contain none of glibc's code; they are built from
 `scripts/glibc-shim.c` and `scripts/gen-glibc-forwarders.py` in this repository and
 are covered by the root `LICENSE`. `libexec-trampoline.so` is excluded for the
 same reason: it is built from `scripts/exec-trampoline.c` here, and it is what
-lets a downloaded toolchain command start from a bare name on `PATH`. So are
+lets a downloaded toolchain command start from a bare name on `PATH`. So is
+`libtmpfix.so`, built from `scripts/tmpfix.c` and preloaded only into the
+bundled OpenCode CLI. So are
 `libclaude-launch.so` and `libseccomp-shim.so`, built here from
 `scripts/claude-launch.c` and `scripts/seccomp-shim.c`; the second is
 freestanding and links against no library at all, so there is nothing in it to
@@ -515,6 +517,7 @@ attribute but this project's own source.
 | [nghttp3](https://github.com/ngtcp2/nghttp3) | MIT | no | `libnghttp3.so` |
 | [ngtcp2](https://github.com/ngtcp2/ngtcp2) | MIT | no | `libngtcp2.so`, `libngtcp2_crypto_ossl.so` |
 | [Node.js](https://nodejs.org) | MIT | no | `libnode.so` |
+| [OpenCode](https://github.com/sst/opencode) | MIT | no | `libopencode.so`, `libopentui.so` |
 | [OpenSSH](https://www.openssh.com) | BSD | no | `libssh-keygen.so`, `libssh.so` |
 | [OpenSSL](https://www.openssl.org) | Apache-2.0 | no | `libcrypto.so.3`, `libssl.so.3` |
 | [PCRE2](https://www.pcre.org) | BSD-3-Clause | no | `libpcre2-8.so` |
@@ -741,4 +744,4 @@ For questions about licenses, trademarks, or legal notices:
 
 ---
 
-_This document was last updated on September 5, 2026._
+_This document was last updated on September 6, 2026._

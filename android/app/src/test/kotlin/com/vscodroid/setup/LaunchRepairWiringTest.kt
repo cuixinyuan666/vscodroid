@@ -78,6 +78,7 @@ class LaunchRepairWiringTest {
      */
     private val repairs = listOf(
         "setupToolSymlinks",
+        "setupOpenCode",
         "setupGitCore",
         "setupGitCaBundle",
         "setupRipgrepVscodeSymlink",

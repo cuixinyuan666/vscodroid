@@ -55,6 +55,7 @@
         android:hardwareAccelerated="true"
         android:largeHeap="true"
         android:theme="@style/Theme.VSCodroid"
+        android:enableOnBackInvokedCallback="true"
         tools:targetApi="34">
 
         <!-- Splash screen: shown during binary extraction and server startup -->

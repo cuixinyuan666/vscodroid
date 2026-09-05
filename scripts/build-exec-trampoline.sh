@@ -74,6 +74,16 @@ BUILD_ID_FLAG=(-Wl,--build-id=sha1)
     "${BUILD_ID_FLAG[@]}"
 echo "  $(wc -c < "$OUT" | tr -d ' ') bytes"
 
+# Shared object, not an executable: OpenCode's Bun still opens /tmp, which an
+# app may not write. Preloaded only into that CLI, never into Node.
+TMPFIX="$OUT_DIR/libtmpfix.so"
+"$CC" -shared -fPIC -O2 -Wall -Wextra -Werror \
+    -o "$TMPFIX" \
+    "$SCRIPT_DIR/tmpfix.c" \
+    "${PAGE_SIZE_FLAGS[@]}" \
+    "${BUILD_ID_FLAG[@]}"
+echo "  tmpfix $(wc -c < "$TMPFIX" | tr -d ' ') bytes"
+
 echo ""
 echo "=== Verify ==="
 # The same gate every other bundled binary passes, run here on the file just
@@ -82,3 +92,4 @@ echo "=== Verify ==="
 # every toolchain command fail on an Android 16 device, which is
 # indistinguishable from the toolchain not being installed.
 python3 "$SCRIPT_DIR/verify-android-elf.py" "$OUT" --lib-dir "$OUT_DIR"
+python3 "$SCRIPT_DIR/verify-android-elf.py" "$TMPFIX" --lib-dir "$OUT_DIR"

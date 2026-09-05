@@ -50,6 +50,10 @@ class BackAndServiceStartTest {
             "back no longer sends the app to the background, which is the only thing it " +
                 "has ever actually done"
         }
+        assertTrue(back.contains("fromGesture")) {
+            "edge-swipe back is no longer distinguished from three-button back, so turning " +
+                "a portrait page minimises the app"
+        }
         assertTrue(!back.contains("evaluateJavascript")) {
             "back asks the page again. The bridge method it reaches answers from the " +
                 "`onBackPressed` constructor lambda, which is `{ false }`, and nothing " +

@@ -62,7 +62,7 @@ class KeyboardGuardWiringTest {
         // the first. That is the regression itself, and an adjacency check
         // passes it.
         val injected = SourceScan.body(source, "private fun injectBridgeToken()")
-        for (call in listOf("injectTouchTargetCSS()", "injectKeyboardGuard()")) {
+        for (call in listOf("injectTouchTargetCSS()", "injectPortraitPager()", "injectKeyboardGuard()")) {
             assertTrue(
                 injected.contains(call),
                 "`$call` is no longer called from injectBridgeToken, the one path every " +
@@ -71,6 +71,16 @@ class KeyboardGuardWiringTest {
                     "it: the keyboard then covers half the screen while a file is being read, " +
                     "or the editor is one nothing can be typed into, and neither says why.",
             )
+        }
+    }
+
+    @Test
+    fun `the portrait pager script is shipped and describes pinch and edge swipe`() {
+        val pager = File("src/main/assets/vscodroid-pager.js")
+        assertTrue(pager.isFile, "vscodroid-pager.js is missing from assets")
+        val text = pager.readText()
+        for (name in listOf("pinch", "EDGE_PX", "vscodroid-pager")) {
+            assertTrue(text.contains(name), "pager script no longer mentions `$name`")
         }
     }
 

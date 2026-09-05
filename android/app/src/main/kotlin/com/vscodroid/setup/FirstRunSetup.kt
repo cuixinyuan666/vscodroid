@@ -580,6 +580,7 @@ class FirstRunSetup(
 
             reportProgress(context.getString(R.string.setup_step_symlinks), 85)
             setupToolSymlinks()
+            setupOpenCode()
             setupRipgrepVscodeSymlink()
             // Also here, not only in SplashActivity's always-run block: that
             // block runs before this extraction on a fresh install, when the
@@ -1311,6 +1312,7 @@ class FirstRunSetup(
             "make" to "libmake.so",
             "ssh" to "libssh.so",
             "ssh-keygen" to "libssh-keygen.so",
+            "opencode" to "libopencode.so",
         )
 
         var created = 0
@@ -1344,6 +1346,21 @@ class FirstRunSetup(
             }
         }
         Logger.i(tag, "Tool symlinks: $created created, $updated updated in usr/bin/")
+    }
+
+    /**
+     * Directories the bundled OpenCode CLI writes into.
+     *
+     * The binary itself is a symlink from usr/bin onto libopencode.so, which
+     * [setupToolSymlinks] already keeps current. What this creates is the tmp
+     * tree the JS graph was patched to use: Android's /tmp is not writable to
+     * the app, and a missing directory there is a CLI that dies on first run
+     * rather than a directory that appears later.
+     */
+    fun setupOpenCode() {
+        val home = File(context.filesDir, "home")
+        File(home, ".opencode/tmp").mkdirs()
+        File(home, ".cache/opencode/tmp").mkdirs()
     }
 
     /**
@@ -1622,6 +1639,10 @@ class FirstRunSetup(
             if (!content.contains("pip()")) {
                 additions.append(pipBashFunctions())
                 added += "pip/pip3"
+            }
+            if (!content.contains("opencode()")) {
+                additions.append(opencodeBashFunction())
+                added += "opencode"
             }
             // One rewrite through a temporary file rather than an append per
             // block. A guard that reads a string its own block opens with
@@ -2007,7 +2028,7 @@ class FirstRunSetup(
     fun createBashEnvFile() {
         val envFile = File(Environment.getBashEnvPath(context))
         val content = BASH_ENV_HEADER + npmBashFunctions() + claudeBashFunction() +
-            pipBashFunctions() + """
+            pipBashFunctions() + opencodeBashFunction() + """
 
 # On-demand toolchain env vars (Go, Ruby, Java, etc.)
 [ -f "${'$'}HOME/.vscodroid/toolchain-env.sh" ] && . "${'$'}HOME/.vscodroid/toolchain-env.sh"
@@ -2233,6 +2254,30 @@ __vscodroid_symlink_note() {
 # execute. The module form is the same pip and always has been.
 pip() { python3 -m pip "${'$'}@"; }
 pip3() { python3 -m pip "${'$'}@"; }
+"""
+
+    /**
+     * `opencode` in the terminal and in `bash -c` tasks.
+     *
+     * The binary is libopencode.so in nativeLibraryDir, which a PATH lookup of
+     * the bare name cannot see. usr/bin/opencode is a symlink onto it, so an
+     * extension that spawn()s the name still starts it. The function exists for
+     * the shell: it puts libtmpfix.so into LD_PRELOAD so Bun's leftover /tmp
+     * opens land in HOME instead of in a directory the app cannot write.
+     */
+    private fun opencodeBashFunction(): String = """
+
+# opencode: bundled CLI. The file is libopencode.so; this function is what a
+# bash task finds, and it preloads the /tmp rewrite. Safe to source twice.
+opencode() {
+    local bin="${'$'}{VSCODROID_NATIVE_LIB_DIR}/libopencode.so"
+    [ -x "${'$'}bin" ] || return 127
+    local preload="${'$'}{VSCODROID_NATIVE_LIB_DIR}/libtmpfix.so"
+    if [ -n "${'$'}{LD_PRELOAD-}" ]; then
+        preload="${'$'}preload:${'$'}LD_PRELOAD"
+    fi
+    LD_PRELOAD="${'$'}preload" TMPDIR="${'$'}HOME/.opencode/tmp" "${'$'}bin" "${'$'}@"
+}
 """
 
     /**

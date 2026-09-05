@@ -108,7 +108,7 @@ class NonInteractiveShellEnvTest {
         // installed as a library and its console script is a #! file SELinux
         // will not execute, so the walkthrough's "Python + pip: ready" was
         // answered by `bash: pip: command not found`.
-        for (name in listOf("npm()", "npx()", "claude()", "pip()", "pip3()")) {
+        for (name in listOf("npm()", "npx()", "claude()", "pip()", "pip3()", "opencode()")) {
             assertTrue(written.contains(name), "$name is missing, so a task cannot run it")
         }
         assertTrue(
