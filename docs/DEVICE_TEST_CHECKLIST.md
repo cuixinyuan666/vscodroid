@@ -71,7 +71,8 @@
 | SC-5 | Display cutout | Test on device with notch/punch-hole | Safe area padding applied, no content clipped | | |
 | SC-6 | Foldable (if available) | Fold/unfold device | UI adapts to new dimensions | | |
 | SC-7 | Side bar auto-close on a phone | Portrait, open the Explorer, tap a file | Side bar closes on its own, editor takes the full width | | |
-| SC-8 | Side bar stays open on a tablet | Same steps on a device wider than 600dp | Side bar stays where it was; `vscodroid.layout.autoHideSideBar` is false | | |
+| SC-8 | Side bar stays open on a tablet | Same steps on a device wider than 600dp | Side bar stays where it was; `settings.json` has `vscodroid.layout.compactScreen` false and no `vscodroid.layout.autoHideSideBar` at all | | |
+| SC-9 | A setting you change is the one that applies | Settings, User tab, set `editor.minimap.enabled` true, reopen a file, then restart the app | The minimap appears and is still there after the restart. It is the app's own defaults that must not win here | | |
 
 ## 5. Editor Operations
 
@@ -89,6 +90,8 @@
 | ED-10 | Application Menu across a rotation | Open the Application Menu, tap File so its submenu opens, then rotate the device | Both menus close. They must not stay open: the submenu would be anchored where it no longer fits and would be clipped off the edge | | |
 | ED-11 | An https preview with a bad certificate | Run `Simple Browser: Show` and enter `https://self-signed.badssl.com/`, then `https://expired.badssl.com/`, then the first one again. Offline variant: a local https server with a self-signed certificate, reached at `https://127.0.0.1:8443` | Each of the first two shows an empty tab plus a toast naming the host, the first saying the certificate is not trusted and the second that it is expired or not yet valid. The third shows no second toast: a repeat of a fact already said is suppressed. No dialog and no way to continue appears at any point | Pass | Verified 2026-08-21 on an API 33 emulator against a local self-signed server reached at `https://10.0.2.2:8443`, which is what the host is called from inside an emulator. Logcat: `TLS refused for 10.0.2.2:8443: UNTRUSTED`. The toast reads `Blocked 10.0.2.2:8443: certificate not trusted. Use http instead.` and renders whole. The pane stays empty, which is the symptom this exists to explain rather than remove. **Re-run: this result predates the subframe navigation rules, which an https preview goes through** |
 | ED-12 | Where a preview's own links go | On a debug build with `adb logcat -s VSCodroid.WebViewClient` running, run `Simple Browser: Show` and enter `https://example.com`, then tap the link on that page | The linked page renders in the preview tab; the device browser does not open. Record whether logcat shows anything from the client for that navigation, because that is what this row exists to settle: the platform documents `shouldOverrideUrlLoading` as one that *may* be called for subframes, and whether it is here decides whether the subframe rules are live behaviour or defence in depth. The refusal line is `Logger.d`, so a release build prints nothing either way | | |
+| ED-13 | Running a file under the debugger | Put `debugger;` in a `.js` file in the projects folder, open it, run **Debug: Select and Start Debugging** and pick **Node.js: Run Current File** | Execution stops on that line with the gutter arrow and the debug toolbar, and the terminal shows `Debugger attached.` A session that starts, shows the toolbar and never stops is the failure this row exists for: it looks like it is working | | |
+| ED-14 | Attaching to a process you started | Run `node --inspect server.js` in a terminal, then start **Attach to Node.js** | The editor attaches and `Debugger attached.` appears in that terminal | | |
 
 ## 6. Extensions
 
@@ -132,7 +135,7 @@ fresh.
 | ST-1 | Trim memory signal | `adb shell am send-trim-memory <PID> RUNNING_CRITICAL` | Process monitor kills idle LS, no crash | | |
 | ST-2 | Many terminals | Open 10 terminal tabs | Bash spawns for each, process count reported | | |
 | ST-3 | OOM recovery | Force WebView OOM (open huge file + extensions) | onRenderProcessGone fires, WebView recreated | | |
-| ST-4 | Storage nearly full | Fill device storage to <100MB free | Warning toast shown, app still functional | | |
+| ST-4 | Storage nearly full | Fill device storage to under 100 MB free, as Settings reports it | Warning toast shown, app still functional | | |
 
 ## 9. Performance Benchmarks
 
@@ -228,6 +231,9 @@ first launch of a build that has this line, so the row to run instead is TC-8.
 | SF-11 | Conflicting edits, the other way round | With the folder closed, edit a file with another app; then open the folder in the editor, edit the same file there, force-stop the app before the save reaches the device, and reopen the folder | The editor's version wins on the device and the other app's version is beside it as `<name>.device-<time>`; neither is lost. An ordinary save with no device edit leaves no such copy | | |
 | SF-12 | A device folder holding one workspace file | Grant a folder whose top level holds exactly one `.code-workspace`; then relaunch the app | It opens as that workspace rather than as the folder, and the same workspace comes back after the relaunch | | |
 | SF-13 | A folder named like a workspace | Grant a folder whose own name ends in `.code-workspace` | It opens as a folder, not as an unreadable workspace with an empty window | | |
+| SF-14 | A folder you closed stays closed | Open a folder, run **File: Close Folder**, force-stop the app, relaunch through the launcher | The empty window comes back, not the folder that was closed. Opening a folder again and relaunching must still reopen it | | |
+| SF-15 | A second window is this window | Run **New Window** from the Command Palette, then **Open Folder in New Window** | The editor reuses its own window. The device browser must not come to the front, and no popup-blocked message appears over the editor | | |
+| SF-16 | An external link still leaves the app | With a dev server running on another port, follow a link to it from the editor | The device browser opens it. This is the branch the window reuse above must not swallow | | |
 
 ---
 
@@ -235,10 +241,12 @@ first launch of a build that has this line, so the row to run instead is TC-8.
 
 | ID | Scenario | Steps | Expected Result | Pass/Fail | Notes |
 |----|----------|-------|-----------------|-----------|-------|
-| DL-1 | Editor follows the phone | Set the phone to one of the thirteen languages, start the app | Menus, the Command Palette and settings descriptions are in that language | | |
+| DL-1 | Editor follows the phone | Set the phone to one of the thirteen languages, start the app | Menus, the Command Palette and settings descriptions are in that language, VSCodroid's own commands included | | |
 | DL-2 | App screens follow it too | Same run, watch setup and the toolchain picker | Progress steps, the picker and its buttons are in that language | | |
 | DL-3 | An unsupported language | Set the phone to one with no bundle, for example Vietnamese | Interface is English throughout, nothing half translated and no error | | |
 | DL-4 | Per-app language | Android 13+, Settings, Apps, VSCodroid, Language, pick one | Both the app screens and the editor come back in it | | |
+| DL-5 | The walkthrough and the VSCodroid commands | Same run, open Get Started, then the Command Palette and type `VSCodroid` | Walkthrough heading, subtitle and all four step titles in that language with the buttons still present; the VSCodroid commands show translated labels with the English original beside each, and typing the English name still finds them | | |
+| DL-6 | First launch after an upgrade | Install the previous release, set the app to that language, then `adb install -r` the new build without clearing data and relaunch through SplashActivity | Translated on the FIRST launch. English on the first and translated on the second means the extension scan cache was not invalidated | | |
 
 ## Summary
 
@@ -247,17 +255,17 @@ first launch of a build that has this line, so the row to run instead is TC-8.
 | Device Matrix | 4 | | | |
 | Android Versions | 4 | | | |
 | Keyboard Input | 21 | | | |
-| Screen & Orientation | 8 | | | |
-| Editor Operations | 12 | | | |
+| Screen & Orientation | 9 | | | |
+| Editor Operations | 14 | | | |
 | Extensions | 6 | | | |
 | Background/Foreground | 8 | | | |
 | Low Memory & Stress | 4 | | | |
 | Performance | 10 | | | |
 | Toolchains | 7 | | | |
 | Terminal & Tools | 11 | | | |
-| SAF & Files | 13 | | | |
-| Display Language | 4 | | | |
-| **Total** | **112** | | | |
+| SAF & Files | 16 | | | |
+| Display Language | 6 | | | |
+| **Total** | **120** | | | |
 
 **Overall Result**: [ ] PASS / [ ] FAIL
 

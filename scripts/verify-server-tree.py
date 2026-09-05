@@ -25,6 +25,11 @@ MACHINES = {0x3E: "x86-64", AARCH64: "aarch64", 0x28: "arm", 0xF3: "riscv"}
 REQUIRED = [
     "out/server-main.js",
     "product.json",
+    # The only debug adapter this build ships, and the user guide names it. It
+    # arrives from the gulp build rather than from anything in this repository,
+    # so an upstream task-set change could drop it with nothing here having
+    # changed and nothing noticing until a user pressed Run.
+    "extensions/ms-vscode.js-debug/src/extension.js",
     # Moved in 1.133: @vscode/ripgrep became @vscode/ripgrep-universal, which
     # ships one binary per platform instead of one per install.
     "node_modules/@vscode/ripgrep-universal/bin/linux-arm64/rg",
@@ -364,6 +369,35 @@ def main(tree):
         check('aria-label="Manage"' not in css,
               "workbench.css does not hide Accounts/Manage",
               "built from a ref that predates the 2026-08-15 un-hide")
+
+    # js-debug spawns its watchdog and its wait-for-debugger probe with an
+    # environment that replaces the parent's, and on this platform the two
+    # variables added by patch-js-debug-env.py are what lets either one start at
+    # all: without a PATH the bare name `node` resolves to nothing, and without
+    # LD_LIBRARY_PATH the binary it would have found cannot link. Neither failure
+    # says anything. The spawn is stdio-ignored and unref'd, so what a user sees
+    # is a debug session that starts, shows its toolbar, and never runs their
+    # program.
+    #
+    # Counted rather than merely found: there are two such spawns and a build
+    # that patched one of them is a debugger that attaches and then hangs at the
+    # first breakpoint, which reads as a different bug entirely.
+    boot = tree / "extensions/ms-vscode.js-debug/src/bootloader.js"
+    sites = None
+    try:
+        if boot.exists():
+            sites = boot.read_text(errors="replace").count(
+                "LD_LIBRARY_PATH:process.env.LD_LIBRARY_PATH")
+        else:
+            check(False, "extensions/ms-vscode.js-debug/src/bootloader.js exists",
+                  "the only debug adapter this build ships is missing")
+    except OSError as e:
+        check(False, "the js-debug bootloader is readable", str(e))
+    if sites is not None:
+        check(sites == 2,
+              "js-debug helpers keep PATH and LD_LIBRARY_PATH",
+              f"{sites} of 2 spawn sites carry them; run "
+              "scripts/patch-js-debug-env.py, which the build calls")
 
     # Everything below asserts an effect of a patch or of a build-vscode-oss.sh
     # stage, so all of it is answered by one prior question: was this tree built
