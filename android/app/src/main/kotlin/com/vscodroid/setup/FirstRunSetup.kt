@@ -904,7 +904,15 @@ class FirstRunSetup(
         val present = libDir.listFiles()?.map { it.name } ?: emptyList()
         for (name in supersededPythonEntries(present, runtime)) {
             Logger.i(tag, "Removing superseded Python $name")
-            File(libDir, name).deleteRecursively()
+            // [StorageManager.deleteRecursive] and not File.deleteRecursively,
+            // which asks isDirectory and listFiles and so walks through a
+            // symbolic link to whatever it points at. The directory being
+            // removed here is site-packages, which is where a person parks
+            // `ln -s ~/projects/mylib` to work on a package while they use it,
+            // so following one empties their project on the way past. The
+            // helper unlinks a link and never descends it, for the same reason
+            // the cache reclaim uses it.
+            StorageManager.deleteRecursive(File(libDir, name))
         }
 
         if (!File(libDir, runtime).exists()) {
@@ -1607,6 +1615,14 @@ class FirstRunSetup(
                 additions.append(claudeBashFunction())
                 added += "claude"
             }
+            // Its own guard, for the reason the claude block states: every
+            // install that predates this already carries npm() and claude(), so
+            // sharing either guard would skip pip on exactly the devices that
+            // need it added.
+            if (!content.contains("pip()")) {
+                additions.append(pipBashFunctions())
+                added += "pip/pip3"
+            }
             // One rewrite through a temporary file rather than an append per
             // block. A guard that reads a string its own block opens with
             // certifies a partial append: `claude()` is there, its body is not,
@@ -1990,7 +2006,8 @@ class FirstRunSetup(
      */
     fun createBashEnvFile() {
         val envFile = File(Environment.getBashEnvPath(context))
-        val content = BASH_ENV_HEADER + npmBashFunctions() + claudeBashFunction() + """
+        val content = BASH_ENV_HEADER + npmBashFunctions() + claudeBashFunction() +
+            pipBashFunctions() + """
 
 # On-demand toolchain env vars (Go, Ruby, Java, etc.)
 [ -f "${'$'}HOME/.vscodroid/toolchain-env.sh" ] && . "${'$'}HOME/.vscodroid/toolchain-env.sh"
@@ -2189,6 +2206,33 @@ __vscodroid_symlink_note() {
     echo "vscodroid: so npm cannot create node_modules/.bin here. Move the project to" >&2
     echo "vscodroid: internal storage and open it there:  mv \"${'$'}PWD\" ~/" >&2
 }
+"""
+
+    /**
+     * `pip` and `pip3` in the terminal, which the Get Started walkthrough promises.
+     *
+     * pip is installed and works; it simply has no name on PATH. It ships as a
+     * package inside site-packages rather than as a program, and the console
+     * script that would carry the name is a text file with a `#!` line, which
+     * SELinux will not execute from filesDir. So the walkthrough said "Python +
+     * pip: ready" and the first thing a person typed answered
+     * `bash: pip: command not found`, on an interpreter that would have run the
+     * same command perfectly as `python3 -m pip`.
+     *
+     * A function for the same reason npm is one, and with the same ceiling: it
+     * reaches a bash shell and not a `"type": "process"` task, which is why the
+     * walkthrough and the guide name the module form beside it.
+     *
+     * `python3` and not `python`, because [setupToolSymlinks] guarantees the
+     * first and the second is only conventionally the same thing.
+     */
+    private fun pipBashFunctions(): String = """
+
+# pip/pip3: shell functions. pip is installed as a library, not as a program:
+# its console script is a #! text file under filesDir, which SELinux refuses to
+# execute. The module form is the same pip and always has been.
+pip() { python3 -m pip "${'$'}@"; }
+pip3() { python3 -m pip "${'$'}@"; }
 """
 
     /**
@@ -3184,6 +3228,29 @@ claude() {
                 put("metadata", JSONObject().apply {
                     put("installedTimestamp", System.currentTimeMillis())
                     put("source", "bundled")
+                    // Our own four are the app, not extensions a user chose, and
+                    // without this the workbench offers to uninstall them: its
+                    // Uninstall action disables itself only for a builtin
+                    // (`if(this.extension.isBuiltin){this.enabled=!1;return}` in
+                    // workbench.js), and the server derives that from what is
+                    // written here (`isBuiltin:e.isBuiltin||!!e.metadata?.isBuiltin`
+                    // in server-main.js).
+                    //
+                    // Removing one is not recoverable from inside the editor.
+                    // Uninstalling the bridge takes with it the only route to the
+                    // device folder picker, the toolchain screen and the storage
+                    // tools; no gallery publishes `vscodroid.*`, so the Extensions
+                    // view cannot offer it back. The directory returns on the next
+                    // app update, because [bundledDirsToExtract] exempts this prefix
+                    // from the "the user removed it, leave it removed" rule, but
+                    // [bundledIdsToRelist] declines an id [rememberBundledIds] has
+                    // already recorded, so it sits there unlisted and unloaded.
+                    //
+                    // Relisting instead would be the wrong half to fix: that rule
+                    // exists so a downloaded extension a user deliberately removed
+                    // does not come back on every update. This keeps that promise
+                    // and takes ours out of the argument entirely.
+                    if (dirName.startsWith(OWN_EXTENSION_PREFIX)) put("isBuiltin", true)
                 })
             }
         } catch (e: Exception) {

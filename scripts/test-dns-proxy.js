@@ -26,6 +26,39 @@ const { start } = require(PROXY);
 const logLines = [];
 const log = (level, message) => logLines.push(`${level}: ${message}`);
 
+/**
+ * The server name a ClientHello carries, or null when it carries none.
+ *
+ * Read off the wire rather than asked of Node, because what has to hold is what
+ * the origin is told: the value decides which certificate is presented and which
+ * name the handshake validates against. Walks the fixed-width prologue (record
+ * and handshake headers, version, random), then the three variable-length fields
+ * before the extension list, then the list itself for extension type 0. Returns
+ * null rather than throwing on anything unexpected, so a malformed capture reads
+ * as "no name" at the assertion instead of as a crash in the harness.
+ */
+function serverNameIn(buf) {
+    try {
+        let p = 5 + 4 + 2 + 32;
+        p += 1 + buf[p];
+        p += 2 + buf.readUInt16BE(p);
+        p += 1 + buf[p];
+        const end = p + 2 + buf.readUInt16BE(p);
+        p += 2;
+        while (p < end) {
+            const type = buf.readUInt16BE(p);
+            const length = buf.readUInt16BE(p + 2);
+            // 0 is server_name; skip its list header and the one entry's own
+            // type and length to reach the host itself.
+            if (type === 0) return buf.subarray(p + 9, p + 4 + length).toString('latin1');
+            p += 4 + length;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
 /** Listens and resolves with the bound port. */
 function listen(server) {
     return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
@@ -268,6 +301,82 @@ async function main() {
     assert.ok(
         !('proxy-connection' in hopSeen),
         'the proxy forwarded Proxy-Connection upstream: ' + JSON.stringify(hopSeen),
+    );
+
+    // --- the forwarding leg has to honour the scheme it was given ---------
+    //
+    // Asserted at the wire rather than against a TLS origin, which would need a
+    // certificate this harness has no way to mint. What the origin sees is
+    // enough to tell the two apart with no ambiguity: a TLS client opens with a
+    // handshake record, 0x16 then the 0x03 of its version, and a plain client
+    // opens with the method. So a recorder that keeps the first bytes and then
+    // hangs up answers the only question that matters, which is what the proxy
+    // decided to speak.
+    //
+    // The bug this pins: the leg called http.request for every absolute URI and
+    // defaulted the port to 80, so an https:// request went out in cleartext
+    // carrying any Authorization header the client had set. It answered 200
+    // through a plaintext origin, which is why nothing caught it; against a real
+    // origin it surfaced only as GitHub's 301 back to TLS.
+    const firstBytes = [];
+    const recorder = net.createServer((socket) => {
+        socket.once('data', (chunk) => {
+            firstBytes.push(chunk);
+            socket.destroy();
+        });
+        socket.on('error', () => {});
+    });
+    const recorderPort = await listen(recorder);
+
+    const overTls = await proxiedGet(proxyPort, `https://127.0.0.1:${recorderPort}/`, goodCredentials);
+    assert.strictEqual(firstBytes.length, 1, 'an https:// request never reached the origin');
+    assert.ok(
+        firstBytes[0][0] === 0x16 && firstBytes[0][1] === 0x03,
+        'an https:// request was forwarded in cleartext: the origin\'s first bytes were ' +
+            JSON.stringify(firstBytes[0].subarray(0, 16).toString('latin1')),
+    );
+    // The recorder cannot complete a handshake, so the leg must fail closed
+    // through the existing upstream error path rather than throwing, which in
+    // this process would take the editor server with it.
+    assert.strictEqual(overTls.status, 502, `a failed TLS handshake did not become a 502: ${overTls.status}`);
+
+    // The other half of the same decision: http:// must still be plain, or the
+    // fix for the above would have broken every ordinary forward.
+    firstBytes.length = 0;
+    await proxiedGet(proxyPort, `http://127.0.0.1:${recorderPort}/`, goodCredentials);
+    assert.strictEqual(firstBytes.length, 1, 'an http:// request never reached the origin');
+    assert.ok(
+        firstBytes[0].subarray(0, 4).toString('latin1') === 'GET ',
+        'an http:// request was not forwarded as plain HTTP: ' +
+            JSON.stringify(firstBytes[0].subarray(0, 16).toString('latin1')),
+    );
+
+    // A scheme this proxy cannot speak is refused rather than guessed at.
+    // Forwarding it as HTTP is how https came to be downgraded in the first
+    // place, so the branch fails instead of picking a default.
+    firstBytes.length = 0;
+    const unknownScheme = await proxiedGet(proxyPort, `ftp://127.0.0.1:${recorderPort}/`, goodCredentials);
+    assert.strictEqual(unknownScheme.status, 400, 'an unsupported scheme was not refused');
+    assert.strictEqual(firstBytes.length, 0, 'an unsupported scheme was dialled anyway');
+
+    // And the name the origin is checked against comes from the URI, not from
+    // the client. Node takes SNI off the OUTGOING Host header, so forwarding the
+    // client's verbatim let it name the certificate the origin would be
+    // validated for: measured before this was fixed, a Host of `evil.example`
+    // put that name in the ClientHello for a socket dialled at 127.0.0.1, and
+    // the `IP:port` Host that http.request generates for an absolute URI sent no
+    // server name at all, which an SNI-keyed origin answers with the wrong
+    // certificate or with nothing.
+    firstBytes.length = 0;
+    await rawExchange(
+        proxyPort,
+        `GET https://localhost:${recorderPort}/ HTTP/1.1\r\nHost: evil.example\r\n` +
+            `Proxy-Authorization: Basic ${Buffer.from(goodCredentials).toString('base64')}\r\n\r\n`,
+    );
+    assert.strictEqual(firstBytes.length, 1, 'the named https origin was never dialled');
+    assert.strictEqual(
+        serverNameIn(firstBytes[0]), 'localhost',
+        'the client\'s Host header decided which certificate the origin is checked against',
     );
 
     // --- CONNECT ----------------------------------------------------------
@@ -625,6 +734,31 @@ async function main() {
         /^HTTP\/1\.1 407 /,
         `an unauthenticated ws:// upgrade was tunnelled: ${anonymousUpgrade}`,
     );
+
+    // The scheme rule reaches this leg too, and it was the one left out of it.
+    // An https:// upgrade used to be dialled on 443 and then written in the
+    // clear, taking any Authorization header in the request head with it, and
+    // wss:// fell to port 80 for the same reason. Asserted at the recorder,
+    // where a byte reaching the origin at all is the failure.
+    for (const scheme of ['https', 'wss']) {
+        firstBytes.length = 0;
+        const refused = await rawExchange(
+            proxyPort,
+            `GET ${scheme}://127.0.0.1:${recorderPort}/socket HTTP/1.1\r\n` +
+                `Host: 127.0.0.1:${recorderPort}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+                `Authorization: Bearer not-for-the-wire\r\n` +
+                `Proxy-Authorization: Basic ${Buffer.from(goodCredentials).toString('base64')}\r\n\r\n`,
+        );
+        assert.match(
+            refused, /^HTTP\/1\.1 400 /,
+            `a ${scheme}:// upgrade was not refused: ${refused}`,
+        );
+        assert.strictEqual(
+            firstBytes.length, 0,
+            `a ${scheme}:// upgrade reached the origin in the clear: ` +
+                JSON.stringify(firstBytes.map((b) => b.subarray(0, 40).toString('latin1'))),
+        );
+    }
     wsOrigin.close();
 
     // --- a flood of unauthenticated sockets is bounded --------------------
@@ -861,11 +995,13 @@ async function main() {
     echo.close();
     mute.close();
     gapped.close();
+    recorder.close();
     console.log(
-        `ok -- ws:// relayed, ${FLOOD} unauthenticated sockets bounded and the cap given back ` +
-            `within ${2 * SWEEP_MS + SHORT_MS} ms, a silent origin dropped at ${SHORT_MS} ms on ` +
-            `the plain and the upgrade leg alike, a ${GAP_MS} ms gap survived in a body and in a ` +
-            `tunnel, ${logLines.length} log line(s), none carrying a token`,
+        `ok -- https:// forwarded as TLS and http:// as plain on the same leg, an unsupported ` +
+            `scheme refused before the dial, ws:// relayed, ${FLOOD} unauthenticated sockets ` +
+            `bounded and the cap given back within ${2 * SWEEP_MS + SHORT_MS} ms, a silent origin ` +
+            `dropped at ${SHORT_MS} ms on the plain and the upgrade leg alike, a ${GAP_MS} ms gap ` +
+            `survived in a body and in a tunnel, ${logLines.length} log line(s), none carrying a token`,
     );
 }
 

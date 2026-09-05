@@ -18,9 +18,14 @@
  *
  * Both proxy shapes are implemented because HTTPS_PROXY is exported to the whole
  * server process, and VS Code's own proxy resolver reads it too: CONNECT for
- * TLS, plain forwarding for anything still on http. Node's own http/https
- * modules ignore these variables, so extension code written against them is
- * unaffected either way.
+ * TLS, and forwarding for a request that arrives as an absolute URI. Node's own
+ * http/https modules ignore these variables, but that is a statement about
+ * Node's modules and not about extension code, which is the mistake this
+ * paragraph used to make: a library that reads the environment itself, needle
+ * for one, forwards an absolute https URI over the plain leg rather than
+ * opening a tunnel. So the forwarding leg carries TLS traffic in practice and
+ * has to honour the scheme it was given. See the branch that picks between
+ * http.request and https.request below for what it cost when it did not.
  *
  * The listener lives inside the editor server, not inside the bootstrap that
  * forks it, and that is a correctness requirement rather than a preference. The
@@ -52,6 +57,7 @@
  */
 
 const http = require('http');
+const https = require('https');
 const net = require('net');
 const crypto = require('crypto');
 const { URL } = require('url');
@@ -271,17 +277,72 @@ function start(log) {
                 res.writeHead(400).end();
                 return;
             }
-            const upstream = http.request(
+            // Two schemes and no fallback. Anything else reaching the branch
+            // below would be dialled as plain HTTP on port 80 under a scheme
+            // that promised something different, which is the failure this leg
+            // spent its whole life having for https.
+            if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+                res.writeHead(400).end();
+                return;
+            }
+
+            // The scheme picks the module and the default port. Getting that
+            // wrong was not merely a broken request: this leg called
+            // http.request for every absolute URI and defaulted the port to 80,
+            // so an https:// request left the device in cleartext on port 80,
+            // carrying whatever Authorization header the client had put on it.
+            //
+            // It read as a functional bug rather than a confidentiality one
+            // because the origin answers instead of failing. GitHub replies 301
+            // with a Location identical to the request URL, its ordinary
+            // redirect to TLS, so a client that does not follow redirects
+            // (needle, which several extensions bundle) sees a 301 with an
+            // empty body and reports the site as broken.
+            //
+            // Only clients that forward an absolute https URI over this leg
+            // were affected, which is why it survived: a TLS client normally
+            // arrives by CONNECT. The ones that do not are the libraries that
+            // read HTTPS_PROXY out of the environment themselves, and this
+            // process exports it to the whole editor server and every terminal.
+            //
+            // servername is deliberately not passed, and the Host header below
+            // is what makes that safe. Node does not take SNI from `host`: its
+            // agent reads the OUTGOING Host header, strips the port, answers
+            // with nothing when that value is an IP literal, and only falls
+            // back to `host` when there is no Host header at all. Setting
+            // servername by hand is not the way out either, because passing an
+            // IP literal there fails the handshake outright.
+            const secure = target.protocol === 'https:';
+            const upstream = (secure ? https : http).request(
                 {
                     // Brackets off, or an IPv6 literal reaches DNS as text.
                     // The CONNECT leg below has always done this; this leg
                     // never did, so http://[::1]:8080/ came back 502 with
                     // ENOTFOUND naming an address rather than a name.
                     host: bareHost(target.hostname),
-                    port: target.port || 80,
+                    port: target.port || (secure ? 443 : 80),
                     method: req.method,
                     path: target.pathname + target.search,
-                    headers: req.headers,
+                    // Host follows the absolute URI and never the client's own
+                    // header. RFC 9110 requires a proxy to prefer the
+                    // request-target's authority, and here that is not
+                    // bookkeeping: the header decides SNI and therefore which
+                    // certificate the origin is checked against. Forwarded
+                    // verbatim it is whatever the client wrote, and the shape
+                    // `http.request` produces when it is handed an absolute URI
+                    // as its path is the proxy's own address, which is an IP
+                    // literal, which means no server name is sent at all.
+                    // Measured on the bundled runtime by reading the record off
+                    // the wire: Host `evil.example` put that name in the
+                    // ClientHello for a socket dialled at 127.0.0.1, and an
+                    // `IP:port` Host produced no server_name extension. An
+                    // origin that keys its certificate on SNI, which
+                    // raw.githubusercontent.com does, answers the second with
+                    // the wrong certificate or with nothing.
+                    //
+                    // target.host carries the port only when it is not the
+                    // scheme's default, which is what a Host header should say.
+                    headers: { ...req.headers, host: target.host },
                 },
                 (upstreamRes) => {
                     // The origin has answered, so the setup bound below is done
@@ -476,7 +537,26 @@ function start(log) {
                 closeWith(clientSocket, 'HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
                 return;
             }
-            const port = Number(target.port) || (target.protocol === 'https:' ? 443 : 80);
+            // The same rule the plain leg keeps, and this leg was left out of it.
+            // It spliced raw bytes to whatever the URI named while reading the
+            // scheme for one thing only, the default port: an https:// upgrade
+            // was dialled on 443 and then written in the clear, so a request
+            // head carrying an Authorization header or a cookie left the device
+            // unencrypted on the port that promised TLS, and every other scheme,
+            // wss:// included, fell to 80 and was dialled as plain HTTP.
+            //
+            // Refused rather than tunnelled, because this leg has no TLS in it
+            // and adding some would be a second implementation of what CONNECT
+            // already does properly; a client that wants TLS through a proxy
+            // opens a tunnel. ws: is allowed beside http: because it means the
+            // same plaintext upgrade and is what a websocket client may put in
+            // the request line; a proxied browser sends http: there, which is
+            // what the case in scripts/test-dns-proxy.js does.
+            if (target.protocol !== 'http:' && target.protocol !== 'ws:') {
+                closeWith(clientSocket, 'HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+                return;
+            }
+            const port = Number(target.port) || 80;
             upstream = net.connect(port, bareHost(target.hostname), () => {
                 const lines = [`${req.method} ${target.pathname}${target.search} HTTP/1.1`];
                 for (let i = 0; i < req.rawHeaders.length; i += 2) {
