@@ -78,7 +78,8 @@ concurrency:
 jobs:
   build-release:
     name: Build Release
-    if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+    # secrets.* cannot be used in a job-level if (GitHub rejects the workflow).
+    # The keystore gate lives in the first step below instead.
     runs-on: ubuntu-latest
     # Two Gradle release builds plus ~360 MB of toolchain downloads. Raised
     # before the first tag rather than after one times out at 90%.
@@ -100,6 +101,15 @@ jobs:
           # stores it is deliberately not named here: it has moved between major
           # versions, and this setting is right whatever the location is.
           persist-credentials: false
+
+      - name: Require the release keystore secret
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "${KEYSTORE_BASE64}" ]; then
+            echo "::error::KEYSTORE_BASE64 is empty; signed release builds need the keystore secret."
+            exit 1
+          fi
 
       # A tag that does not name the version it builds makes every later question
       # about what a device is running unanswerable: the tag is the only durable
