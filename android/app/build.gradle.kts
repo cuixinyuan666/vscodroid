@@ -330,6 +330,10 @@ android {
             // OpenCode 1.17.9. Measured on 1.2.1-debug: 141_823_216 bytes in
             // jniLibs became 97_428_896 on device, overlay 0.
             keepDebugSymbols.add("**/libopencode.so")
+            // Same overlay/debug trap as libopencode.so: AGP strip cut this
+            // from 9_905_129 bytes to 3_156_864 on 1.2.2-debug, and Bun then
+            // extracted the unstripped ELF from its own image into TMPDIR.
+            keepDebugSymbols.add("**/libopentui.so")
         }
     }
 

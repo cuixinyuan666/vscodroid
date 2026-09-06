@@ -1361,6 +1361,10 @@ class FirstRunSetup(
         val home = File(context.filesDir, "home")
         File(home, ".opencode/tmp").mkdirs()
         File(home, ".cache/opencode/tmp").mkdirs()
+        File(home, ".cache").mkdirs()
+        File(home, ".local/share").mkdirs()
+        File(home, ".local/state").mkdirs()
+        File(home, ".config").mkdirs()
     }
 
     /**
@@ -1640,7 +1644,12 @@ class FirstRunSetup(
                 additions.append(pipBashFunctions())
                 added += "pip/pip3"
             }
-            if (!content.contains("opencode()")) {
+            // [opencodeBlockMarker], not `opencode()`, for the same reason
+            // [npmBlockMarker] is not `npm()`: every install that already ran
+            // OpenCode matches `opencode()`, so that guard froze the 1.2.2
+            // body that dies on Bionic heap tagging and leaves the pane
+            // dumping `64;NaN;NaNM`.
+            if (!content.contains(opencodeBlockMarker)) {
                 additions.append(opencodeBashFunction())
                 added += "opencode"
             }
@@ -2183,6 +2192,15 @@ class FirstRunSetup(
      */
     private val npmBlockMarker = "__vscodroid_symlink_note()"
 
+    /**
+     * The marker [createNpmWrappers] guards the OpenCode block on.
+     *
+     * `opencode()` cannot be: an install that already has the 1.2.2 wrapper
+     * matches it, so the heap-tagging / OpenTUI / winsize body would never
+     * reach the devices that print `64;NaN;NaNM` after the CLI aborts.
+     */
+    private val opencodeBlockMarker = "__vscodroid_opencode_v2"
+
     private fun npmBashFunctions(): String = """
 
 # npm/npx: shell functions (SELinux blocks exec of scripts under filesDir)
@@ -2263,20 +2281,41 @@ pip3() { python3 -m pip "${'$'}@"; }
      * the bare name cannot see. usr/bin/opencode is a symlink onto it, so an
      * extension that spawn()s the name still starts it. The function exists for
      * the shell: it puts libtmpfix.so into LD_PRELOAD so Bun's leftover /tmp
-     * opens land in HOME instead of in a directory the app cannot write.
+     * opens land in HOME instead of in a directory the app cannot write, and so
+     * OpenTUI dlopens the nativeLibraryDir copy rather than a Bun extract under
+     * filesDir (which untrusted_app cannot map executable).
      */
     private fun opencodeBashFunction(): String = """
 
 # opencode: bundled CLI. The file is libopencode.so; this function is what a
-# bash task finds, and it preloads the /tmp rewrite. Safe to source twice.
+# bash task finds, and it preloads the /tmp rewrite plus the OpenTUI dlopen
+# redirect. Safe to source twice.
+# __vscodroid_opencode_v2
 opencode() {
     local bin="${'$'}{VSCODROID_NATIVE_LIB_DIR}/libopencode.so"
     [ -x "${'$'}bin" ] || return 127
+    mkdir -p "${'$'}HOME/.opencode/tmp" "${'$'}HOME/.cache" "${'$'}HOME/.local/share" "${'$'}HOME/.local/state" "${'$'}HOME/.config" 2>/dev/null || true
+    export ANDROID_ROOT="${'$'}{ANDROID_ROOT:-/system}"
+    export TMPDIR="${'$'}HOME/.opencode/tmp"
+    export TEMP="${'$'}TMPDIR"
+    export TMP="${'$'}TMPDIR"
+    export BUN_TMPDIR="${'$'}TMPDIR"
+    export XDG_CACHE_HOME="${'$'}{XDG_CACHE_HOME:-${'$'}HOME/.cache}"
+    export XDG_DATA_HOME="${'$'}{XDG_DATA_HOME:-${'$'}HOME/.local/share}"
+    export XDG_STATE_HOME="${'$'}{XDG_STATE_HOME:-${'$'}HOME/.local/state}"
+    export XDG_CONFIG_HOME="${'$'}{XDG_CONFIG_HOME:-${'$'}HOME/.config}"
+    export OPENCODE_DISABLE_TUI_AUDIO=1
+    export OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER=true
+    export OPENTUI_LIB_PATH="${'$'}{VSCODROID_NATIVE_LIB_DIR}/libopentui.so"
+    export TERM="${'$'}{TERM:-xterm-256color}"
+    export COLUMNS="${'$'}{COLUMNS:-80}"
+    export LINES="${'$'}{LINES:-24}"
+    stty cols 80 rows 24 2>/dev/null || true
     local preload="${'$'}{VSCODROID_NATIVE_LIB_DIR}/libtmpfix.so"
     if [ -n "${'$'}{LD_PRELOAD-}" ]; then
         preload="${'$'}preload:${'$'}LD_PRELOAD"
     fi
-    LD_PRELOAD="${'$'}preload" TMPDIR="${'$'}HOME/.opencode/tmp" "${'$'}bin" "${'$'}@"
+    LD_PRELOAD="${'$'}preload" "${'$'}bin" "${'$'}@"
 }
 """
 
@@ -4793,9 +4832,21 @@ internal fun writeAtomically(
                 return false
             }
             if (!tmp.renameTo(dest)) {
-                onError?.invoke("could not move ${tmp.name} onto ${dest.name}")
-                tmp.delete()
-                return false
+                // File.renameTo refuses to replace an existing dest on Windows;
+                // POSIX rename(2) replaces. The unit-test host is the only
+                // Windows this function ever sees -- the app itself runs on
+                // Android, where the rename above succeeds.
+                val replacedOnWindows = System.getProperty("os.name")
+                    .orEmpty()
+                    .startsWith("Windows") &&
+                    dest.exists() &&
+                    dest.delete() &&
+                    tmp.renameTo(dest)
+                if (!replacedOnWindows) {
+                    onError?.invoke("could not move ${tmp.name} onto ${dest.name}")
+                    tmp.delete()
+                    return false
+                }
             }
             return true
         }

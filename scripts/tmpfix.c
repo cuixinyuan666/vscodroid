@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <malloc.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,13 +10,27 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include <android/dlext.h>
+
 /*
  * LD_PRELOAD helper for the bundled OpenCode CLI.
  *
- * Bun still opens /tmp for a few paths even after the JS graph is pointed at
- * HOME. Android's /tmp is not writable to an unprivileged app, so those opens
- * fail and the CLI dies. Rewrite /tmp/... to $TMPDIR/... when TMPDIR is set.
- * When it is not, leave the path alone rather than guessing an app id.
+ * Three jobs, all measured on device:
+ *
+ *   1. Bun still opens /tmp for a few paths even after the JS graph is pointed
+ *      at HOME. Android's /tmp is not writable to an unprivileged app, so those
+ *      opens fail and the CLI dies. Rewrite /tmp/... to $TMPDIR/... when
+ *      TMPDIR is set.
+ *
+ *   2. OpenTUI's renderer is a real .so. Bun still dlopens the copy it extracted
+ *      from /$bunfs/ into $TMPDIR/.*.so (~9.7 MiB ELF). That path is app data,
+ *      which untrusted_app cannot map executable. OPENTUI_LIB_PATH names the
+ *      copy in nativeLibraryDir, which is executable. Redirect those dlopens.
+ *
+ *   3. Bun/JSC NaN-boxes by zeroing the top pointer byte. Bionic software TBI
+ *      tags that byte, and free() aborts with "Pointer tag ... was truncated".
+ *      The original Guysoft wrapper preloaded libtagfix.so for this; do the
+ *      same mallopt here, in this process, before JSC touches the heap.
  */
 
 static const char *rewrite(const char *path, char *buf, size_t n) {
@@ -30,6 +45,37 @@ static const char *rewrite(const char *path, char *buf, size_t n) {
     if ((size_t)snprintf(buf, n, "%.*s%s", (int)blen, base, rest) >= n)
         return path;
     return buf;
+}
+
+__attribute__((constructor(101)))
+static void disable_heap_tagging(void) {
+    mallopt(M_BIONIC_SET_HEAP_TAGGING_LEVEL, M_HEAP_TAGGING_LEVEL_NONE);
+}
+
+static int looks_like_opentui(const char *path) {
+    if (!path || !path[0]) return 0;
+    if (strstr(path, "libopentui") || strstr(path, "opentui-") || strstr(path, "/$bunfs/"))
+        return 1;
+    const char *tmp = getenv("TMPDIR");
+    if (!tmp || !tmp[0]) return 0;
+    size_t n = strlen(tmp);
+    while (n && tmp[n - 1] == '/') n--;
+    if (strncmp(path, tmp, n) != 0) return 0;
+    if (path[n] != '/' && path[n] != '\0') return 0;
+    if (!strstr(path, ".so")) return 0;
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+    /* Guysoft's Android OpenTUI ELF is 9795128 bytes before the 110KB overlay.
+       Anything in that band is the renderer, not the 5.5MB sidecar extracts. */
+    return st.st_size >= 8000000 && st.st_size <= 12000000;
+}
+
+static const char *rewrite_dl(const char *path) {
+    const char *want = getenv("OPENTUI_LIB_PATH");
+    if (!want || !want[0] || !path) return path;
+    if (strcmp(path, want) == 0) return path;
+    if (!looks_like_opentui(path)) return path;
+    return want;
 }
 
 int mkdir(const char *path, mode_t mode) {
@@ -144,4 +190,22 @@ int rmdir(const char *path) {
     if (!real) real = (fn)dlsym(RTLD_NEXT, "rmdir");
     if (!real) return (int)syscall(__NR_unlinkat, AT_FDCWD, path, AT_REMOVEDIR);
     return real(path);
+}
+
+void *dlopen(const char *path, int flags) {
+    path = rewrite_dl(path);
+    typedef void *(*fn)(const char *, int);
+    static fn real;
+    if (!real) real = (fn)dlsym(RTLD_NEXT, "dlopen");
+    if (!real) return NULL;
+    return real(path, flags);
+}
+
+void *android_dlopen_ext(const char *path, int flags, const android_dlextinfo *info) {
+    path = rewrite_dl(path);
+    typedef void *(*fn)(const char *, int, const android_dlextinfo *);
+    static fn real;
+    if (!real) real = (fn)dlsym(RTLD_NEXT, "android_dlopen_ext");
+    if (!real) return NULL;
+    return real(path, flags, info);
 }

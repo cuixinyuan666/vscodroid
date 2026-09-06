@@ -337,6 +337,17 @@ jobs:
             exit 1
           fi
           echo "libopencode.so $liboc_size bytes"
+          libot=android/app/src/main/jniLibs/arm64-v8a/libopentui.so
+          if [ ! -f "$libot" ]; then
+            echo "::error::$libot is missing; OpenCode's TUI cannot load the renderer."
+            exit 1
+          fi
+          libot_size="$(wc -c < "$libot")"
+          if [ "$libot_size" -lt 8000000 ]; then
+            echo "::error::libopentui.so is $libot_size bytes -- AGP strip cut the Android OpenTUI ELF."
+            exit 1
+          fi
+          echo "libopentui.so $libot_size bytes"
 
       # Reads the packaged jniLibs, so it belongs here rather than with the
       # source-only checks: the directory is empty until the download scripts
@@ -377,14 +388,23 @@ jobs:
           with zipfile.ZipFile(apks[0]) as z:
               info = z.getinfo("lib/arm64-v8a/libopencode.so")
               size = info.file_size
-          print(f"lib/arm64-v8a/libopencode.so {size} bytes uncompressed")
-          if size < 120_000_000:
-              print(
-                  f"::error::packaged libopencode.so is {size} bytes; "
-                  "AGP strip dropped the Bun overlay and the CLI is vanilla Bun.",
-                  file=sys.stderr,
-              )
-              sys.exit(1)
+              print(f"lib/arm64-v8a/libopencode.so {size} bytes uncompressed")
+              if size < 120_000_000:
+                  print(
+                      f"::error::packaged libopencode.so is {size} bytes; "
+                      "AGP strip dropped the Bun overlay and the CLI is vanilla Bun.",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+              ot = z.getinfo("lib/arm64-v8a/libopentui.so")
+              print(f"lib/arm64-v8a/libopentui.so {ot.file_size} bytes uncompressed")
+              if ot.file_size < 8_000_000:
+                  print(
+                      f"::error::packaged libopentui.so is {ot.file_size} bytes; "
+                      "AGP strip cut the Android OpenTUI ELF.",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
           PY
 
       - name: Upload debug APK

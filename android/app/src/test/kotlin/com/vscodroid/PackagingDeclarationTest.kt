@@ -74,6 +74,12 @@ class PackagingDeclarationTest {
                 "makes it OpenCode lives after the ELF, and strip drops it, so " +
                 "the installed file is vanilla Bun."
         )
+        assertTrue(
+            packaging.contains("keepDebugSymbols.add(\"**/libopentui.so\")"),
+            "libopentui.so is stripped after packaging. AGP then cuts the " +
+                "Android OpenTUI ELF from ~9.9 MiB to ~3 MiB, and Bun extracts " +
+                "the unstripped copy from its image into TMPDIR instead."
+        )
     }
 
     /**

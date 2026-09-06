@@ -13,8 +13,9 @@ set -euo pipefail
 # The ~141 MiB binary is not in git (GitHub's file limit is 100 MiB). It is
 # published as the opencode-payload release of this fork and checked here by
 # sha256. The JS graph inside it is already patched: tmp and cache live under
-# HOME, and OpenTUI is loaded from $OPENTUI_LIB_PATH. Do not strip this file:
-# the compiled app is an overlay after the ELF, and AGP strip drops it.
+# HOME, and OpenTUI is loaded from $OPENTUI_LIB_PATH. Do not strip this file
+# or libopentui.so: the compiled app is an overlay after the ELF, and AGP
+# strip drops it.
 #
 # OPENCODE_PAYLOAD_URL overrides the download. OPENCODE_PAYLOAD_FILE points at
 # a zip you already have, which is how a machine without network can still

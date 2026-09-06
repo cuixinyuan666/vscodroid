@@ -95,8 +95,12 @@ class NonInteractiveShellEnvTest {
         FirstRunSetup(context).createBashEnvFile()
 
         val named = Environment.buildProcessEnvironment(context, 1234)["BASH_ENV"]
-        assertEquals(bashEnvFile().path, named, "BASH_ENV does not name the generated file")
-        assertTrue(File(named!!).isFile, "BASH_ENV names a path nothing writes")
+        assertEquals(
+            bashEnvFile().canonicalFile,
+            File(named!!).canonicalFile,
+            "BASH_ENV does not name the generated file",
+        )
+        assertTrue(File(named).isFile, "BASH_ENV names a path nothing writes")
     }
 
     @Test
@@ -115,6 +119,29 @@ class NonInteractiveShellEnvTest {
             written.contains("toolchain-env.sh"),
             "an installed toolchain stays invisible to everything that is not a terminal",
         )
+        val oc = written.substringAfter("opencode()", "").substringBefore("\n}")
+        assertTrue(oc.contains("libtmpfix.so"), "opencode must preload tmpfix")
+        assertTrue(oc.contains("OPENTUI_LIB_PATH"), "opencode must point OpenTUI at nativeLibraryDir")
+        assertTrue(oc.contains("BUN_TMPDIR"), "opencode must set BUN_TMPDIR so Bun does not use /tmp")
+        assertTrue(oc.contains("stty cols 80"), "OpenTUI SIGSEGVs on a ~30-column pane without a winsize")
+        assertTrue(
+            written.contains("__vscodroid_opencode_v2"),
+            "the version marker is what lets an existing .bashrc receive this body",
+        )
+    }
+
+    @Test
+    fun `the server env points OpenCode at a writable tmp and an executable OpenTUI`() {
+        val env = Environment.buildProcessEnvironment(context, 1234)
+        val native = context.applicationInfo.nativeLibraryDir
+        assertEquals("$native/libopentui.so", env["OPENTUI_LIB_PATH"])
+        assertEquals("1", env["OPENCODE_DISABLE_TUI_AUDIO"])
+        assertEquals("true", env["OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER"])
+        assertEquals(env["TMPDIR"], env["BUN_TMPDIR"])
+        assertEquals(env["TMPDIR"], env["TEMP"])
+        assertEquals(env["TMPDIR"], env["TMP"])
+        assertEquals("${context.filesDir.absolutePath}/home/.cache", env["XDG_CACHE_HOME"])
+        assertEquals("/system", env["ANDROID_ROOT"])
     }
 
     /**

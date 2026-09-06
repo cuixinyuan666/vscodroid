@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- OpenCode no longer dies on launch and leaves the terminal printing `64;NaN;NaNM`. Bun/JSC NaN-boxes pointers, Bionic heap tagging aborted the process, and an existing `.bashrc` kept the old wrapper that never disabled it.
+
 ## [1.2.2] - 2026-09-06
 
 ### Fixed

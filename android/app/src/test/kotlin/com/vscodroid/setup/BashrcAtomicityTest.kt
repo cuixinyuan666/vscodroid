@@ -294,6 +294,42 @@ class BashrcAtomicityTest {
         assertTrue(written.contains("alias ll="), "the append lost what was already there")
     }
 
+    /**
+     * The 1.2.2 wrapper matches `opencode()`, so that string cannot be the
+     * guard: every install that already ran OpenCode keeps the body that
+     * preloads tmpfix and then dies. Measured on device: Bionic
+     * aborts with "Pointer tag ... was truncated" because Bun/JSC NaN-boxes
+     * by zeroing the top pointer byte, the TUI never paints, and the pane is
+     * left in mouse-tracking so every subsequent touch dumps
+     * `64;NaN;NaNM` as text.
+     *
+     * Two definitions of `opencode` afterwards, same trade as the npm block:
+     * bash takes the last, and appending is the only way to change a file the
+     * user is free to edit.
+     */
+    @Test
+    fun `an install that already has the old opencode wrapper still gets the current block`() {
+        bundleNpm()
+        bashrc.appendText(
+            "\nopencode() { LD_PRELOAD=\"${'$'}preload\" TMPDIR=\"${'$'}HOME/.opencode/tmp\" \"${'$'}bin\" \"${'$'}@\"; }\n",
+        )
+
+        FirstRunSetup(context).createNpmWrappers()
+
+        val written = bashrc.readText()
+        assertTrue(
+            written.contains("__vscodroid_opencode_v2"),
+            "an install with the 1.2.2 opencode wrapper never receives the " +
+                "heap-tagging / OpenTUI / winsize fix",
+        )
+        assertTrue(
+            written.indexOf("TMPDIR=\"${'$'}HOME/.opencode/tmp\"") <
+                written.lastIndexOf("__vscodroid_opencode_v2"),
+            "the current definition does not come last, so the older one is what bash runs",
+        )
+        assertTrue(written.contains("alias ll="), "the append lost what was already there")
+    }
+
     /** Once it is there, a second launch must not append it again. */
     @Test
     fun `the block is not appended twice`() {
