@@ -6,8 +6,10 @@
   "command.open": "VSCodroid: Kai 열기",
   "command.startSingle": "VSCodroid: OpenCode 시작 (Kai 단일)",
   "command.startWar": "VSCodroid: Kai 전쟁 모드 시작",
+  "command.importApiKeys": "VSCodroid: Kai API 키 가져오기",
   "config.autoStartOpenCode": "Kai 단일 모드를 열 때 포함된 OpenCode CLI를 자동으로 시작",
   "config.zenModel": "단일 모드에서 사용할 OpenCode Zen 무료 모델",
+  "config.freeLlmApiBaseUrl": "FreeLLMAPI OpenAI 호환 기본 URL(기본값 http://127.0.0.1:3001/v1)",
   "command.openInEditor": "VSCodroid: 편집기에서 Kai 열기",
   "command.openFullscreen": "VSCodroid: Kai 전체 화면으로 열기",
   "command.openInSidebar": "VSCodroid: 사이드바에서 Kai 열기"

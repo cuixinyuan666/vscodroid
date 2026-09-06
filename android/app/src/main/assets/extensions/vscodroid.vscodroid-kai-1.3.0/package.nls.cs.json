@@ -6,8 +6,10 @@
   "command.open": "VSCodroid: Otevrit Kai",
   "command.startSingle": "VSCodroid: Spustit OpenCode (Kai jediny)",
   "command.startWar": "VSCodroid: Spustit valecny rezim Kai",
+  "command.importApiKeys": "VSCodroid: Importovat API klice Kai",
   "config.autoStartOpenCode": "Pri otevreni jedineho rezimu Kai automaticky spustit dodane OpenCode CLI",
   "config.zenModel": "Bezplatny model OpenCode Zen pouzivany v jedinem rezimu",
+  "config.freeLlmApiBaseUrl": "Zakladni URL FreeLLMAPI kompatibilni s OpenAI (vychozi http://127.0.0.1:3001/v1)",
   "command.openInEditor": "VSCodroid: Otevřít Kai v editoru",
   "command.openFullscreen": "VSCodroid: Otevřít Kai na celou obrazovku",
   "command.openInSidebar": "VSCodroid: Otevřít Kai v postranním panelu"

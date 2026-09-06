@@ -6,8 +6,10 @@
   "command.open": "VSCodroid: Abrir Kai",
   "command.startSingle": "VSCodroid: Iniciar OpenCode (Kai unico)",
   "command.startWar": "VSCodroid: Iniciar modo guerra do Kai",
+  "command.importApiKeys": "VSCodroid: Importar chaves de API do Kai",
   "config.autoStartOpenCode": "Iniciar automaticamente a CLI do OpenCode inclusa ao abrir o modo unico do Kai",
   "config.zenModel": "Modelo gratuito OpenCode Zen usado no modo unico",
+  "config.freeLlmApiBaseUrl": "URL base FreeLLMAPI compativel com OpenAI (padrao http://127.0.0.1:3001/v1)",
   "command.openInEditor": "VSCodroid: Abrir Kai no editor",
   "command.openFullscreen": "VSCodroid: Abrir Kai em tela cheia",
   "command.openInSidebar": "VSCodroid: Abrir Kai na barra lateral"
