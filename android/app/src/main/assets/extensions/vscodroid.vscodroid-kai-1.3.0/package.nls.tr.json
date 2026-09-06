@@ -1,0 +1,14 @@
+{
+  "displayName": "VSCodroid Kai",
+  "description": "Tek mod, paketli OpenCode'u baslatir. Savas modu anahtarsiz modelleri paralel calistirir. Isbirligi modu dahil degildir.",
+  "viewContainer.title": "Kai",
+  "view.name": "Kai",
+  "command.open": "VSCodroid: Kai'yi ac",
+  "command.startSingle": "VSCodroid: OpenCode'u baslat (Kai tek)",
+  "command.startWar": "VSCodroid: Kai savas modunu baslat",
+  "config.autoStartOpenCode": "Kai tek modu acildiginda paketli OpenCode CLI'yi otomatik baslat",
+  "config.zenModel": "Tek modda kullanilan ucretsiz OpenCode Zen modeli",
+  "command.openInEditor": "VSCodroid: Kai'yi düzenleyicide aç",
+  "command.openFullscreen": "VSCodroid: Kai'yi tam ekran aç",
+  "command.openInSidebar": "VSCodroid: Kai'yi kenar çubuğunda aç"
+}

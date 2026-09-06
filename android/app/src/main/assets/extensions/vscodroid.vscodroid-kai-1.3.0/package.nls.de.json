@@ -1,0 +1,14 @@
+{
+  "displayName": "VSCodroid Kai",
+  "description": "Einzelmodus startet das mitgelieferte OpenCode. Kriegsmodus laesst schluessellose Modelle parallel laufen. Kooperationsmodus ist nicht enthalten.",
+  "viewContainer.title": "Kai",
+  "view.name": "Kai",
+  "command.open": "VSCodroid: Kai oeffnen",
+  "command.startSingle": "VSCodroid: OpenCode starten (Kai Einzelmodus)",
+  "command.startWar": "VSCodroid: Kai Kriegsmodus starten",
+  "config.autoStartOpenCode": "Das mitgelieferte OpenCode-CLI automatisch starten, wenn der Kai-Einzelmodus geoeffnet wird",
+  "config.zenModel": "Kostenloses OpenCode-Zen-Modell fuer den Einzelmodus",
+  "command.openInEditor": "VSCodroid: Kai im Editor öffnen",
+  "command.openFullscreen": "VSCodroid: Kai im Vollbild öffnen",
+  "command.openInSidebar": "VSCodroid: Kai in der Seitenleiste öffnen"
+}

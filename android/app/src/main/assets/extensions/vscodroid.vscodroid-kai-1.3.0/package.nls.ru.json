@@ -1,0 +1,14 @@
+{
+  "displayName": "VSCodroid Kai",
+  "description": "Одиночный режим запускает встроенный OpenCode. Режим войны параллельно вызывает модели без ключа. Режим сотрудничества не включен.",
+  "viewContainer.title": "Kai",
+  "view.name": "Kai",
+  "command.open": "VSCodroid: Открыть Kai",
+  "command.startSingle": "VSCodroid: Запустить OpenCode (одиночный Kai)",
+  "command.startWar": "VSCodroid: Запустить режим войны Kai",
+  "config.autoStartOpenCode": "Автоматически запускать встроенный OpenCode CLI при открытии одиночного режима Kai",
+  "config.zenModel": "Бесплатная модель OpenCode Zen для одиночного режима",
+  "command.openInEditor": "VSCodroid: Открыть Kai в редакторе",
+  "command.openFullscreen": "VSCodroid: Открыть Kai на весь экран",
+  "command.openInSidebar": "VSCodroid: Открыть Kai в боковой панели"
+}

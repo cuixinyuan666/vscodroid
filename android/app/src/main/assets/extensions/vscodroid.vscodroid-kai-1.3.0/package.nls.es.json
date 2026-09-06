@@ -1,0 +1,14 @@
+{
+  "displayName": "VSCodroid Kai",
+  "description": "El modo unico inicia OpenCode incluido. El modo guerra ejecuta modelos sin clave en paralelo. El modo colaboracion no esta incluido.",
+  "viewContainer.title": "Kai",
+  "view.name": "Kai",
+  "command.open": "VSCodroid: Abrir Kai",
+  "command.startSingle": "VSCodroid: Iniciar OpenCode (Kai unico)",
+  "command.startWar": "VSCodroid: Iniciar modo guerra de Kai",
+  "config.autoStartOpenCode": "Iniciar automaticamente la CLI de OpenCode incluida al abrir el modo unico de Kai",
+  "config.zenModel": "Modelo gratuito OpenCode Zen usado en el modo unico",
+  "command.openInEditor": "VSCodroid: Abrir Kai en el editor",
+  "command.openFullscreen": "VSCodroid: Abrir Kai a pantalla completa",
+  "command.openInSidebar": "VSCodroid: Abrir Kai en la barra lateral"
+}

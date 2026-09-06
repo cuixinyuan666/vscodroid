@@ -1,0 +1,14 @@
+{
+  "displayName": "VSCodroid Kai",
+  "description": "單一模式啟動內建的 OpenCode。戰爭模式並行呼叫免金鑰模型。不含協作模式。",
+  "viewContainer.title": "Kai",
+  "view.name": "Kai",
+  "command.open": "VSCodroid: 開啟 Kai",
+  "command.startSingle": "VSCodroid: 啟動 OpenCode（Kai 單一模式）",
+  "command.startWar": "VSCodroid: 啟動 Kai 戰爭模式",
+  "config.autoStartOpenCode": "開啟 Kai 單一模式時自動啟動內建的 OpenCode CLI",
+  "config.zenModel": "單一模式使用的 OpenCode Zen 免費模型",
+  "command.openInEditor": "VSCodroid: 在編輯器開啟 Kai",
+  "command.openFullscreen": "VSCodroid: 全螢幕開啟 Kai",
+  "command.openInSidebar": "VSCodroid: 在側欄開啟 Kai"
+}

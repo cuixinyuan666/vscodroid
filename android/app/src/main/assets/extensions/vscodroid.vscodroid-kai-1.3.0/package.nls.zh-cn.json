@@ -1,0 +1,16 @@
+{
+  "displayName": "VSCodroid Kai",
+  "description": "单一模式可在面板内直接发消息（OpenCode/FreeLLMAPI/NVIDIA）。战争模式并行调用多模型。",
+  "viewContainer.title": "Kai",
+  "view.name": "Kai",
+  "command.open": "VSCodroid: 打开 Kai",
+  "command.startSingle": "VSCodroid: 启动 OpenCode（Kai 单一模式）",
+  "command.startWar": "VSCodroid: 启动 Kai 战争模式",
+  "command.importApiKeys": "VSCodroid: 导入 Kai API 密钥",
+  "config.autoStartOpenCode": "打开 Kai 单一模式时自动启动 OpenCode CLI",
+  "config.zenModel": "写入 OpenCode 配置时使用的 Zen 免费模型",
+  "config.freeLlmApiBaseUrl": "FreeLLMAPI OpenAI 兼容 Base URL（默认 http://127.0.0.1:3001/v1）",
+  "command.openInEditor": "VSCodroid: 在编辑器打开 Kai",
+  "command.openFullscreen": "VSCodroid: 全屏打开 Kai",
+  "command.openInSidebar": "VSCodroid: 在侧栏打开 Kai"
+}

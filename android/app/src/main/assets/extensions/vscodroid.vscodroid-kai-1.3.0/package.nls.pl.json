@@ -1,0 +1,14 @@
+{
+  "displayName": "VSCodroid Kai",
+  "description": "Tryb pojedynczy uruchamia dolaczony OpenCode. Tryb wojny uruchamia modele bez klucza rownolegle. Tryb wspolpracy nie jest dolaczony.",
+  "viewContainer.title": "Kai",
+  "view.name": "Kai",
+  "command.open": "VSCodroid: Otworz Kai",
+  "command.startSingle": "VSCodroid: Uruchom OpenCode (Kai pojedynczy)",
+  "command.startWar": "VSCodroid: Uruchom tryb wojny Kai",
+  "config.autoStartOpenCode": "Automatycznie uruchom dolaczone OpenCode CLI po otwarciu trybu pojedynczego Kai",
+  "config.zenModel": "Darmowy model OpenCode Zen uzywany w trybie pojedynczym",
+  "command.openInEditor": "VSCodroid: Otwórz Kai w edytorze",
+  "command.openFullscreen": "VSCodroid: Otwórz Kai na pełnym ekranie",
+  "command.openInSidebar": "VSCodroid: Otwórz Kai w pasku bocznym"
+}

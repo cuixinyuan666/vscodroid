@@ -271,6 +271,26 @@ class BundledExtractionSplitTest {
     }
 
     @Test
+    fun `a newer own extension directory is missing until overlay setup runs`() {
+        val oldKai = "vscodroid.vscodroid-kai-1.2.0"
+        val newKai = "vscodroid.vscodroid-kai-1.3.0"
+        assertTrue(
+            ownBundledExtensionDirsMissing(
+                present = listOf(oldKai, ourWelcome),
+                bundled = listOf(newKai, ourWelcome),
+            ),
+            "kai-1.3.0 is in the APK and kai-1.2.0 is on disk, so overlay install must unpack",
+        )
+        assertTrue(
+            !ownBundledExtensionDirsMissing(
+                present = listOf(newKai, ourWelcome),
+                bundled = listOf(newKai, ourWelcome),
+            ),
+            "once the current own directory is on disk, the overlay check is quiet",
+        )
+    }
+
+    @Test
     fun `a publisher whose name merely begins the same way is not retired`() {
         // The match is the id, or the id followed by a hyphen -- never a bare
         // prefix, which would also claim a different extension.

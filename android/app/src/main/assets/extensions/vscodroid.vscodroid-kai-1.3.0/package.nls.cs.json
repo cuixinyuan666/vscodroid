@@ -1,0 +1,14 @@
+{
+  "displayName": "VSCodroid Kai",
+  "description": "Jediny rezim spusti dodany OpenCode. Valezny rezim spousti bezklicove modely soubezne. Spolupracovni rezim neni obsazen.",
+  "viewContainer.title": "Kai",
+  "view.name": "Kai",
+  "command.open": "VSCodroid: Otevrit Kai",
+  "command.startSingle": "VSCodroid: Spustit OpenCode (Kai jediny)",
+  "command.startWar": "VSCodroid: Spustit valecny rezim Kai",
+  "config.autoStartOpenCode": "Pri otevreni jedineho rezimu Kai automaticky spustit dodane OpenCode CLI",
+  "config.zenModel": "Bezplatny model OpenCode Zen pouzivany v jedinem rezimu",
+  "command.openInEditor": "VSCodroid: Otevřít Kai v editoru",
+  "command.openFullscreen": "VSCodroid: Otevřít Kai na celou obrazovku",
+  "command.openInSidebar": "VSCodroid: Otevřít Kai v postranním panelu"
+}

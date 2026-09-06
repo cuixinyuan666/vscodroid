@@ -1,0 +1,16 @@
+{
+  "displayName": "VSCodroid Kai",
+  "description": "Single mode chats in-panel (OpenCode/FreeLLMAPI/NVIDIA). War mode runs models in parallel.",
+  "viewContainer.title": "Kai",
+  "view.name": "Kai",
+  "command.open": "VSCodroid: Open Kai",
+  "command.startSingle": "VSCodroid: Start OpenCode (Kai Single)",
+  "command.startWar": "VSCodroid: Start Kai War Mode",
+  "command.importApiKeys": "VSCodroid: Import Kai API Keys",
+  "config.autoStartOpenCode": "Automatically start the OpenCode CLI when Kai single mode opens",
+  "config.zenModel": "OpenCode Zen free model used when writing OpenCode config",
+  "config.freeLlmApiBaseUrl": "FreeLLMAPI OpenAI-compatible base URL (default http://127.0.0.1:3001/v1)",
+  "command.openInEditor": "VSCodroid: Open Kai in Editor",
+  "command.openFullscreen": "VSCodroid: Open Kai Fullscreen",
+  "command.openInSidebar": "VSCodroid: Open Kai in Sidebar"
+}

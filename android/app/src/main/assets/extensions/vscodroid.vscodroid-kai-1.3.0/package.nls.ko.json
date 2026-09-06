@@ -1,0 +1,14 @@
+{
+  "displayName": "VSCodroid Kai",
+  "description": "단일 모드는 포함된 OpenCode를 시작합니다. 전쟁 모드는 키 없는 모델을 병렬로 실행합니다. 협업 모드는 포함되지 않습니다.",
+  "viewContainer.title": "Kai",
+  "view.name": "Kai",
+  "command.open": "VSCodroid: Kai 열기",
+  "command.startSingle": "VSCodroid: OpenCode 시작 (Kai 단일)",
+  "command.startWar": "VSCodroid: Kai 전쟁 모드 시작",
+  "config.autoStartOpenCode": "Kai 단일 모드를 열 때 포함된 OpenCode CLI를 자동으로 시작",
+  "config.zenModel": "단일 모드에서 사용할 OpenCode Zen 무료 모델",
+  "command.openInEditor": "VSCodroid: 편집기에서 Kai 열기",
+  "command.openFullscreen": "VSCodroid: Kai 전체 화면으로 열기",
+  "command.openInSidebar": "VSCodroid: 사이드바에서 Kai 열기"
+}
