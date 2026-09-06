@@ -2087,7 +2087,8 @@ class MainActivity : AppCompatActivity() {
      *
      * Gesture navigation fires [OnBackPressedCallback.handleOnBackStarted] and
      * then [handleOnBackPressed]. Three-button Back only fires the second. The
-     * portrait pager uses the left and right edges to change pages, and this
+     * portrait pager turns pages with a horizontal swipe, including from the
+     * edges, and this
      * phone's system Back is the same gesture, so treating every back as
      * minimise sent the app to the launcher the moment a page was turned.
      *

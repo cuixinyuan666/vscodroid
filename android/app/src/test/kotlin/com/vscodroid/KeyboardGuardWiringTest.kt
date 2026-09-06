@@ -75,13 +75,40 @@ class KeyboardGuardWiringTest {
     }
 
     @Test
-    fun `the portrait pager script is shipped and describes pinch and edge swipe`() {
+    fun `the portrait pager script is shipped and describes pinch and page swipe`() {
         val pager = File("src/main/assets/vscodroid-pager.js")
         assertTrue(pager.isFile, "vscodroid-pager.js is missing from assets")
         val text = pager.readText()
-        for (name in listOf("pinch", "EDGE_PX", "vscodroid-pager", "part.vscodroid-pager-active")) {
+        for (name in listOf(
+            "pinch",
+            "SWIPE_PX",
+            "vscodroid-pager",
+            "part.vscodroid-pager-active",
+            "id: 'kai'",
+            "__vscodroidPager",
+        )) {
             assertTrue(text.contains(name), "pager script no longer mentions `$name`")
         }
+        assertTrue(
+            text.contains("kaiPageAvailable"),
+            "Kai must be a pager page whenever the activity bar has it, not only after a prior click",
+        )
+        assertTrue(
+            text.contains("hidePanelTabStrip"),
+            "panel pager page must drop the terminal tab strip so xterm can fill the screen",
+        )
+        assertTrue(
+            text.contains("overlay: true"),
+            "kai pager page must target the workbench webview overlay directly",
+        )
+        assertTrue(
+            text.contains("webview-overlay-content"),
+            "Kai's webview lives in a workbench overlay, not inside the sidebar part",
+        )
+        assertTrue(
+            !text.contains("EDGE_PX"),
+            "page turns must not be gated on an edge strip",
+        )
     }
 
     /**

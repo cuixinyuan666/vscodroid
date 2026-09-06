@@ -64,7 +64,10 @@ class WebViewFocusTest {
         VSCodroidWebView.configure(webView)
         verify { webView.setOnTouchListener(capture(listener)) }
 
-        val down = mockk<MotionEvent> { every { actionMasked } returns MotionEvent.ACTION_DOWN }
+        val down = mockk<MotionEvent> {
+            every { actionMasked } returns MotionEvent.ACTION_DOWN
+            every { pointerCount } returns 1
+        }
         every { webView.isFocused } returns false
 
         val consumed = listener.captured.onTouch(webView, down)
@@ -79,7 +82,10 @@ class WebViewFocusTest {
         VSCodroidWebView.configure(webView)
         verify { webView.setOnTouchListener(capture(listener)) }
 
-        val down = mockk<MotionEvent> { every { actionMasked } returns MotionEvent.ACTION_DOWN }
+        val down = mockk<MotionEvent> {
+            every { actionMasked } returns MotionEvent.ACTION_DOWN
+            every { pointerCount } returns 1
+        }
         every { webView.isFocused } returns true
 
         val consumed = listener.captured.onTouch(webView, down)
@@ -139,7 +145,10 @@ class WebViewFocusTest {
         VSCodroidWebView.configure(webView)
         verify { webView.setOnTouchListener(capture(listener)) }
 
-        val move = mockk<MotionEvent> { every { actionMasked } returns MotionEvent.ACTION_MOVE }
+        val move = mockk<MotionEvent> {
+            every { actionMasked } returns MotionEvent.ACTION_MOVE
+            every { pointerCount } returns 1
+        }
         every { webView.isFocused } returns false
 
         val consumed = listener.captured.onTouch(webView, move)

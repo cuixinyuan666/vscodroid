@@ -82,6 +82,9 @@ object VSCodroidWebView {
         webView.requestFocus()
         webView.setOnTouchListener { v, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN && !v.isFocused) v.requestFocus()
+            // Two-finger pinch is observed here because Kai's inner webview and
+            // xterm swallow pointer events before the injected pager script.
+            PagerPinch.onTouch(webView, event)
             false
         }
 
@@ -96,5 +99,58 @@ object VSCodroidWebView {
         }
 
         Logger.i(TAG, "WebView configured")
+    }
+}
+
+/**
+ * Portrait-pager pinch, observed on the WebView so a two-finger gesture over
+ * an iframe still reaches us. Does not consume the event.
+ */
+private object PagerPinch {
+    private var span0 = 0f
+    private var armed = false
+
+    fun onTouch(webView: WebView, event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.pointerCount == 2) {
+                    span0 = span(event)
+                    armed = true
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!armed || event.pointerCount < 2) return
+                val density = webView.resources.displayMetrics.density.coerceAtLeast(1f)
+                val needIn = 5f * density
+                val needOut = 24f * density
+                val s = span(event)
+                when {
+                    span0 - s > needIn -> {
+                        fire(webView, "in")
+                        armed = false
+                    }
+                    s - span0 > needOut -> {
+                        fire(webView, "out")
+                        armed = false
+                    }
+                }
+            }
+            MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                armed = false
+        }
+    }
+
+    private fun span(event: MotionEvent): Float {
+        if (event.pointerCount < 2) return 0f
+        val dx = event.getX(0) - event.getX(1)
+        val dy = event.getY(0) - event.getY(1)
+        return kotlin.math.hypot(dx, dy)
+    }
+
+    private fun fire(webView: WebView, dir: String) {
+        webView.evaluateJavascript(
+            "window.__vscodroidPager&&window.__vscodroidPager.nativePinch('$dir')",
+            null,
+        )
     }
 }

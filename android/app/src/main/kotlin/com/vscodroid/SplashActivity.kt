@@ -179,12 +179,37 @@ class SplashActivity : AppCompatActivity() {
             // is two directory listings; the work it gates is 23 MB, so it runs
             // off the main thread and holds this activity open while it does:
             // lifecycleScope is cancelled the moment we finish for MainActivity.
-            if (setup.pythonRuntimeNeedsWork()) {
-                Logger.i(tag, "Bundled Python changed since the last extraction; reconciling")
+            //
+            // Own bundled extensions have the same overlay-install gap: their
+            // directory names move (kai-1.0.0 → kai-1.1.0) while versionCode
+            // does not, so setup never runs and the editor keeps the old copy.
+            val python = setup.pythonRuntimeNeedsWork()
+            val ownExt = setup.ownBundledExtensionsNeedWork()
+            if (python || ownExt) {
+                Logger.i(
+                    tag,
+                    "Bundled tree changed since the last extraction; reconciling" +
+                        (if (python) " python" else "") +
+                        (if (ownExt) " own-extensions" else ""),
+                )
                 showSplashLayout()
-                findViewById<TextView>(R.id.statusText).text = getString(R.string.status_updating_python)
+                findViewById<TextView>(R.id.statusText).text = getString(
+                    if (python && !ownExt) R.string.status_updating_python
+                    else R.string.status_updating_app,
+                )
+                val sink: (String, Int) -> Unit = { message, percent ->
+                    runOnUiThread {
+                        findViewById<TextView>(R.id.statusText).text = message
+                        findViewById<ProgressBar>(R.id.progressBar).progress = percent
+                    }
+                }
+                progressSink = sink
+                setup.onProgress = sink
                 lifecycleScope.launch {
-                    withContext(Dispatchers.IO) { setup.reconcilePythonRuntime() }
+                    withContext(Dispatchers.IO) {
+                        if (python) setup.reconcilePythonRuntime()
+                        if (ownExt) setup.refreshOwnBundledExtensions()
+                    }
                     continueAfterSetup()
                 }
                 return

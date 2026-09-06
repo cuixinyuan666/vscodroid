@@ -532,6 +532,34 @@ attribute but this project's own source.
 
 ---
 
+## Kai (bundled vscodroid-kai extension)
+
+The bundled `vscodroid-kai` extension ports war-mode orchestration, vote/analysis prompts, and the keyless model catalog from [cuixinyuan666/kai](https://github.com/cuixinyuan666/kai), itself a copy of [SimonSchubert/Kai](https://github.com/SimonSchubert/Kai) (Kai 9000).
+
+- **License**: Apache License 2.0
+- **Source**: https://github.com/cuixinyuan666/kai
+- **What was changed**: rewritten in JavaScript for the VS Code extension host; collaboration mode is omitted; the kai9000.com APP-FREE proxy is not called; single mode starts VSCodroid's bundled OpenCode CLI instead of Kai's in-app TUI.
+
+The Apache License 2.0 is available at http://www.apache.org/licenses/LICENSE-2.0.
+
+```
+Copyright the Kai 9000 authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+---
+
 ## Proprietary Redistributed Components
 
 ### @github/copilot (GitHub Copilot CLI)

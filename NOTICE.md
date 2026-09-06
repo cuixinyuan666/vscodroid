@@ -13,6 +13,7 @@ Versions are deliberately not listed unless pinned in this repository: most comp
 | VS Code Language Packs (vscode-loc) | MIT; the generated bundles carry no notice of their own, so the copyright and permission text is in `docs/LEGAL_NOTICES.md` | https://github.com/microsoft/vscode-loc at the commit pinned in `VSCODE_LOC_COMMIT`; `scripts/build-nls-bundles.py` merges its translations into the editor's message array and writes `assets/nls/<locale>.json` |
 | Node.js | MIT | Termux build of `nodejs-lts`, https://github.com/nodejs/node |
 | OpenCode | MIT | Android aarch64 build of https://github.com/sst/opencode (Guysoft packaging), installed as `libopencode.so` by `scripts/fetch-opencode.sh`; OpenTUI helper is `libopentui.so` |
+| Kai (war-mode orchestration and free-tier catalog, ported) | Apache-2.0 | Logic in the bundled `vscodroid-kai` extension, derived from https://github.com/cuixinyuan666/kai (upstream https://github.com/SimonSchubert/Kai). The kai9000.com APP-FREE proxy is not used |
 | npm | Artistic License 2.0 | https://github.com/npm/cli |
 | Python | PSF License | Termux build, https://www.python.org |
 | pip | MIT | Shipped in Python's `site-packages`; its own `LICENSE.txt` and `AUTHORS.txt` travel with it in `pip-*.dist-info/licenses/` |
@@ -187,7 +188,7 @@ The ID column is what `scripts/check-bundled-extensions.py` matches this table
 against the download script's list on, so a bundled extension cannot lose its
 row here and a row cannot outlive the extension it describes.
 
-VSCodroid's own bundled extensions (`vscodroid.*`) are covered by this repository's MIT `LICENSE`.
+VSCodroid's own bundled extensions (`vscodroid.*`) are covered by this repository's MIT `LICENSE`, except the war-mode and free-tier catalog logic in `vscodroid-kai`, which is Apache-2.0 as listed under Core Components.
 
 ## Termux Project
 

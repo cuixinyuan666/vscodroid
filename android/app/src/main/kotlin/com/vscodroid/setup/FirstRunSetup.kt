@@ -973,6 +973,30 @@ class FirstRunSetup(
         return supersededPythonEntries(present, runtime).isNotEmpty()
     }
 
+    /**
+     * Whether a bundled `vscodroid.*` directory in this APK is missing from disk.
+     *
+     * Safe on the main thread: two listings. The copy it gates is not.
+     */
+    fun ownBundledExtensionsNeedWork(): Boolean {
+        val bundled = try {
+            context.assets.list("extensions")?.toList() ?: emptyList()
+        } catch (e: IOException) {
+            Logger.w(tag, "Could not list bundled extensions: ${e.message}")
+            emptyList()
+        }
+        val present = File(context.filesDir, "home/.vscodroid/extensions")
+            .listFiles()
+            ?.filter { it.isDirectory }
+            ?.map { it.name }
+            ?: emptyList()
+        return ownBundledExtensionDirsMissing(present, bundled)
+    }
+
+    fun refreshOwnBundledExtensions() {
+        extractBundledExtensions()
+    }
+
     /** The `libpython3.X.so` this APK carries, or null if it carries none. */
     private fun pythonRuntimeInAssets(): String? =
         try {
@@ -4616,6 +4640,20 @@ internal fun bundledDirsToExtract(
         }
     }
 }
+
+/**
+ * Whether this APK carries a `vscodroid.*` extension directory that is not
+ * on disk yet.
+ *
+ * Overlay-installing a debug APK does not bump [BuildConfig.VERSION_CODE], so
+ * [setupIsStale] stays false and [extractBundledExtensions] never runs. A
+ * versioned own-extension rename then sits in assets while the previous
+ * directory remains what the editor loads.
+ */
+internal fun ownBundledExtensionDirsMissing(
+    present: List<String>,
+    bundled: List<String>,
+): Boolean = bundled.any { it.startsWith(OWN_EXTENSION_PREFIX) && it !in present }
 
 /**
  * The extension identifiers this build bundles, read from the directory names

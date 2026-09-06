@@ -1059,15 +1059,16 @@ flowchart TD
   O --> O2["vscodroid.vscodroid-welcome (Get Started walkthrough)"]
   O --> O3["vscodroid.vscodroid-process-monitor"]
   O --> O4["vscodroid.vscodroid-serve-network (dev-server preview)"]
+  O --> O5["vscodroid.vscodroid-kai (free models, OpenCode, war mode)"]
 ```
 
 ⚠️ **`git ls-files` answers a different question than `ls` here, and the gap is
 deliberate.** `.gitignore` ignores `assets/extensions/*` and un-ignores only
 `vscodroid.vscodroid-*/`, because this project's own extensions are source and the rest
-are downloads. So a worktree shows **four** directories and a built tree shows **nine**:
+are downloads. So a worktree shows **five** directories and a built tree shows **ten**:
 the five Open VSX ones are fetched by `scripts/download-extensions.sh`, whose
 `EXTENSIONS` array is the tracked, authoritative list of what a build pulls. Read that
-array plus the four `vscodroid.*` directories; do not enumerate this set from git.
+array plus the five `vscodroid.*` directories; do not enumerate this set from git.
 
 The version is part of each directory name, and that is load-bearing:
 `extractBundledExtensions` copies a bundled extension only when its directory does not
