@@ -9,11 +9,11 @@
     <string name="quick_save">Salva</string>
     <string name="quick_format">Formatta</string>
     <string name="quick_paste">Incolla</string>
-    <string name="keep_alive_battery_title">Mantieni attivo l&apos;editor</string>
+    <string name="keep_alive_battery_title">Mantieni attivo l\'editor</string>
     <string name="keep_alive_battery_message">Android sospende le app quando lo schermo si spegne, il che ferma il server locale e qualsiasi terminale in esecuzione. Consenti l\'uso della batteria senza restrizioni perché il server resti attivo. Puoi cambiarlo in seguito nelle impostazioni di sistema.</string>
     <string name="keep_alive_allow">Consenti</string>
     <string name="keep_alive_not_now">Non ora</string>
-    <string name="keep_alive_autostart_title">Consenti l&apos;avvio in background</string>
+    <string name="keep_alive_autostart_title">Consenti l\'avvio in background</string>
     <string name="keep_alive_autostart_message">Questo telefono ha un proprio interruttore che impedisce alle app di continuare a funzionare dopo che le hai lasciate. Attivalo per VSCodroid, altrimenti il server verrà chiuso quando esci dall\'app.</string>
     <string name="keep_alive_open_settings">Apri le impostazioni</string>
     <string name="pager_nav_previous">Precedente vista a schermo intero</string>
