@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-10-03
+
+### Fixed
+
+- The extra key row's IME-visibility callback named a label that does not exist, so `compileDebugKotlin` failed and the 1.3.1 through 1.3.3 tags produced no release.
+- The pager, quick-action and keep-alive strings existed only in the default locale, which failed Android Lint with `MissingTranslation` and left a non-English user reading the battery and autostart prompts in English.
+- Apostrophes in the French and Italian prompts are escaped, without which the resource flattener rejected them as an invalid unicode escape.
+
 ## [1.3.3] - 2026-10-02
 
 ### Fixed
