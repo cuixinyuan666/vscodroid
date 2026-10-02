@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="pager_nav_previous">Previous full-screen view</string>
+    <string name="pager_nav_next">Next full-screen view</string>
     <string name="notification_channel_name">VSCodroid Server</string>
     <string name="notification_channel_description">Keeps the local development server running</string>
     <string name="notification_title">VSCodroid is running</string>

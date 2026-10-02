@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
@@ -29,6 +30,7 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ImageButton
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -720,6 +722,7 @@ class MainActivity : AppCompatActivity() {
 
         setupWebView()
         setupExtraKeyRow()
+        setupPagerNav()
         setupBackNavigation()
         requestNotificationPermission()
         startAndBindService()
@@ -2082,15 +2085,37 @@ class MainActivity : AppCompatActivity() {
         extraKeyRow?.setupWithRootView(findViewById(R.id.webViewContainer))
     }
 
+    /** Low-opacity chevrons on the WebView host; portrait full-screen paging only. */
+    private fun setupPagerNav() {
+        findViewById<ImageButton>(R.id.pagerNavLeft).setOnClickListener { firePagerStep(-1) }
+        findViewById<ImageButton>(R.id.pagerNavRight).setOnClickListener { firePagerStep(1) }
+        updatePagerNavVisibility()
+    }
+
+    private fun firePagerStep(delta: Int) {
+        webView?.evaluateJavascript(
+            "window.__vscodroidPager&&window.__vscodroidPager.stepPage($delta)",
+            null,
+        )
+    }
+
+    private fun updatePagerNavVisibility() {
+        val portrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        val vis = if (portrait) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.pagerNavLeft)?.visibility = vis
+        findViewById<View>(R.id.pagerNavRight)?.visibility = vis
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updatePagerNavVisibility()
+    }
+
     /**
      * Three-button Back sends the app to the background. An edge swipe does not.
      *
      * Gesture navigation fires [OnBackPressedCallback.handleOnBackStarted] and
-     * then [handleOnBackPressed]. Three-button Back only fires the second. The
-     * portrait pager turns pages with a horizontal swipe, including from the
-     * edges, and this
-     * phone's system Back is the same gesture, so treating every back as
-     * minimise sent the app to the launcher the moment a page was turned.
+     * then [handleOnBackPressed]. Three-button Back only fires the second.
      *
      * [ViewCompat.setSystemGestureExclusionRects] on the WebView container is
      * the other half: Android still owns a 200 dp strip per edge, but the
@@ -4125,8 +4150,8 @@ class MainActivity : AppCompatActivity() {
         val looping = crashLoopReached(webViewCrashes, SystemClock.elapsedRealtime())
         // Read the open folder off the dying WebView before it goes away
         val lastUrl = wv.url
-        val container = findViewById<android.widget.LinearLayout>(R.id.webViewContainer)
-        container.removeView(wv)
+        val host = findViewById<android.widget.FrameLayout>(R.id.webViewHost)
+        host.removeView(wv)
         // Dropped before the view it wraps is destroyed. The only thing that
         // rebuilds this is initBridge, which is reached from loadVSCode below and
         // therefore only when a port is already bound; a renderer that dies during
@@ -4141,14 +4166,13 @@ class MainActivity : AppCompatActivity() {
         newWebView.id = R.id.webView
         // Weight, not the default wrap_content: the replacement has to claim the
         // height the key row leaves, the same as the one declared in the layout.
-        container.addView(
+        host.addView(
             newWebView,
             0,
-            android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
         )
         webView = newWebView
 

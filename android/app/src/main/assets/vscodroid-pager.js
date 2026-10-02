@@ -6,12 +6,9 @@
     var DOTS_ID = 'vscodroid-pager-dots';
     var PINCH_IN = 8;
     var PINCH_OUT = 32;
-    var SWIPE_PX = 48;
     var pointers = {};
     var pinchStart = 0;
     var pinchActive = false;
-    var swipeStart = null;
-    var usedOptional = {};
     var pages = [];
     var pageIndex = 0;
     var pagerOn = false;
@@ -284,83 +281,16 @@
 
     function revealPageView(page) {
         if (!page) return;
-        if (page.id === 'kai') {
-            if (!isKaiSidebar()) clickActivityAny(['kai']);
-            return;
-        }
-        if (page.id === 'explorer') {
-            if (isKaiSidebar() || !/explorer|资源管理器|檔案總管/.test(sidebarTitle())) {
-                clickActivityAny(['explorer', '资源管理器', '檔案總管']);
-            }
-            return;
-        }
         if (page.view) clickActivityAny([page.view]);
-        if (page.id === 'chat') clickActivityAny(['chat', '聊天']);
         if (page.id === 'panel') ensureTerminalPanel();
-    }
-
-    function activityHas(needle) {
-        var items = document.querySelectorAll('.activitybar .action-label, .activitybar .action-item, .activitybar [aria-label]');
-        var i, t;
-        needle = needle.toLowerCase();
-        for (i = 0; i < items.length; i++) {
-            t = (items[i].getAttribute('aria-label') || items[i].title || items[i].textContent || '').toLowerCase();
-            if (t.indexOf(needle) >= 0) return true;
-        }
-        return false;
-    }
-
-    function sidebarTitle() {
-        var el = document.querySelector('.part.sidebar .composite.title')
-            || document.querySelector('.part.sidebar .pane-header');
-        return ((el && (el.textContent || el.getAttribute('aria-label'))) || '').toLowerCase();
-    }
-
-    function isKaiSidebar() {
-        if (sidebarTitle().indexOf('kai') >= 0) return true;
-        var items = document.querySelectorAll('.activitybar .action-item.checked .action-label, .activitybar .checked .action-label');
-        var i, t;
-        for (i = 0; i < items.length; i++) {
-            t = (items[i].getAttribute('aria-label') || items[i].title || '').toLowerCase();
-            if (t.indexOf('kai') >= 0) return true;
-        }
-        return false;
-    }
-
-    function kaiPageAvailable() {
-        return usedOptional.kai || isKaiSidebar() || activityHas('kai');
-    }
-
-    function partVisible(sel) {
-        var el = document.querySelector(sel);
-        if (!el) return false;
-        var r = el.getBoundingClientRect();
-        return r.width > 24 && r.height > 24;
     }
 
     function rebuildPages() {
         pages = [
-            { id: 'explorer', sel: '.part.sidebar', label: 'Explorer' },
+            { id: 'extensions', sel: '.part.sidebar', label: 'Extensions', view: 'extensions' },
             { id: 'editor', sel: '.part.editor', label: 'Editor' },
             { id: 'panel', sel: '.part.panel', label: 'Terminal' }
         ];
-        if (kaiPageAvailable()) {
-            pages.splice(1, 0, { id: 'kai', sel: '.webview-overlay-content', label: 'Kai', view: 'kai', overlay: true });
-        }
-        if (usedOptional.search || partVisible('.part.sidebar .search-view, .part.sidebar .search-editor')) {
-            pages.splice(kaiPageAvailable() ? 2 : 1, 0, { id: 'search', sel: '.part.sidebar', label: 'Search', view: 'search' });
-        }
-        if (usedOptional.scm || partVisible('.part.sidebar .scm-view')) {
-            pages.splice(pages.length - 1, 0, { id: 'scm', sel: '.part.sidebar', label: 'Git', view: 'scm' });
-        }
-        if (usedOptional.extensions) {
-            pages.splice(pages.length - 1, 0, {
-                id: 'extensions', sel: '.part.sidebar', label: 'Extensions', view: 'extensions'
-            });
-        }
-        if (partVisible('.part.auxiliarybar') || usedOptional.chat) {
-            pages.push({ id: 'chat', sel: '.part.auxiliarybar', label: 'Chat' });
-        }
         if (pageIndex >= pages.length) pageIndex = pages.length - 1;
         if (pageIndex < 0) pageIndex = 0;
     }
@@ -804,26 +734,19 @@
     function startIdFromTarget(target) {
         var n = target;
         while (n && n.classList) {
-            if (n.classList.contains('sidebar')) return isKaiSidebar() ? 'kai' : 'explorer';
+            if (n.classList.contains('sidebar')) return 'extensions';
             if (n.classList.contains('editor') || n.classList.contains('editor-container')) return 'editor';
             if (n.classList.contains('panel')) return 'panel';
-            if (n.classList.contains('auxiliarybar')) return 'chat';
             n = n.parentElement;
         }
-        return isKaiSidebar() ? 'kai' : 'editor';
+        return 'editor';
     }
 
-    function noteActivityClick(target) {
-        var n = target;
-        while (n && n.getAttribute) {
-            var label = (n.getAttribute('aria-label') || n.title || '').toLowerCase();
-            if (label.indexOf('search') >= 0) usedOptional.search = true;
-            if (label.indexOf('source control') >= 0 || label.indexOf('git') >= 0) usedOptional.scm = true;
-            if (label.indexOf('extensions') >= 0) usedOptional.extensions = true;
-            if (label.indexOf('chat') >= 0) usedOptional.chat = true;
-            if (label.indexOf('kai') >= 0) usedOptional.kai = true;
-            n = n.parentElement;
-        }
+    function stepPage(delta) {
+        if (!portrait() || !delta) return false;
+        if (!pagerOn) enterPager(startIdFromTarget(document.activeElement));
+        showPage(pageIndex + delta);
+        return true;
     }
 
     function considerPinch(target) {
@@ -838,23 +761,12 @@
         }
     }
 
-    document.addEventListener('click', function (e) {
-        noteActivityClick(e.target);
-        if (pagerOn) {
-            rebuildPages();
-            paintDots();
-        }
-    }, true);
-
     document.addEventListener('pointerdown', function (e) {
         if (!portrait()) return;
         pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
         if (pointerCount() >= 2) {
             pinchStart = pairDistance();
             pinchActive = true;
-            swipeStart = null;
-        } else if (pointerCount() === 1 && pagerOn) {
-            swipeStart = { x: e.clientX, y: e.clientY };
         }
     }, true);
 
@@ -865,23 +777,13 @@
     }, true);
 
     document.addEventListener('pointerup', function (e) {
-        if (pagerOn && swipeStart && e.pointerId in pointers && pointerCount() === 1) {
-            var dx = e.clientX - swipeStart.x;
-            var dy = e.clientY - swipeStart.y;
-            if (Math.abs(dx) > SWIPE_PX && Math.abs(dx) > Math.abs(dy) * 1.2) {
-                if (dx > 0) showPage(pageIndex - 1);
-                if (dx < 0) showPage(pageIndex + 1);
-            }
-        }
         delete pointers[e.pointerId];
         if (pointerCount() < 2) pinchActive = false;
-        if (pointerCount() === 0) swipeStart = null;
     }, true);
 
     document.addEventListener('pointercancel', function (e) {
         delete pointers[e.pointerId];
         pinchActive = false;
-        swipeStart = null;
     }, true);
 
     window.addEventListener('orientationchange', function () {
@@ -891,11 +793,12 @@
     window.__vscodroidPager = {
         nativePinch: function (dir) {
             if (dir === 'in' && !pagerOn && portrait()) {
-                enterPager(isKaiSidebar() ? 'kai' : 'editor');
+                enterPager(startIdFromTarget(document.activeElement));
             } else if (dir === 'out' && pagerOn) {
                 exitPager();
             }
         },
+        stepPage: stepPage,
         go: function (id) {
             if (!pagerOn) return false;
             rebuildPages();
