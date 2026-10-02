@@ -331,11 +331,37 @@
         return !!(item && item.classList && item.classList.contains('checked'));
     }
 
+    // The label an activity bar item can be named by, in the order that has
+    // actually produced a name on this workbench.
+    //
+    // textContent is not a belt-and-braces addition here, it is the difference
+    // between finding Cline and not: the name is carried on the inner
+    // .action-label's text, while the .action-item wrapper this loop reads
+    // first often has an aria-label that names the category ("Views", or
+    // nothing at all). Reading only the two attributes left `label` empty for
+    // the installed agent, every needle missed, and the fallback below opened
+    // the extension marketplace instead: a chevron press answered with a
+    // catalogue rather than with the chat that was already on screen.
+    //
+    // clickActivity in this same file already reads textContent and queries
+    // .action-label as well, which is why ensureTerminalPanel found its
+    // terminal and this did not find Cline.
+    function itemLabel(node) {
+        var inner = node.querySelector ? node.querySelector('.action-label') : null;
+        return (
+            (node.getAttribute('aria-label') || '') + ' ' +
+            (inner ? (inner.getAttribute('aria-label') || '') : '') + ' ' +
+            (node.title || '') + ' ' +
+            (inner ? (inner.title || '') : '') + ' ' +
+            (inner ? (inner.textContent || '') : (node.textContent || ''))
+        ).toLowerCase();
+    }
+
     function revealAgent() {
         var items = document.querySelectorAll('.activitybar .action-item');
         var i, n, label, clickable, best = null, bestRank = 99;
         for (i = 0; i < items.length; i++) {
-            label = (items[i].getAttribute('aria-label') || items[i].title || '').toLowerCase();
+            label = itemLabel(items[i]);
             var rank = -1;
             for (n = 0; n < AGENT_NEEDLES.length; n++) {
                 if (label.indexOf(AGENT_NEEDLES[n]) >= 0) { rank = n; break; }
@@ -350,6 +376,11 @@
         if (best) {
             // A click on the icon that is already showing toggles the side bar
             // shut. Opening a file used to do that and take this page with it.
+            //
+            // Checked before the click rather than after, and against the
+            // wrapper rather than the inner node: itemChecked walks up to the
+            // .action-item, so passing the already-wrapped `best` is what makes
+            // this a no-op when the agent the user opened is the one we found.
             if (!itemChecked(best)) best.click();
             return true;
         }

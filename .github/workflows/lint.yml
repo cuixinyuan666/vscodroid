@@ -302,6 +302,7 @@ jobs:
           node scripts/test-serve-network.js
           node scripts/test-welcome.js
           node scripts/test-kai.js
+          node scripts/test-pager-agent.js
 
       - name: Run lint
         working-directory: android
