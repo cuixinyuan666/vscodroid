@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="quick_commands">Команды</string>
+    <string name="quick_open">Открыть</string>
+    <string name="quick_find">Найти</string>
+    <string name="quick_undo">Отменить</string>
+    <string name="quick_redo">Повторить</string>
+    <string name="quick_save">Сохранить</string>
+    <string name="quick_format">Форматировать</string>
+    <string name="quick_paste">Вставить</string>
+    <string name="keep_alive_battery_title">Не давать редактору остановиться</string>
+    <string name="keep_alive_battery_message">Android замораживает приложения после выключения экрана, из-за чего останавливаются локальный сервер и любой запущенный терминал. Разрешите неограниченное использование батареи, чтобы сервер продолжал работать. Позже это можно изменить в системных настройках.</string>
+    <string name="keep_alive_allow">Разрешить</string>
+    <string name="keep_alive_not_now">Не сейчас</string>
+    <string name="keep_alive_autostart_title">Разрешить запуск в фоновом режиме</string>
+    <string name="keep_alive_autostart_message">На этом телефоне есть собственный переключатель, который не даёт приложениям работать после того, как вы из них вышли. Включите его для VSCodroid, иначе сервер будет закрыт при выходе из приложения.</string>
+    <string name="keep_alive_open_settings">Открыть настройки</string>
+    <string name="pager_nav_previous">Предыдущий полноэкранный вид</string>
+    <string name="pager_nav_next">Следующий полноэкранный вид</string>
+    <string name="pager_ime_show">Показать клавиатуру</string>
     <string name="notification_channel_name">Сервер VSCodroid</string>
     <string name="notification_channel_description">Поддерживает работу локального сервера разработки</string>
     <string name="notification_title">VSCodroid работает</string>

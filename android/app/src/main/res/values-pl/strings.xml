@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="quick_commands">Polecenia</string>
+    <string name="quick_open">Otwórz</string>
+    <string name="quick_find">Znajdź</string>
+    <string name="quick_undo">Cofnij</string>
+    <string name="quick_redo">Ponów</string>
+    <string name="quick_save">Zapisz</string>
+    <string name="quick_format">Formatuj</string>
+    <string name="quick_paste">Wklej</string>
+    <string name="keep_alive_battery_title">Nie zamykaj edytora</string>
+    <string name="keep_alive_battery_message">Android zamraża aplikacje po wyłączeniu ekranu, co zatrzymuje lokalny serwer i każdy działający terminal. Zezwól na nieograniczone zużycie baterii, aby serwer pozostał włączony. Możesz to zmienić później w ustawieniach systemu.</string>
+    <string name="keep_alive_allow">Zezwól</string>
+    <string name="keep_alive_not_now">Nie teraz</string>
+    <string name="keep_alive_autostart_title">Zezwól na uruchamianie w tle</string>
+    <string name="keep_alive_autostart_message">Ten telefon ma własny przełącznik, który nie pozwala aplikacjom działać po ich opuszczeniu. Włącz go dla VSCodroid, inaczej serwer zostanie zamknięty po wyjściu z aplikacji.</string>
+    <string name="keep_alive_open_settings">Otwórz ustawienia</string>
+    <string name="pager_nav_previous">Poprzedni pełnoekranowy widok</string>
+    <string name="pager_nav_next">Następny pełnoekranowy widok</string>
+    <string name="pager_ime_show">Pokaż klawiaturę</string>
     <string name="notification_channel_name">Serwer VSCodroid</string>
     <string name="notification_channel_description">Utrzymuje działanie lokalnego serwera programistycznego</string>
     <string name="notification_title">VSCodroid działa</string>

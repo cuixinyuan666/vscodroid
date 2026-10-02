@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="pager_nav_previous">上一個全螢幕檢視</string>
+    <string name="pager_nav_next">下一個全螢幕檢視</string>
+    <string name="pager_ime_show">顯示鍵盤</string>
+    <string name="quick_commands">命令</string>
+    <string name="quick_open">開啟</string>
+    <string name="quick_find">尋找</string>
+    <string name="quick_undo">復原</string>
+    <string name="quick_redo">重做</string>
+    <string name="quick_save">儲存</string>
+    <string name="quick_format">格式化</string>
+    <string name="quick_paste">貼上</string>
+    <string name="keep_alive_battery_title">保持編輯器執行</string>
+    <string name="keep_alive_battery_message">Android 會在螢幕關閉後凍結應用程式，因而停止本機伺服器與執行中的終端機。請允許不受限制地使用電池，以維持伺服器執行。之後你可以在系統設定中變更此項。</string>
+    <string name="keep_alive_allow">允許</string>
+    <string name="keep_alive_not_now">暫不</string>
+    <string name="keep_alive_autostart_title">允許在背景啟動</string>
+    <string name="keep_alive_autostart_message">此手機有自己的開關，會在你離開某個應用程式後阻止它繼續執行。請為 VSCodroid 開啟，否則離開應用程式時伺服器會被關閉。</string>
+    <string name="keep_alive_open_settings">開啟設定</string>
     <string name="notification_channel_name">VSCodroid 伺服器</string>
     <string name="notification_channel_description">讓本機開發伺服器持續執行</string>
     <string name="notification_title">VSCodroid 執行中</string>

@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="quick_commands">Příkazy</string>
+    <string name="quick_open">Otevřít</string>
+    <string name="quick_find">Najít</string>
+    <string name="quick_undo">Zpět</string>
+    <string name="quick_redo">Znovu</string>
+    <string name="quick_save">Uložit</string>
+    <string name="quick_format">Formátovat</string>
+    <string name="quick_paste">Vložit</string>
+    <string name="keep_alive_battery_title">Nechat editor běžet</string>
+    <string name="keep_alive_battery_message">Android po vypnutí obrazovky aplikace zmrazuje, čímž zastaví místní server i jakýkoli běžící terminál. Povolte neomezené využití baterie, aby server zůstal v chodu. Později to můžete změnit v systémovém nastavení.</string>
+    <string name="keep_alive_allow">Povolit</string>
+    <string name="keep_alive_not_now">Teď ne</string>
+    <string name="keep_alive_autostart_title">Povolit spuštění na pozadí</string>
+    <string name="keep_alive_autostart_message">Tento telefon má vlastní přepínač, který aplikacím brání běžet poté, co je opustíte. Zapněte jej pro VSCodroid, jinak bude server při opuštění aplikace vypnut.</string>
+    <string name="keep_alive_open_settings">Otevřít nastavení</string>
+    <string name="pager_nav_previous">Předchozí zobrazení na celou obrazovku</string>
+    <string name="pager_nav_next">Další zobrazení na celou obrazovku</string>
+    <string name="pager_ime_show">Zobrazit klávesnici</string>
     <string name="notification_channel_name">Server VSCodroid</string>
     <string name="notification_channel_description">Udržuje spuštěný místní vývojový server</string>
     <string name="notification_title">VSCodroid běží</string>

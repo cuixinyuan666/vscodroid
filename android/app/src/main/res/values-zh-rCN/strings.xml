@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="quick_commands">命令</string>
+    <string name="quick_open">打开</string>
+    <string name="quick_find">查找</string>
+    <string name="quick_undo">撤销</string>
+    <string name="quick_redo">重做</string>
+    <string name="quick_save">保存</string>
+    <string name="quick_format">格式化</string>
+    <string name="quick_paste">粘贴</string>
+    <string name="keep_alive_battery_title">保持编辑器运行</string>
+    <string name="keep_alive_battery_message">Android 会在屏幕关闭后冻结应用，从而停止本地服务器和正在运行的终端。请允许不受限制地使用电池，以保持服务器运行。之后你可以在系统设置中更改此项。</string>
+    <string name="keep_alive_allow">允许</string>
+    <string name="keep_alive_not_now">暂不</string>
+    <string name="keep_alive_autostart_title">允许在后台启动</string>
+    <string name="keep_alive_autostart_message">此手机有一个自己的开关，会在你离开某个应用后阻止它继续运行。请为 VSCodroid 打开它，否则离开应用时服务器会被关闭。</string>
+    <string name="keep_alive_open_settings">打开设置</string>
+    <string name="pager_nav_previous">上一个全屏视图</string>
+    <string name="pager_nav_next">下一个全屏视图</string>
+    <string name="pager_ime_show">显示键盘</string>
     <string name="notification_channel_name">VSCodroid 服务器</string>
     <string name="notification_channel_description">保持本地开发服务器运行</string>
     <string name="notification_title">VSCodroid 正在运行</string>

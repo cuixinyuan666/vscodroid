@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="quick_commands">Komutlar</string>
+    <string name="quick_open">Aç</string>
+    <string name="quick_find">Bul</string>
+    <string name="quick_undo">Geri al</string>
+    <string name="quick_redo">Yinele</string>
+    <string name="quick_save">Kaydet</string>
+    <string name="quick_format">Biçimlendir</string>
+    <string name="quick_paste">Yapıştır</string>
+    <string name="keep_alive_battery_title">Düzenleyiciyi çalışır tut</string>
+    <string name="keep_alive_battery_message">Android, ekran kapandığında uygulamaları askıya alır; bu da yerel sunucuyu ve çalışan her terminali durdurur. Sunucunun açık kalması için pil kullanımına sınırsız izin verin. Bunu daha sonra sistem ayarlarından değiştirebilirsiniz.</string>
+    <string name="keep_alive_allow">İzin ver</string>
+    <string name="keep_alive_not_now">Şimdi değil</string>
+    <string name="keep_alive_autostart_title">Arka planda başlatmaya izin ver</string>
+    <string name="keep_alive_autostart_message">Bu telefonun, uygulamadan çıktığınızda arka planda çalışmalarını engelleyen kendi anahtarı var. VSCodroid için açın, aksi hâlde uygulamadan çıkınca sunucu kapanır.</string>
+    <string name="keep_alive_open_settings">Ayarları aç</string>
+    <string name="pager_nav_previous">Önceki tam ekran görünümü</string>
+    <string name="pager_nav_next">Sonraki tam ekran görünümü</string>
+    <string name="pager_ime_show">Klavyeyi göster</string>
     <string name="notification_channel_name">VSCodroid Sunucusu</string>
     <string name="notification_channel_description">Yerel geliştirme sunucusunu çalışır durumda tutar</string>
     <string name="notification_title">VSCodroid çalışıyor</string>

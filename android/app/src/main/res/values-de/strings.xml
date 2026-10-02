@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="quick_commands">Befehle</string>
+    <string name="quick_open">Öffnen</string>
+    <string name="quick_find">Suchen</string>
+    <string name="quick_undo">Rückgängig</string>
+    <string name="quick_redo">Wiederholen</string>
+    <string name="quick_save">Speichern</string>
+    <string name="quick_format">Formatieren</string>
+    <string name="quick_paste">Einfügen</string>
+    <string name="keep_alive_battery_title">Editor weiterlaufen lassen</string>
+    <string name="keep_alive_battery_message">Android friert Apps ein, sobald der Bildschirm ausgeschaltet wird, wodurch sowohl der lokale Server als auch jedes laufende Terminal stoppt. Erlauben Sie uneingeschränkte Akkunutzung, damit der Server weiterläuft. Sie können das später in den Systemeinstellungen ändern.</string>
+    <string name="keep_alive_allow">Erlauben</string>
+    <string name="keep_alive_not_now">Jetzt nicht</string>
+    <string name="keep_alive_autostart_title">Start im Hintergrund erlauben</string>
+    <string name="keep_alive_autostart_message">Dieses Telefon hat einen eigenen Schalter, der Apps am Laufen hindert, sobald Sie sie verlassen. Schalten Sie ihn für VSCodroid ein, sonst wird der Server beim Verlassen der App beendet.</string>
+    <string name="keep_alive_open_settings">Einstellungen öffnen</string>
+    <string name="pager_nav_previous">Vorige Vollbildansicht</string>
+    <string name="pager_nav_next">Nächste Vollbildansicht</string>
+    <string name="pager_ime_show">Tastatur anzeigen</string>
     <string name="notification_channel_name">VSCodroid Server</string>
     <string name="notification_channel_description">Hält den lokalen Entwicklungsserver am Laufen</string>
     <string name="notification_title">VSCodroid läuft</string>

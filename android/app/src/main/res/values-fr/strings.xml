@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="quick_commands">Commandes</string>
+    <string name="quick_open">Ouvrir</string>
+    <string name="quick_find">Rechercher</string>
+    <string name="quick_undo">Annuler</string>
+    <string name="quick_redo">Rétablir</string>
+    <string name="quick_save">Enregistrer</string>
+    <string name="quick_format">Formater</string>
+    <string name="quick_paste">Coller</string>
+    <string name="keep_alive_battery_title">Garder l'éditeur actif</string>
+    <string name="keep_alive_battery_message">Android met les applications en veille dès que l'écran s'éteint, ce qui arrête le serveur local et tout terminal en cours. Autorisez une utilisation sans restriction de la batterie pour que le serveur reste actif. Vous pourrez le modifier plus tard dans les paramètres du système.</string>
+    <string name="keep_alive_allow">Autoriser</string>
+    <string name="keep_alive_not_now">Pas maintenant</string>
+    <string name="keep_alive_autostart_title">Autoriser le démarrage en arrière-plan</string>
+    <string name="keep_alive_autostart_message">Ce téléphone possède son propre interrupteur qui empêche les applications de continuer de tourner après que vous les avez quittées. Activez-le pour VSCodroid, sinon le serveur sera arrêté lorsque vous quittez l'application.</string>
+    <string name="keep_alive_open_settings">Ouvrir les paramètres</string>
+    <string name="pager_nav_previous">Vue plein écran précédente</string>
+    <string name="pager_nav_next">Vue plein écran suivante</string>
+    <string name="pager_ime_show">Afficher le clavier</string>
     <string name="notification_channel_name">Serveur VSCodroid</string>
     <string name="notification_channel_description">Maintient le serveur de développement local actif</string>
     <string name="notification_title">VSCodroid est en cours d\'exécution</string>

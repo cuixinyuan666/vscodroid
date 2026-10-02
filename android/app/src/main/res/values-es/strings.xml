@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="quick_commands">Comandos</string>
+    <string name="quick_open">Abrir</string>
+    <string name="quick_find">Buscar</string>
+    <string name="quick_undo">Deshacer</string>
+    <string name="quick_redo">Rehacer</string>
+    <string name="quick_save">Guardar</string>
+    <string name="quick_format">Formatear</string>
+    <string name="quick_paste">Pegar</string>
+    <string name="keep_alive_battery_title">Mantener el editor en marcha</string>
+    <string name="keep_alive_battery_message">Android congela las aplicaciones cuando se apaga la pantalla, lo que detiene el servidor local y cualquier terminal en marcha. Permite el uso sin restricciones de la batería para que el servidor siga activo. Puedes cambiarlo más adelante en los ajustes del sistema.</string>
+    <string name="keep_alive_allow">Permitir</string>
+    <string name="keep_alive_not_now">Ahora no</string>
+    <string name="keep_alive_autostart_title">Permitir el inicio en segundo plano</string>
+    <string name="keep_alive_autostart_message">Este teléfono tiene su propio interruptor que impide que las aplicaciones sigan funcionando cuando sales de ellas. Actívalo para VSCodroid o el servidor se cerrará al salir de la app.</string>
+    <string name="keep_alive_open_settings">Abrir ajustes</string>
+    <string name="pager_nav_previous">Anterior vista a pantalla completa</string>
+    <string name="pager_nav_next">Vista a pantalla completa siguiente</string>
+    <string name="pager_ime_show">Mostrar teclado</string>
     <string name="notification_channel_name">Servidor de VSCodroid</string>
     <string name="notification_channel_description">Mantiene en ejecución el servidor de desarrollo local</string>
     <string name="notification_title">VSCodroid está en ejecución</string>

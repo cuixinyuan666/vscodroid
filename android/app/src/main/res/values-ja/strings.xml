@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VSCodroid</string>
+    <string name="quick_commands">コマンド</string>
+    <string name="quick_open">開く</string>
+    <string name="quick_find">検索</string>
+    <string name="quick_undo">元に戻す</string>
+    <string name="quick_redo">やり直す</string>
+    <string name="quick_save">保存</string>
+    <string name="quick_format">フォーマット</string>
+    <string name="quick_paste">貼り付け</string>
+    <string name="keep_alive_battery_title">エディターの実行を維持</string>
+    <string name="keep_alive_battery_message">Android は画面オフ時にアプリを凍結するため、ローカルサーバーと実行中のターミナルが停止します。サーバーを稼働させ続けるには、電池の使用無制限を許可してください。これは後でシステム設定で変更できます。</string>
+    <string name="keep_alive_allow">許可</string>
+    <string name="keep_alive_not_now">後で</string>
+    <string name="keep_alive_autostart_title">バックグラウンドでの起動を許可</string>
+    <string name="keep_alive_autostart_message">この端末には、アプリを切り替えた後にそのアプリが動作下去的ようにするスイッチがあります。VSCodroid にはオンにしてください。オフのままだとアプリを離れたときにサーバーが終了します。</string>
+    <string name="keep_alive_open_settings">設定を開く</string>
+    <string name="pager_nav_previous">前の全画面表示</string>
+    <string name="pager_nav_next">次の全画面表示</string>
+    <string name="pager_ime_show">キーボードを表示</string>
     <string name="notification_channel_name">VSCodroid サーバー</string>
     <string name="notification_channel_description">ローカル開発サーバーの実行を維持します</string>
     <string name="notification_title">VSCodroid を実行中</string>
