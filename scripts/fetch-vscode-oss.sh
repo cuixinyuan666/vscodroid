@@ -40,7 +40,30 @@ VSCODE_VERSION="${VSCODE_VERSION:-$(cat "$ROOT_DIR/VSCODE_VERSION")}"
 # nothing read.
 VSCODE_COMMIT="${VSCODE_COMMIT:-$(cat "$ROOT_DIR/VSCODE_COMMIT")}"
 ARCH="${ARCH:-arm64}"
-REPO="${REPO:-rmyndharis/VSCodroid}"
+# Which repository holds the server-<version> release this fetch reads.
+#
+# It used to be the constant rmyndharis/VSCodroid, the fork this tree descended
+# from, and that was wrong the moment the two diverged: the fork carries a
+# patches/0019-callback-nonce.patch this tree has never held, so every build
+# here downloaded a tree whose manifest named a patch set the checkout could not
+# produce. check-patch-fingerprints.py reported it as
+# `in the build but not in patches/: ['0019-callback-nonce.patch']` and the
+# message blamed patches/ for being newer than the tree, which sent the reading
+# in the opposite direction: patches/ was the side that was right.
+#
+# The repository that builds the tree is the one whose patches/ the tree was
+# built from, so the fetch asks the repository it is running in and only falls
+# back to the fork for someone building this outside any repository at all. An
+# override is kept for a private mirror.
+_default_repo=""
+if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+  _default_repo="$GITHUB_REPOSITORY"
+elif git -C "$ROOT_DIR" remote get-url origin >/dev/null 2>&1; then
+  _default_repo="$(git -C "$ROOT_DIR" remote get-url origin \
+    | sed -E 's#^(https://|git@)##; s#\.git$##; s#^[^/]+[:/]#/#')"
+  _default_repo="${_default_repo#/}"
+fi
+REPO="${REPO:-${_default_repo:-rmyndharis/VSCodroid}}"
 
 TARBALL_NAME="vscode-reh-web-linux-$ARCH-$VSCODE_VERSION.tar.gz"
 TARBALL="$ROOT_DIR/server/$TARBALL_NAME"
