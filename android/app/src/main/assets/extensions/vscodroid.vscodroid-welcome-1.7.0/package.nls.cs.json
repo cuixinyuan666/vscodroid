@@ -13,5 +13,6 @@
   "walkthrough.terminal.title": "Opravdový terminál",
   "walkthrough.terminal.description": "Otevřete plnohodnotný terminál bash, ve kterém máte v PATH každý přibalený nástroj: ``node``, ``python3``, ``git``, ``npm``.\n\n``node -e 'console.log(\"hi\")'`` vypíše ``hi``\n\n``python3 -c 'print(\"hi\")'`` vypíše ``hi``\n\n``git init demo`` vypíše ``Initialized empty Git repository``\n\n[Otevřít terminál](command:workbench.action.terminal.new)",
   "walkthrough.extensions.title": "Rozšiřte si možnosti",
-  "walkthrough.extensions.description": "Instalujte rozšíření z tržiště Open VSX pro podporu jazyků, motivy a nástroje.\n\nRozšíření psaná v JavaScriptu fungují. Těch pár, která s sebou nesou program přeložený pro desktopový Linux, se nainstaluje bez námitek a pak nedělá nic, bez chybové hlášky na obrazovce.\n\n[Procházet rozšíření](command:workbench.view.extensions)"
+  "walkthrough.extensions.description": "Instalujte rozšíření z tržiště Open VSX pro podporu jazyků, motivy a nástroje.\n\nRozšíření psaná v JavaScriptu fungují. Těch pár, která s sebou nesou program přeložený pro desktopový Linux, se nainstaluje bez námitek a pak nedělá nic, bez chybové hlášky na obrazovce.\n\n[Procházet rozšíření](command:workbench.view.extensions)",
+  "command.welcome.updateCline": "VSCodroid: Nainstalovat nebo aktualizovat Cline"
 }

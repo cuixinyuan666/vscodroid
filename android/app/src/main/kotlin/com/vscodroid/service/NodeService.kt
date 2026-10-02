@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -194,10 +195,14 @@ class NodeService : Service() {
                 START_NOT_STICKY
             }
 
-            StartCommand.ALREADY_SERVING -> START_STICKY
+            StartCommand.ALREADY_SERVING -> {
+                holdCpuForServer()
+                START_STICKY
+            }
 
             StartCommand.SERVE -> {
                 isServiceRunning = true
+                holdCpuForServer()
                 launchServer()
                 START_STICKY
             }
@@ -253,6 +258,7 @@ class NodeService : Service() {
         // is how the next reader learns the wrong order.
         serviceScope.cancel()
         processManager.stopServer()
+        releaseServerWakeLock()
         // Deliberately does NOT call [removeNotification]. Reaching here after
         // [shutdown] there is nothing left to remove, and reaching here any other
         // way means the system destroyed a service that was in the terminal state,
@@ -449,6 +455,34 @@ class NodeService : Service() {
      * main thread runs inline, so the notification is taken down and the service
      * is stopped before anything the activity does can re-enter.
      */
+    /**
+     * Keeps the CPU from sleeping for as long as the server the user started is
+     * up. A foreground service alone does not do that: with the screen off the
+     * process stays resident and the CPU still halts, and a terminal or a build
+     * stalls until the screen comes back.
+     *
+     * No timeout. The server's lifetime is the timeout, and [releaseServerWakeLock]
+     * runs from both [shutdown] and [onDestroy]. A timed acquire would drop the
+     * lock in the middle of a long run and recreate the stall this exists to stop.
+     */
+    @SuppressLint("WakelockTimeout")
+    private fun holdCpuForServer() {
+        if (serverWakeLock?.isHeld == true) return
+        val power = getSystemService(PowerManager::class.java) ?: return
+        serverWakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "vscodroid:server").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
+
+    private fun releaseServerWakeLock() {
+        val lock = serverWakeLock ?: return
+        if (lock.isHeld) lock.release()
+        serverWakeLock = null
+    }
+
+    private var serverWakeLock: PowerManager.WakeLock? = null
+
     private fun shutdown() {
         Logger.i(tag, "Stop requested from the notification")
         isServiceRunning = false
@@ -463,6 +497,7 @@ class NodeService : Service() {
         // whatever was left of the previous run's allowance.
         endFailureEpisode()
         processManager.stopServer()
+        releaseServerWakeLock()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         removeNotification()
         stopSelf()
@@ -1131,6 +1166,7 @@ class NodeService : Service() {
      */
     private fun stopServingRecoverably() {
         isServiceRunning = false
+        releaseServerWakeLock()
         // This run is over too, for the same reason [shutdown] says so.
         runId++
         // A fresh budget and a fresh first message for whoever starts it next.

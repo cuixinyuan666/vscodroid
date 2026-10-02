@@ -13,5 +13,6 @@
   "walkthrough.terminal.title": "Un vrai terminal",
   "walkthrough.terminal.description": "Ouvrez un terminal bash complet, avec tous les outils fournis dans le PATH : ``node``, ``python3``, ``git``, ``npm``.\n\n``node -e 'console.log(\"hi\")'`` affiche ``hi``\n\n``python3 -c 'print(\"hi\")'`` affiche ``hi``\n\n``git init demo`` affiche ``Initialized empty Git repository``\n\n[Ouvrir un terminal](command:workbench.action.terminal.new)",
   "walkthrough.extensions.title": "Ajoutez d'autres fonctionnalités",
-  "walkthrough.extensions.description": "Installez des extensions depuis la place de marché Open VSX pour la prise en charge des langages, les thèmes et les outils.\n\nLes extensions écrites en JavaScript fonctionnent. Les rares qui embarquent un programme compilé pour Linux de bureau s'installent sans se plaindre, puis ne font rien, sans aucun message d'erreur à l'écran.\n\n[Parcourir les extensions](command:workbench.view.extensions)"
+  "walkthrough.extensions.description": "Installez des extensions depuis la place de marché Open VSX pour la prise en charge des langages, les thèmes et les outils.\n\nLes extensions écrites en JavaScript fonctionnent. Les rares qui embarquent un programme compilé pour Linux de bureau s'installent sans se plaindre, puis ne font rien, sans aucun message d'erreur à l'écran.\n\n[Parcourir les extensions](command:workbench.view.extensions)",
+  "command.welcome.updateCline": "VSCodroid: Installer ou mettre a jour Cline"
 }

@@ -183,6 +183,7 @@ Downloaded from Open VSX at build time (`scripts/download-extensions.sh`):
 | Python | ms-python.python | MIT |
 | ESLint | dbaeumer.vscode-eslint | MIT |
 | Tailwind CSS IntelliSense | bradlc.vscode-tailwindcss | MIT |
+| Cline | saoudrizwan.claude-dev | Apache-2.0 |
 
 The ID column is what `scripts/check-bundled-extensions.py` matches this table
 against the download script's list on, so a bundled extension cannot lose its

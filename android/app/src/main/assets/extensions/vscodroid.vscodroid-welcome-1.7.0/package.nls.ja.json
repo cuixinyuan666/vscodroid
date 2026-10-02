@@ -13,5 +13,6 @@
   "walkthrough.terminal.title": "本格的なターミナル",
   "walkthrough.terminal.description": "同梱のツールがすべて PATH に入った bash ターミナルを開けます: ``node``、``python3``、``git``、``npm``。\n\n``node -e 'console.log(\"hi\")'`` は ``hi`` と表示します\n\n``python3 -c 'print(\"hi\")'`` は ``hi`` と表示します\n\n``git init demo`` は ``Initialized empty Git repository`` と表示します\n\n[ターミナルを開く](command:workbench.action.terminal.new)",
   "walkthrough.extensions.title": "機能を追加して広げる",
-  "walkthrough.extensions.description": "言語サポート、テーマ、ツールは Open VSX マーケットプレースから拡張機能としてインストールできます。\n\nJavaScript で書かれた拡張機能は動作します。デスクトップ Linux 向けにコンパイルされたプログラムを同梱するごく一部の拡張機能は、問題なくインストールできたあと何も起こさず、画面にエラーも出ません。\n\n[拡張機能を見る](command:workbench.view.extensions)"
+  "walkthrough.extensions.description": "言語サポート、テーマ、ツールは Open VSX マーケットプレースから拡張機能としてインストールできます。\n\nJavaScript で書かれた拡張機能は動作します。デスクトップ Linux 向けにコンパイルされたプログラムを同梱するごく一部の拡張機能は、問題なくインストールできたあと何も起こさず、画面にエラーも出ません。\n\n[拡張機能を見る](command:workbench.view.extensions)",
+  "command.welcome.updateCline": "VSCodroid: Cline をインストールまたは更新"
 }

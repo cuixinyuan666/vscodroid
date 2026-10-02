@@ -13,5 +13,6 @@
   "walkthrough.terminal.title": "제대로 된 터미널",
   "walkthrough.terminal.description": "번들로 들어 있는 모든 도구가 PATH에 있는 완전한 bash 터미널을 열 수 있습니다: ``node``, ``python3``, ``git``, ``npm``.\n\n``node -e 'console.log(\"hi\")'`` 는 ``hi`` 를 출력합니다\n\n``python3 -c 'print(\"hi\")'`` 는 ``hi`` 를 출력합니다\n\n``git init demo`` 는 ``Initialized empty Git repository`` 를 출력합니다\n\n[터미널 열기](command:workbench.action.terminal.new)",
   "walkthrough.extensions.title": "기능을 더 추가하기",
-  "walkthrough.extensions.description": "언어 지원, 테마, 도구는 Open VSX 마켓플레이스에서 확장을 설치해 추가할 수 있습니다.\n\nJavaScript로 작성된 확장은 잘 동작합니다. 데스크톱 Linux용으로 컴파일된 프로그램을 함께 담은 일부 확장은 아무 문제 없이 설치된 뒤 아무 일도 하지 않으며, 화면에 오류도 나타나지 않습니다.\n\n[확장 둘러보기](command:workbench.view.extensions)"
+  "walkthrough.extensions.description": "언어 지원, 테마, 도구는 Open VSX 마켓플레이스에서 확장을 설치해 추가할 수 있습니다.\n\nJavaScript로 작성된 확장은 잘 동작합니다. 데스크톱 Linux용으로 컴파일된 프로그램을 함께 담은 일부 확장은 아무 문제 없이 설치된 뒤 아무 일도 하지 않으며, 화면에 오류도 나타나지 않습니다.\n\n[확장 둘러보기](command:workbench.view.extensions)",
+  "command.welcome.updateCline": "VSCodroid: Cline 설치 또는 업데이트"
 }

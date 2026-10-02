@@ -13,5 +13,6 @@
   "walkthrough.terminal.title": "Gerçek bir terminal",
   "walkthrough.terminal.description": "Paketteki her aracın PATH üzerinde olduğu tam bir bash terminali açın: ``node``, ``python3``, ``git``, ``npm``.\n\n``node -e 'console.log(\"hi\")'`` ``hi`` yazar\n\n``python3 -c 'print(\"hi\")'`` ``hi`` yazar\n\n``git init demo`` ``Initialized empty Git repository`` yazar\n\n[Terminal aç](command:workbench.action.terminal.new)",
   "walkthrough.extensions.title": "Daha fazla özellikle genişletin",
-  "walkthrough.extensions.description": "Dil desteği, temalar ve araçlar için Open VSX mağazasından uzantılar kurun.\n\nJavaScript ile yazılmış uzantılar çalışır. Masaüstü Linux için derlenmiş bir program taşıyan birkaç tanesi sorunsuzca kurulur, sonra hiçbir şey yapmaz ve ekranda hata da göstermez.\n\n[Uzantılara göz atın](command:workbench.view.extensions)"
+  "walkthrough.extensions.description": "Dil desteği, temalar ve araçlar için Open VSX mağazasından uzantılar kurun.\n\nJavaScript ile yazılmış uzantılar çalışır. Masaüstü Linux için derlenmiş bir program taşıyan birkaç tanesi sorunsuzca kurulur, sonra hiçbir şey yapmaz ve ekranda hata da göstermez.\n\n[Uzantılara göz atın](command:workbench.view.extensions)",
+  "command.welcome.updateCline": "VSCodroid: Cline kur veya guncelle"
 }

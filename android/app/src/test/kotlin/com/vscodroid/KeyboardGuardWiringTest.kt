@@ -84,7 +84,12 @@ class KeyboardGuardWiringTest {
             "stepPage",
             "vscodroid-pager",
             "part.vscodroid-pager-active",
-            "id: 'extensions'",
+            "id: 'agent'",
+            "overlay: true",
+            "revealAgent",
+            "enforceCurrentPage",
+            "vscodroid-pager-hold",
+            "laidOutKey",
             "id: 'editor'",
             "id: 'panel'",
             "__vscodroidPager",
@@ -106,25 +111,18 @@ class KeyboardGuardWiringTest {
     }
 
     /**
-     * That a scroll is still told apart from a tap.
-     *
-     * Dragging inside the editor is how a phone scrolls a file, and it goes down
-     * on the same text a tap does. A guard that answers at pointerdown raises
-     * the keyboard over every scroll, which is the complaint it exists to fix
-     * arriving by another route; it was measured doing exactly that before the
-     * pointerup branch was written. The three names below are that branch.
+     * A tap on text does not raise the keyboard. The button's `showIme` is the
+     * only path that does.
      */
     @Test
-    fun `a scroll is not a tap`() {
+    fun `a tap does not raise the keyboard`() {
         val source = mainActivity()
 
-        for (name in listOf("pointerup", "pointercancel", "TAP_SLOP")) {
-            assertTrue(
-                source.contains(name),
-                "the guard no longer mentions `$name`, so the decision has moved back to " +
-                    "pointerdown and dragging to scroll a file raises the keyboard again.",
-            )
-        }
+        assertTrue(source.contains("showIme"), "the keyboard button no longer calls showIme")
+        assertTrue(
+            !source.contains("letTheKeyboardUp") && !source.contains("TAP_SLOP"),
+            "a tap still has a path that raises the keyboard. Only the keyboard button may.",
+        )
     }
 
     @Test

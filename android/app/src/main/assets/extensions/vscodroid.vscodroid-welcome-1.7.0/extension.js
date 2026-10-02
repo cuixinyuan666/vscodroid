@@ -184,6 +184,18 @@ function activate(context) {
         })
     );
 
+    // Gallery install, which is also the update: the id with no version asks
+    // Open VSX for the current release. A copy newer than the one shipped in
+    // the APK stays, because setup will not unpack an older bundled tree over it.
+    context.subscriptions.push(
+        vscode.commands.registerCommand('vscodroid.welcome.updateCline', () => {
+            return vscode.commands.executeCommand(
+                'workbench.extensions.installExtension',
+                'saoudrizwan.claude-dev'
+            );
+        })
+    );
+
     // Deliberately outside the marker below. That marker records that the
     // walkthrough has been shown, and every device upgrading into this release
     // already has it, which is exactly the population whose stored layout needs

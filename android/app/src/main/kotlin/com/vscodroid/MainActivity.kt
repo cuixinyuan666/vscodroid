@@ -22,9 +22,13 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.DocumentsContract
+import android.provider.Settings
 import android.text.util.Linkify
 import android.view.KeyEvent
 import android.view.View
+import android.view.WindowManager
+import android.widget.LinearLayout
+import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
@@ -61,6 +65,7 @@ import com.vscodroid.bridge.AndroidBridge
 import com.vscodroid.bridge.AuthTabWindow
 import com.vscodroid.bridge.ClipboardBridge
 import com.vscodroid.bridge.SecurityManager
+import com.vscodroid.keepalive.KeepAliveTargets
 import com.vscodroid.keyboard.ExtraKeyRow
 import com.vscodroid.keyboard.KeyInjector
 import com.vscodroid.service.NodeService
@@ -71,6 +76,7 @@ import com.vscodroid.storage.SafStorageManager
 import com.vscodroid.util.Logger
 import com.vscodroid.util.MainThreadWatch
 import com.vscodroid.util.Notices
+import com.vscodroid.webview.ImeGatedWebView
 import com.vscodroid.webview.DownloadCoordinator
 import com.vscodroid.webview.DownloadHost
 import com.vscodroid.webview.DownloadOutcome
@@ -378,6 +384,24 @@ class MainActivity : AppCompatActivity() {
         // Android 13+ means its notification was dropped rather than shown. See
         // NodeService.refreshNotification for the measurement.
         if (granted) refreshServiceNotification()
+        if (keepAliveAfterNotification) {
+            keepAliveAfterNotification = false
+            offerBatteryExemption()
+        }
+    }
+
+    private val batteryOptLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { offerAutostart() }
+
+    private val autostartLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { finishKeepAliveGuide() }
+
+    private var keepAliveAfterNotification = false
+
+    private val keepAlivePrefs by lazy {
+        getSharedPreferences(KEEP_ALIVE_PREFS, MODE_PRIVATE)
     }
 
     /**
@@ -723,8 +747,10 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         setupExtraKeyRow()
         setupPagerNav()
+        setupQuickActions()
         setupBackNavigation()
-        requestNotificationPermission()
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        startKeepAliveGuide()
         startAndBindService()
         checkPreviousCrash()
         checkStorageHealth()
@@ -2082,14 +2108,101 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupExtraKeyRow() {
         extraKeyRow = findViewById(R.id.extraKeyRow)
+        extraKeyRow?.onImeVisibilityChanged = { visible ->
+            val wv = webView as? ImeGatedWebView ?: return@onImeVisibilityChanged
+            val imm = getSystemService(InputMethodManager::class.java) ?: return@onImeVisibilityChanged
+            if (!visible) {
+                if (wv.imeArmed) {
+                    wv.imeArmed = false
+                    imm.restartInput(wv)
+                }
+            } else if (!wv.imeArmed) {
+                imm.hideSoftInputFromWindow(wv.windowToken, 0)
+            }
+        }
         extraKeyRow?.setupWithRootView(findViewById(R.id.webViewContainer))
+    }
+
+    /**
+     * The actions a phone editor puts on screen because a chord is hard to type:
+     * command palette, quick open, find, undo, redo, save, format, paste.
+     * Autosave still runs; Save is the explicit copy of it.
+     */
+    private fun setupQuickActions() {
+        val row = findViewById<LinearLayout>(R.id.quickActionRow)
+        val actions = listOf(
+            R.string.quick_commands to { chord("p", ctrl = true, shift = true) },
+            R.string.quick_open to { chord("p", ctrl = true) },
+            R.string.quick_find to { chord("f", ctrl = true) },
+            R.string.quick_undo to { chord("z", ctrl = true) },
+            R.string.quick_redo to { chord("y", ctrl = true) },
+            R.string.quick_save to { chord("s", ctrl = true) },
+            R.string.quick_format to { chord("f", shift = true, alt = true) },
+            R.string.quick_paste to { chord("v", ctrl = true) },
+        )
+        val pad = (8 * resources.displayMetrics.density).toInt()
+        for ((label, action) in actions) {
+            val button = android.widget.Button(this).apply {
+                text = getString(label)
+                isAllCaps = false
+                textSize = 12f
+                setTextColor(0xF0FFFFFF.toInt())
+                setBackgroundColor(0x00000000)
+                setPadding(pad, 0, pad, 0)
+                minimumWidth = 0
+                minWidth = 0
+                minimumHeight = 0
+                minHeight = 0
+                setOnClickListener { action() }
+            }
+            row.addView(
+                button,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
+    }
+
+    private fun chord(
+        key: String,
+        ctrl: Boolean = false,
+        shift: Boolean = false,
+        alt: Boolean = false,
+    ) {
+        webView?.requestFocus()
+        extraKeyRow?.keyInjector?.injectKey(key, ctrlKey = ctrl, shiftKey = shift, altKey = alt)
     }
 
     /** Low-opacity chevrons on the WebView host; portrait full-screen paging only. */
     private fun setupPagerNav() {
         findViewById<ImageButton>(R.id.pagerNavLeft).setOnClickListener { firePagerStep(-1) }
         findViewById<ImageButton>(R.id.pagerNavRight).setOnClickListener { firePagerStep(1) }
+        findViewById<ImageButton>(R.id.imeShow).setOnClickListener { showImeFromButton() }
         updatePagerNavVisibility()
+    }
+
+    /**
+     * The only path that raises the soft keyboard.
+     *
+     * Taps in the editor, the terminal and extension webviews all ask the
+     * WebView for a text input connection. [ImeGatedWebView] answers those with
+     * no input type until this runs, then the page is told it may accept text
+     * and the input method is restarted so it sees that.
+     */
+    private fun showImeFromButton() {
+        val wv = webView as? ImeGatedWebView ?: return
+        wv.imeArmed = true
+        wv.requestFocus()
+        val imm = getSystemService(InputMethodManager::class.java) ?: return
+        wv.evaluateJavascript(
+            "window.__vscodroidKeyboardGuard&&window.__vscodroidKeyboardGuard.show&&window.__vscodroidKeyboardGuard.show()",
+            {
+                imm.restartInput(wv)
+                imm.showSoftInput(wv, InputMethodManager.SHOW_IMPLICIT)
+            },
+        )
     }
 
     private fun firePagerStep(delta: Int) {
@@ -2188,6 +2301,80 @@ class MainActivity : AppCompatActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val handled = super.dispatchKeyEvent(event)
         return handled || event.keyCode == KeyEvent.KEYCODE_ESCAPE
+    }
+
+    /**
+     * Once, on the first time the editor is reached: notification permission,
+     * then the system battery-exemption dialog, then a manufacturer autostart
+     * screen when this phone has one. Later launches only ask for the
+     * notification if it is still missing.
+     */
+    private fun startKeepAliveGuide() {
+        if (keepAlivePrefs.getBoolean(KEEP_ALIVE_DONE, false)) {
+            requestNotificationPermission()
+            return
+        }
+        keepAliveAfterNotification = true
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            keepAliveAfterNotification = false
+            offerBatteryExemption()
+        } else {
+            requestNotificationPermission()
+        }
+    }
+
+    private fun offerBatteryExemption() {
+        if (isFinishing || isDestroyed) return
+        if (KeepAliveTargets.batteryUnrestricted(this)) {
+            offerAutostart()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.keep_alive_battery_title)
+            .setMessage(R.string.keep_alive_battery_message)
+            .setPositiveButton(R.string.keep_alive_allow) { _, _ ->
+                try {
+                    batteryOptLauncher.launch(KeepAliveTargets.batteryExemptionIntent(this))
+                } catch (e: ActivityNotFoundException) {
+                    Logger.w(tag, "Battery exemption screen unavailable: ${e.message}")
+                    offerAutostart()
+                }
+            }
+            .setNegativeButton(R.string.keep_alive_not_now) { _, _ -> offerAutostart() }
+            .setOnCancelListener { offerAutostart() }
+            .show()
+    }
+
+    private fun offerAutostart() {
+        if (isFinishing || isDestroyed) {
+            finishKeepAliveGuide()
+            return
+        }
+        val intent = KeepAliveTargets.autostartIntent(this)
+        if (intent == null) {
+            finishKeepAliveGuide()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.keep_alive_autostart_title)
+            .setMessage(R.string.keep_alive_autostart_message)
+            .setPositiveButton(R.string.keep_alive_open_settings) { _, _ ->
+                try {
+                    autostartLauncher.launch(intent)
+                } catch (e: ActivityNotFoundException) {
+                    Logger.w(tag, "Autostart screen unavailable: ${e.message}")
+                    finishKeepAliveGuide()
+                }
+            }
+            .setNegativeButton(R.string.keep_alive_not_now) { _, _ -> finishKeepAliveGuide() }
+            .setOnCancelListener { finishKeepAliveGuide() }
+            .show()
+    }
+
+    private fun finishKeepAliveGuide() {
+        keepAlivePrefs.edit().putBoolean(KEEP_ALIVE_DONE, true).apply()
     }
 
     private fun requestNotificationPermission() {
@@ -3312,7 +3499,7 @@ class MainActivity : AppCompatActivity() {
             """
             (function() {
                 if (window.__vscodroidKeyboardGuard) return;
-                window.__vscodroidKeyboardGuard = true;
+                window.__vscodroidKeyboardGuard = { installed: true };
                 // What counts as aiming at text: anywhere inside an editor, and
                 // any real input, which covers the Command Palette, the find
                 // widget and every extension form.
@@ -3342,14 +3529,6 @@ class MainActivity : AppCompatActivity() {
                 // Set while this code is taking focus away and giving it back,
                 // so the focus it causes is not treated as one to answer.
                 var reapplying = false;
-                // Where a touch on text went down, while it is still undecided
-                // whether it is a tap or the beginning of a scroll. Null at any
-                // other moment.
-                var pendingTap = null;
-                // How far a finger may travel and still be a tap, in CSS pixels.
-                // Chromium's own touch slop is 8; this is looser because the
-                // target is a line of code rather than a button.
-                var TAP_SLOP = 12;
                 function apply(element) {
                     if (aimedAtText) element.removeAttribute('inputmode');
                     else if (element.getAttribute('inputmode') !== 'none') element.setAttribute('inputmode', 'none');
@@ -3357,67 +3536,30 @@ class MainActivity : AppCompatActivity() {
                 function applyAll() {
                     document.querySelectorAll(EDITING_HOST).forEach(apply);
                 }
-                // Lets the keyboard up for a touch that has turned out to be a
-                // tap on text.
-                //
-                // The element usually already has focus by then, so no focus
-                // event follows to act on; hence the blur and refocus, which
-                // happens inside the gesture and is what raises the keyboard.
-                // Only when the guard was actually holding it down: a tap on
-                // text while the keyboard is already up must not reach the focus
-                // at all, because blurring an element mid-composition drops the
-                // text being composed, and composition is an ordinary path now
-                // that the editor ships in Japanese, Korean and both Chinese
-                // scripts.
-                function letTheKeyboardUp() {
+                // The keyboard button is the only caller. A tap on text used to
+                // land here and that is what popped the IME over Cline, the
+                // terminal and the editor. An iframe keeps its own focus: blurring
+                // it would steal the caret out of the extension webview.
+                function showIme() {
                     aimedAtText = true;
-                    var focused = document.activeElement;
-                    var wasHeldDown = !!(focused && focused.getAttribute &&
-                        focused.getAttribute('inputmode') === 'none');
                     applyAll();
-                    if (wasHeldDown && focused.matches && focused.matches(EDITING_HOST)) {
-                        reapplying = true;
-                        focused.blur();
-                        focused.focus();
-                        reapplying = false;
-                    }
+                    var focused = document.activeElement;
+                    if (focused && focused.tagName === 'IFRAME') return;
+                    var host = (focused && focused.matches && focused.matches(EDITING_HOST))
+                        ? focused
+                        : document.querySelector(EDITING_HOST);
+                    if (!host) return;
+                    reapplying = true;
+                    host.blur();
+                    host.focus();
+                    reapplying = false;
                 }
+                window.__vscodroidKeyboardGuard.show = showIme;
                 document.addEventListener('pointerdown', function(e) {
                     var target = e.target;
-                    if (target && target.closest && target.closest(TEXT)) {
-                        // Undecided, and that is the point. Dragging inside the
-                        // editor is how a phone scrolls a file, and it goes down
-                        // on the same text a tap does, so raising the keyboard
-                        // here puts it over half the screen on every scroll:
-                        // the complaint this guard exists for, reached by
-                        // another route. Measured on a file opened with the
-                        // keyboard down, before this branch was written.
-                        pendingTap = { id: e.pointerId, x: e.clientX, y: e.clientY };
-                        return;
-                    }
-                    pendingTap = null;
+                    if (target && target.closest && target.closest(TEXT)) return;
                     aimedAtText = false;
                     applyAll();
-                }, true);
-                document.addEventListener('pointerup', function(e) {
-                    // Keyed by pointer, because a second finger anywhere on the
-                    // page would otherwise answer for the first: the last touch
-                    // down wins the single slot, and lifting either one is read
-                    // as the end of that gesture.
-                    if (!pendingTap || pendingTap.id !== e.pointerId) return;
-                    var travelled = Math.abs(e.clientX - pendingTap.x) +
-                        Math.abs(e.clientY - pendingTap.y);
-                    pendingTap = null;
-                    // A scroll leaves the keyboard where it was, which is down.
-                    if (travelled > TAP_SLOP) return;
-                    letTheKeyboardUp();
-                }, true);
-                document.addEventListener('pointercancel', function(e) {
-                    if (pendingTap && pendingTap.id !== e.pointerId) return;
-                    // The gesture became the system's: a swipe from an edge, a
-                    // pull down, a second finger. Nothing was decided, so
-                    // nothing changes.
-                    pendingTap = null;
                 }, true);
                 // Focus is answered directly rather than watched for, because an
                 // editing host built for a file that is being opened is focused
@@ -3429,10 +3571,6 @@ class MainActivity : AppCompatActivity() {
                 document.addEventListener('focusin', function(e) {
                     var target = e.target;
                     if (reapplying) return;
-                    // A touch on text is still in the air. Whether the keyboard
-                    // may come up is the pointerup handler's to answer, and
-                    // answering it here would raise it for a scroll.
-                    if (pendingTap) return;
                     if (!target || !target.matches || !target.matches(EDITING_HOST)) return;
                     if (aimedAtText) { target.removeAttribute('inputmode'); return; }
                     if (target.getAttribute('inputmode') === 'none') return;
@@ -4162,7 +4300,7 @@ class MainActivity : AppCompatActivity() {
         extraKeyRow?.keyInjector = null
         wv.destroy()
 
-        val newWebView = WebView(this)
+        val newWebView = ImeGatedWebView(this)
         newWebView.id = R.id.webView
         // Weight, not the default wrap_content: the replacement has to claim the
         // height the key row leaves, the same as the one declared in the layout.
@@ -4436,6 +4574,8 @@ class MainActivity : AppCompatActivity() {
 
         /** The preferences file `PortFinder` and `SplashActivity` already use. */
         private const val WORKSPACE_PREFS = "vscodroid"
+        private const val KEEP_ALIVE_PREFS = "vscodroid_keepalive"
+        private const val KEEP_ALIVE_DONE = "guide_done"
 
         /** The workspace to reopen when there is no page left to read one from. */
         private const val KEY_LAST_FOLDER = "last_workspace_folder"

@@ -12,6 +12,16 @@
     <!-- Notifications: server status in notification shade -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Held only while the local server the user started is running, and
+         released when that server stops. A foreground service keeps the
+         process, not the CPU, so a build or a terminal dies when the screen
+         sleeps without this. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Lets the first-run guide open the system dialog that exempts this app
+         from battery restrictions. The user still has to confirm it. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- largeHeap raises the ART heap CAP for this process and nothing else:
          it does not reserve memory and no Kotlin here reads it. On an API 33
          arm64 device with 4 GB of RAM the cap moves from

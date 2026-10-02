@@ -294,6 +294,9 @@ class ExtraKeyRow @JvmOverloads constructor(
         setupPageChangeCallback()
     }
 
+    /** Fired with the IME's visibility each time insets are applied. */
+    var onImeVisibilityChanged: ((Boolean) -> Unit)? = null
+
     fun setupWithRootView(rootView: View) {
         ViewCompat.setOnApplyWindowInsetsListener(rootView) { v, insets ->
             // The display cutout is its own inset type, not part of systemBars().
@@ -318,6 +321,7 @@ class ExtraKeyRow @JvmOverloads constructor(
             if (!imeVisible) {
                 resetModifiersIfNeeded()
             }
+            onImeVisibilityChanged?.invoke(imeVisible)
             Logger.d(tag, "IME visible=$imeVisible, bottomInset=$bottomInset")
             insets
         }

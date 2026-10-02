@@ -7,8 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-02
+
+### Added
+
+- Portrait paging uses low-opacity chevrons. Pages are the agent sidebar (Cline first), the editor, and the terminal. Horizontal swipe paging is gone.
+- Cline is bundled from Open VSX, with **VSCodroid: Install or Update Cline** in the Command Palette.
+- A keyboard button at the bottom of the page is the only way to raise the soft keyboard.
+- First launch asks for notifications, unrestricted battery use, and a manufacturer autostart screen when the phone has one. The local server holds a wake lock while it runs.
+- A top bar of phone actions: Commands, Open, Find, Undo, Redo, Save, Format, Paste.
+
+### Changed
+
+- Full-screen pages hide the status bar and unused titles so the content uses the whole screen. Autosave, a 16px editor font, and keep-screen-on while the editor is open.
+
 ### Fixed
 
+- Opening a file or a terminal from Cline no longer leaves the current full-screen page. Scrolling a finished chat no longer jumps back to the bottom.
 - OpenCode no longer dies on launch and leaves the terminal printing `64;NaN;NaNM`. Bun/JSC NaN-boxes pointers, Bionic heap tagging aborted the process, and an existing `.bashrc` kept the old wrapper that never disabled it.
 
 ## [1.2.2] - 2026-09-06
@@ -947,7 +962,8 @@ This release represents the cumulative work across milestones M0 through M5, bri
 - Health check polling for server readiness
 - Android intent handling for "Open with VSCodroid"
 
-[Unreleased]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.1...v1.3.2
 [1.2.2]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/rmyndharis/VSCodroid/compare/v1.1.0...v1.2.0

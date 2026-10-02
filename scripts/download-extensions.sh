@@ -85,6 +85,10 @@ EXTENSIONS=(
     "ms-python.python@2026.4.0#232aeafb01f069824fdd92d3e628c1c442bbcfa1d3cc945ff97076340bb2b4a6"
     "dbaeumer.vscode-eslint@3.0.34#ca5334d46f6a39079e751ef4601bfc9f86bc3a46483e87291ec609239d161308"
     "bradlc.vscode-tailwindcss@0.16.0#3fd7ceb8b20a88d1df01c3c95f240e7b3db14fd66b8f003c1d686790608d1942"
+    # Cline 4.1.22: engines.vscode ^1.101, satisfied by VSCODE_VERSION 1.133.
+    # ~9 MB. A newer gallery copy the user installs is kept: bundledDirsToExtract
+    # skips a fetched tree when that id is already on disk at a higher version.
+    "saoudrizwan.claude-dev@4.1.22#134b54af94e1e4cc6cd07224a61f6873c40c845d9fba1f9e6aa510dd6e2c5382"
 )
 
 OPENVSX_API="https://open-vsx.org/api"

@@ -37,6 +37,11 @@
       "workbench.activityBar.compact": true,
       "workbench.secondarySideBar.defaultVisibility": "hidden",
       "editor.wordWrap": "on",
+      "editor.fontSize": 16,
+      "editor.bracketPairColorization.enabled": true,
+      "editor.guides.bracketPairs": "active",
+      "files.autoSave": "afterDelay",
+      "files.autoSaveDelay": 1000,
       "editor.minimap.enabled": false,
       "breadcrumbs.enabled": false,
       "editor.stickyScroll.enabled": false,
@@ -51,6 +56,10 @@
       {
         "command": "vscodroid.welcome.toolsDismissed",
         "title": "%command.welcome.toolsDismissed%"
+      },
+      {
+        "command": "vscodroid.welcome.updateCline",
+        "title": "%command.welcome.updateCline%"
       }
     ],
     "walkthroughs": [

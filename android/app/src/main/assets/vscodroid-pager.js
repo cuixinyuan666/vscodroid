@@ -31,7 +31,7 @@
     function pagerHeight() {
         var vv = window.visualViewport;
         var h = vv && vv.height ? vv.height : window.innerHeight;
-        return Math.max(1, Math.round(h) - 22);
+        return Math.max(1, Math.round(h));
     }
 
     if (window.visualViewport && !window.__vscodroidPagerVvHook) {
@@ -63,6 +63,22 @@
             '}',
             'body.vscodroid-pager.vscodroid-pager-kai .part.sidebar {',
             '  visibility: visible !important;',
+            '  display: block !important;',
+            '}',
+            // While a fullscreen page is up, the workbench may still reveal the
+            // editor or the panel because an agent opened a file or a terminal.
+            // Those parts keep running; they do not paint over the page.
+            'body.vscodroid-pager-hold .part.editor,',
+            'body.vscodroid-pager-hold .part.panel,',
+            'body.vscodroid-pager-hold .part.auxiliarybar,',
+            'body.vscodroid-pager-hold .part.sidebar {',
+            '  visibility: hidden !important;',
+            '  pointer-events: none !important;',
+            '}',
+            'body.vscodroid-pager-hold .part.vscodroid-pager-active {',
+            '  visibility: visible !important;',
+            '  pointer-events: auto !important;',
+            '  z-index: 100000 !important;',
             '}',
             // An anchor-positioned box paints in the stacking position of its
             // anchor, not by its own z-index, so the Kai overlay only wins
@@ -84,11 +100,25 @@
             'body.vscodroid-pager .part.panel.vscodroid-pager-active .split-view-view.vscodroid-pager-tabstrip {',
             '  display: none !important;',
             '}',
-            // The grid may be laid out wider than the viewport while the
-            // panel page fits its terminal; keep the status bar on screen.
+            // The status bar, the side-bar view header and the panel title are
+            // chrome a phone cannot spare. The editor keeps its tabs.
             'body.vscodroid-pager .monaco-workbench .part.statusbar {',
-            '  left: 0 !important;',
-            '  width: 100vw !important;',
+            '  height: 0 !important;',
+            '  min-height: 0 !important;',
+            '  overflow: hidden !important;',
+            '  padding: 0 !important;',
+            '  border: 0 !important;',
+            '  opacity: 0 !important;',
+            '  pointer-events: none !important;',
+            '}',
+            'body.vscodroid-pager .part.sidebar.vscodroid-pager-active > .title,',
+            'body.vscodroid-pager .part.sidebar.vscodroid-pager-active > .composite.title,',
+            'body.vscodroid-pager .part.panel.vscodroid-pager-active > .title,',
+            'body.vscodroid-pager .part.panel.vscodroid-pager-active > .composite.title {',
+            '  display: none !important;',
+            '  height: 0 !important;',
+            '  max-height: 0 !important;',
+            '  overflow: hidden !important;',
             '}',
             'body.vscodroid-pager .monaco-workbench .part.vscodroid-pager-active,',
             'body.vscodroid-pager .split-view-view.vscodroid-pager-active {',
@@ -96,7 +126,7 @@
             '  top: 0 !important;',
             '  left: 0 !important;',
             '  right: 0 !important;',
-            '  bottom: 22px !important;',
+            '  bottom: 0 !important;',
             '  width: 100% !important;',
             '  height: auto !important;',
             '  max-width: none !important;',
@@ -142,14 +172,10 @@
             '  max-width: none !important;',
             '  max-height: none !important;',
             '}',
-            'body.vscodroid-pager .part.statusbar {',
-            '  z-index: 100001 !important;',
-            '  visibility: visible !important;',
-            '}',
             '#' + DOTS_ID + ' {',
             '  position: fixed;',
             '  left: 0; right: 0;',
-            '  bottom: 28px;',
+            '  top: 6px;',
             '  display: none;',
             '  justify-content: center;',
             '  gap: 8px;',
@@ -279,15 +305,138 @@
         restoreStyles();
     }
 
+    // Lower rank wins. Cline first, then other sidebar agents that paint a
+    // webview the same way (overlay anchored inside the side bar).
+    var AGENT_NEEDLES = [
+        'cline', 'claude', 'roo', 'continue', 'aider',
+        'augment', 'cody', 'codeium', 'blackbox', 'windsurf', 'kai'
+    ];
+
+    function isOverlayPage(page) {
+        return !!(page && page.overlay);
+    }
+
+    function sidebarShown() {
+        var el = document.querySelector('.part.sidebar');
+        if (!el) return false;
+        var r = el.getBoundingClientRect();
+        return r.width > 24 && r.height > 24;
+    }
+
+    function itemChecked(node) {
+        var item = node;
+        while (item && !(item.classList && item.classList.contains('action-item'))) {
+            item = item.parentElement;
+        }
+        return !!(item && item.classList && item.classList.contains('checked'));
+    }
+
+    function revealAgent() {
+        var items = document.querySelectorAll('.activitybar .action-item');
+        var i, n, label, clickable, best = null, bestRank = 99;
+        for (i = 0; i < items.length; i++) {
+            label = (items[i].getAttribute('aria-label') || items[i].title || '').toLowerCase();
+            var rank = -1;
+            for (n = 0; n < AGENT_NEEDLES.length; n++) {
+                if (label.indexOf(AGENT_NEEDLES[n]) >= 0) { rank = n; break; }
+            }
+            if (rank < 0) continue;
+            clickable = items[i].querySelector('.action-label') || items[i];
+            if (best === null || rank < bestRank) {
+                best = clickable;
+                bestRank = rank;
+            }
+        }
+        if (best) {
+            // A click on the icon that is already showing toggles the side bar
+            // shut. Opening a file used to do that and take this page with it.
+            if (!itemChecked(best)) best.click();
+            return true;
+        }
+        clickActivityAny(['extensions', '扩展', '擴充']);
+        return false;
+    }
+
+    var enforcing = false;
+
+    // The editor and the terminal may be focused by the agent. The fullscreen
+    // page stays the one the user is on: the other parts are kept invisible
+    // until a chevron changes the page.
+    function foreignPartVisible() {
+        if (!pagerOn || !pages[pageIndex]) return false;
+        var page = pages[pageIndex];
+        var parts = document.querySelectorAll('.part.sidebar, .part.editor, .part.panel');
+        var i, el, keep, style;
+        for (i = 0; i < parts.length; i++) {
+            el = parts[i];
+            keep = (page.id === 'agent' && el.classList.contains('sidebar'))
+                || (page.id === 'editor' && el.classList.contains('editor'))
+                || (page.id === 'panel' && el.classList.contains('panel'));
+            if (keep) continue;
+            style = window.getComputedStyle(el);
+            if (style.visibility !== 'hidden' && style.display !== 'none') return true;
+        }
+        return false;
+    }
+
+    function enforceCurrentPage(reopen) {
+        if (!pagerOn || enforcing || !pages[pageIndex]) return;
+        enforcing = true;
+        try {
+            var page = pages[pageIndex];
+            // A workbench layout pass can drop the marker class while it
+            // reveals a terminal or an editor. Putting it back is what keeps
+            // this a fullscreen page instead of the desktop grid.
+            document.body.classList.add('vscodroid-pager');
+            document.body.classList.add('vscodroid-pager-hold');
+            var parts = document.querySelectorAll('.part.sidebar, .part.editor, .part.panel, .part.auxiliarybar');
+            var i, el, keep, kept = null;
+            for (i = 0; i < parts.length; i++) {
+                el = parts[i];
+                keep = false;
+                if (page.id === 'agent' && el.classList.contains('sidebar')) keep = true;
+                if (page.id === 'editor' && el.classList.contains('editor')) keep = true;
+                if (page.id === 'panel' && el.classList.contains('panel')) keep = true;
+                if (keep) kept = el;
+            }
+            // No target part: hiding the rest would be a blank screen.
+            if (!kept) return;
+            for (i = 0; i < parts.length; i++) {
+                el = parts[i];
+                if (el === kept) {
+                    unsetStyle(el, 'visibility');
+                    unsetStyle(el, 'pointer-events');
+                    if (window.getComputedStyle(el).display === 'none') {
+                        setStyle(el, 'display', 'flex', true);
+                    }
+                    el.classList.add('vscodroid-pager-active');
+                } else {
+                    el.classList.remove('vscodroid-pager-active');
+                    setStyle(el, 'visibility', 'hidden', true);
+                    setStyle(el, 'pointer-events', 'none', true);
+                }
+            }
+            if (reopen && page.agent && !sidebarShown()) revealAgent();
+            syncOverlays(page);
+            nudgeLayout(page);
+        } finally {
+            enforcing = false;
+        }
+    }
+
     function revealPageView(page) {
         if (!page) return;
+        if (page.agent) {
+            revealAgent();
+            return;
+        }
         if (page.view) clickActivityAny([page.view]);
         if (page.id === 'panel') ensureTerminalPanel();
     }
 
     function rebuildPages() {
         pages = [
-            { id: 'extensions', sel: '.part.sidebar', label: 'Extensions', view: 'extensions' },
+            { id: 'agent', sel: '.part.sidebar', label: 'Agent', overlay: true, agent: true },
             { id: 'editor', sel: '.part.editor', label: 'Editor' },
             { id: 'panel', sel: '.part.panel', label: 'Terminal' }
         ];
@@ -315,8 +464,17 @@
 
     function fillImportant(node, w, h) {
         if (!node || !node.style) return;
-        setStyle(node, 'width', w + 'px', true);
-        setStyle(node, 'height', h + 'px', true);
+        var wantW = w + 'px';
+        var wantH = h + 'px';
+        // Writing the same size again still resizes the iframe in Chromium.
+        // A chat webview (Cline and the same kind of agent) treats that resize
+        // as "stick to the latest message", so scrolling up to read a finished
+        // task is pulled back to the bottom. The editor and the terminal do
+        // the same with the caret and the prompt.
+        if (node.style.getPropertyValue('width') === wantW
+            && node.style.getPropertyValue('height') === wantH) return;
+        setStyle(node, 'width', wantW, true);
+        setStyle(node, 'height', wantH, true);
         setStyle(node, 'max-width', 'none', true);
         setStyle(node, 'max-height', 'none', true);
     }
@@ -407,12 +565,21 @@
         if (!slot) return;
         var sr = slot.getBoundingClientRect();
         setStyle(el, 'position', 'absolute', true);
-        setStyle(el, 'left', Math.round(-sr.left) + 'px', true);
-        setStyle(el, 'top', Math.round(-sr.top) + 'px', true);
+        var nextLeft = Math.round(-sr.left);
+        var nextTop = Math.round(-sr.top);
+        var haveLeft = parseInt(el.style.getPropertyValue('left'), 10);
+        var haveTop = parseInt(el.style.getPropertyValue('top'), 10);
+        // A 1px wobble here moves the anchor, the webview resizes, and the
+        // chat scrolls itself back to the bottom.
+        if (isNaN(haveLeft) || Math.abs(haveLeft - nextLeft) > 1) {
+            setStyle(el, 'left', nextLeft + 'px', true);
+        }
+        if (isNaN(haveTop) || Math.abs(haveTop - nextTop) > 1) {
+            setStyle(el, 'top', nextTop + 'px', true);
+        }
         setStyle(el, 'right', 'auto', true);
         setStyle(el, 'bottom', 'auto', true);
-        setStyle(el, 'width', w + 'px', true);
-        setStyle(el, 'height', h + 'px', true);
+        fillImportant(el, w, h);
         var p = slot;
         while (p && p !== document.body && !(p.classList && p.classList.contains('monaco-workbench'))) {
             setStyle(p, 'overflow', 'visible', true);
@@ -516,9 +683,32 @@
         window.dispatchEvent(new Event('resize'));
     }
 
+    var laidOutKey = '';
+
     function applyLayout(page) {
-        var onKai = !!(page && page.id === 'kai');
-        if (page && page.id === 'panel') fitPanelGrid(viewportWidth());
+        var onKai = isOverlayPage(page);
+        var w = viewportWidth();
+        var h = pagerHeight();
+        var id = page && page.id ? page.id : '';
+        // Same page, same viewport: do not touch the webview. Scrolling a
+        // finished Cline task, a file, or the terminal must not be answered
+        // with another layout pass.
+        var collapsed = id === 'agent' && !sidebarShown();
+        var key = id + '@' + w + 'x' + h;
+        if (!collapsed && key === laidOutKey) {
+            // The grid fit is allowed to settle after the page size is already
+            // recorded. It does not resize the agent or editor webview.
+            // Opening a file or a terminal shifts the grid under the pinned
+            // page. The offset has to follow or the page slides off and the
+            // hidden parts show through, which is the fullscreen being broken.
+            if (id === 'panel') fitPanelGrid(w);
+            if (id === 'agent') {
+                var pinned = document.querySelector('.part.sidebar');
+                if (pinned) pinInGrid(pinned, w, h);
+            }
+            return;
+        }
+        if (page && page.id === 'panel') fitPanelGrid(w);
         else resetPanelGrid();
         // The Kai webview is an overlay anchored to the Kai view inside the
         // sidebar, so the sidebar is what gets laid out; the overlay follows.
@@ -526,8 +716,6 @@
             ? document.querySelector('.part.sidebar')
             : (page && page.sel ? document.querySelector(page.sel) : null);
         if (!el) return;
-        var w = viewportWidth();
-        var h = pagerHeight();
         var title = null;
         var content = null;
         var child;
@@ -539,7 +727,9 @@
         }
         var titleH = 0;
         fillImportant(el, w, h);
-        if (title) {
+        // Agent and terminal pages spend their header on a label the page
+        // itself already shows. The editor's title is the tab strip.
+        if (title && id !== 'agent' && id !== 'panel') {
             setStyle(title, 'width', '100%', true);
             setStyle(title, 'height', 'auto', true);
             setStyle(title, 'max-height', '48px', true);
@@ -561,8 +751,19 @@
         var viewlet = el.querySelector('.composite.viewlet, iframe.webview');
         if (viewlet) fillImportant(viewlet, w, bodyH);
         if (onKai) {
+            setStyle(el, 'display', 'block', true);
             pinInGrid(el, w, h);
-            fillAnchors(content || el, w, bodyH);
+            var anchored = fillAnchors(content || el, w, bodyH);
+            var overlay = document.querySelector('.webview-overlay-content');
+            if (overlay) {
+                // Anchor positioning is what VS Code uses for these webviews.
+                // When the anchor is missing or rejected inside a fixed subtree,
+                // size the overlay itself so the composer is not a short strip.
+                if (!anchored) fillImportant(overlay, w, h);
+                fillShadowIframes(overlay, w, bodyH);
+                var frame = overlay.querySelector('iframe');
+                if (frame) fillImportant(frame, w, bodyH);
+            }
             nudgeKaiOverlay();
         }
         if (page && page.id === 'panel') {
@@ -579,6 +780,7 @@
             }
             hidePanelTabStrip(el, w);
         }
+        laidOutKey = key;
     }
 
     function watchPage(page) {
@@ -591,21 +793,49 @@
             overlayWatch = null;
         }
         if (!page) return;
-        var content = page.id === 'kai'
-            ? document.querySelector('.webview-overlay-content')
+        var content = isOverlayPage(page)
+            ? (document.querySelector('.webview-overlay-content')
+                || document.querySelector(page.sel + ' .content')
+                || document.querySelector(page.sel))
             : (document.querySelector(page.sel + ' .content') || document.querySelector(page.sel));
         if (!content || typeof MutationObserver === 'undefined') return;
-        sidebarWatch = new MutationObserver(function () {
-            if (watchQueued || layoutBusy) return;
-            watchQueued = true;
-            requestAnimationFrame(function () {
-                watchQueued = false;
-                if (!pagerOn || !pages[pageIndex] || pages[pageIndex].id !== page.id) return;
-                nudgeLayout(page);
-                syncOverlays(page);
+        // Not the subtree. Monaco rewrites a line on every scroll of a file,
+        // and a webview host updates while a chat is scrolled; either one used
+        // to run a layout pass, resize the iframe, and pull the viewport back
+        // to the caret or the latest message.
+        if (!isOverlayPage(page) && page.id !== 'editor') {
+            sidebarWatch = new MutationObserver(function () {
+                if (watchQueued || layoutBusy) return;
+                watchQueued = true;
+                requestAnimationFrame(function () {
+                    watchQueued = false;
+                    if (!pagerOn || !pages[pageIndex] || pages[pageIndex].id !== page.id) return;
+                    nudgeLayout(page);
+                    syncOverlays(page);
+                });
             });
-        });
-        sidebarWatch.observe(content, { childList: true, subtree: true });
+            sidebarWatch.observe(content, { childList: true, subtree: true });
+        }
+        if (isOverlayPage(page)) {
+            // Opening a file asks the workbench to collapse the side bar. On
+            // this page the side bar IS the screen, so a width of zero has to
+            // be put back or the agent webview vanishes under the editor.
+            // Class only: the style attribute is what layout itself writes,
+            // and watching it relaid out on every scroll-sized tweak.
+            var sidePart = document.querySelector('.part.sidebar');
+            if (sidePart) {
+                sidebarWatch = new MutationObserver(function () {
+                    if (watchQueued || layoutBusy || sidebarShown()) return;
+                    watchQueued = true;
+                    requestAnimationFrame(function () {
+                        watchQueued = false;
+                        if (!pagerOn || !pages[pageIndex] || pages[pageIndex].id !== page.id) return;
+                        if (!sidebarShown()) nudgeLayout(page);
+                    });
+                });
+                sidebarWatch.observe(sidePart, { attributes: true, attributeFilter: ['class'] });
+            }
+        }
         if (page.id === 'panel') {
             // xterm rewrites .xterm-screen's inline size whenever VS Code
             // re-fits the terminal; that is the moment to re-check the fit.
@@ -614,9 +844,18 @@
         }
         overlayWatch = new MutationObserver(function () {
             syncOverlays(page);
+            // An agent opening a file or a terminal reveals that part with an
+            // inline visibility that beats the stylesheet. Re-hide it when it
+            // actually paints; a part we already hid must not schedule again.
+            if (foreignPartVisible()) queueEnforce();
         });
         var wb = document.querySelector('.monaco-workbench') || document.body;
         overlayWatch.observe(wb, { childList: true });
+        var revealed = document.querySelectorAll('.part.editor, .part.panel');
+        var ri;
+        for (ri = 0; ri < revealed.length; ri++) {
+            overlayWatch.observe(revealed[ri], { attributes: true, attributeFilter: ['class', 'style'] });
+        }
     }
 
     function scheduleNudges(page, left) {
@@ -630,7 +869,7 @@
     }
 
     function syncOverlays(page) {
-        var onKai = !!(page && page.id === 'kai' && pagerOn);
+        var onKai = isOverlayPage(page) && pagerOn;
         document.body.classList.toggle('vscodroid-pager-kai', onKai);
         var overlays = document.querySelectorAll('.webview-overlay-content');
         var i, el;
@@ -651,10 +890,19 @@
 
     function showPage(i) {
         if (!pages.length) rebuildPages();
-        if (i < 0) i = 0;
-        if (i >= pages.length) i = pages.length - 1;
+        if (i < 0 || i >= pages.length) return false;
+        var page = pages[i];
+        if (page.id === 'panel') {
+            var openedTerminal = ensureTerminalPanel();
+            var panel = document.querySelector('.part.panel');
+            // A panel that is still empty, and that nothing managed to open,
+            // is a blank page. Stay where we are.
+            if ((!panel || panel.classList.contains('empty')) && !openedTerminal) return false;
+        }
+        // Switching onto a part that is not in the document hides the page the
+        // user can see and leaves nothing in its place.
+        if (!document.querySelector(page.sel)) return false;
         pageIndex = i;
-        var page = pages[pageIndex];
         revealPageView(page);
         clearActive();
         var el = document.querySelector(page.sel);
@@ -675,6 +923,8 @@
         paintDots();
         watchPage(page);
         scheduleNudges(page, 5);
+        enforceCurrentPage();
+        return true;
     }
 
     function enterPager(startId) {
@@ -706,7 +956,9 @@
         }
         clearActive();
         document.body.classList.remove('vscodroid-pager-kai');
+        document.body.classList.remove('vscodroid-pager-hold');
         resetPanelGrid();
+        laidOutKey = '';
         restoreStyles();
         paintDots();
         try {
@@ -734,7 +986,7 @@
     function startIdFromTarget(target) {
         var n = target;
         while (n && n.classList) {
-            if (n.classList.contains('sidebar')) return 'extensions';
+            if (n.classList.contains('sidebar')) return 'agent';
             if (n.classList.contains('editor') || n.classList.contains('editor-container')) return 'editor';
             if (n.classList.contains('panel')) return 'panel';
             n = n.parentElement;
@@ -745,8 +997,9 @@
     function stepPage(delta) {
         if (!portrait() || !delta) return false;
         if (!pagerOn) enterPager(startIdFromTarget(document.activeElement));
-        showPage(pageIndex + delta);
-        return true;
+        var next = pageIndex + delta;
+        if (next < 0 || next >= pages.length) return false;
+        return showPage(next);
     }
 
     function considerPinch(target) {
@@ -760,6 +1013,30 @@
             pinchStart = dist;
         }
     }
+
+    var holdQueued = false;
+    function queueEnforce() {
+        if (!pagerOn || holdQueued) return;
+        holdQueued = true;
+        requestAnimationFrame(function () {
+            holdQueued = false;
+            if (!pagerOn) return;
+            enforceCurrentPage(true);
+        });
+    }
+
+    document.addEventListener('focusin', function (e) {
+        if (!pagerOn) return;
+        var n = e.target;
+        while (n && n.classList) {
+            if (n.classList.contains('editor') || n.classList.contains('panel')
+                || n.classList.contains('terminal') || n.classList.contains('xterm')) {
+                queueEnforce();
+                return;
+            }
+            n = n.parentElement;
+        }
+    }, true);
 
     document.addEventListener('pointerdown', function (e) {
         if (!portrait()) return;

@@ -13,5 +13,6 @@
   "walkthrough.terminal.title": "Prawdziwy terminal",
   "walkthrough.terminal.description": "Otwórz pełny terminal bash, w którym każde dołączone narzędzie jest w PATH: ``node``, ``python3``, ``git``, ``npm``.\n\n``node -e 'console.log(\"hi\")'`` wypisuje ``hi``\n\n``python3 -c 'print(\"hi\")'`` wypisuje ``hi``\n\n``git init demo`` wypisuje ``Initialized empty Git repository``\n\n[Otwórz terminal](command:workbench.action.terminal.new)",
   "walkthrough.extensions.title": "Rozbuduj o kolejne funkcje",
-  "walkthrough.extensions.description": "Instaluj rozszerzenia z marketplace Open VSX, aby dodać obsługę języków, motywy i narzędzia.\n\nRozszerzenia napisane w JavaScripcie działają. Te nieliczne, które niosą program skompilowany dla Linuksa na komputery, instalują się bez protestu, a potem nic nie robią, bez żadnego błędu na ekranie.\n\n[Przeglądaj rozszerzenia](command:workbench.view.extensions)"
+  "walkthrough.extensions.description": "Instaluj rozszerzenia z marketplace Open VSX, aby dodać obsługę języków, motywy i narzędzia.\n\nRozszerzenia napisane w JavaScripcie działają. Te nieliczne, które niosą program skompilowany dla Linuksa na komputery, instalują się bez protestu, a potem nic nie robią, bez żadnego błędu na ekranie.\n\n[Przeglądaj rozszerzenia](command:workbench.view.extensions)",
+  "command.welcome.updateCline": "VSCodroid: Zainstaluj lub zaktualizuj Cline"
 }
