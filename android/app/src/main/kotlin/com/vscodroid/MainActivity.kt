@@ -2108,9 +2108,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupExtraKeyRow() {
         extraKeyRow = findViewById(R.id.extraKeyRow)
-        extraKeyRow?.onImeVisibilityChanged = { visible ->
-            val wv = webView as? ImeGatedWebView ?: return@onImeVisibilityChanged
-            val imm = getSystemService(InputMethodManager::class.java) ?: return@onImeVisibilityChanged
+        extraKeyRow?.onImeVisibilityChanged = imeVisibility@{ visible ->
+            val wv = webView as? ImeGatedWebView ?: return@imeVisibility
+            val imm = getSystemService(InputMethodManager::class.java) ?: return@imeVisibility
             if (!visible) {
                 if (wv.imeArmed) {
                     wv.imeArmed = false

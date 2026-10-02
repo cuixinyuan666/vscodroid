@@ -10,8 +10,8 @@ import android.webkit.WebView
 /**
  * The soft keyboard stays down until [imeArmed] is set.
  *
- * Every editable surface in this app — the editor, the terminal, an extension
- * webview such as Cline — asks the WebView for an input connection. Leaving
+ * Every editable surface in this app, the editor, the terminal, an extension
+ * webview such as Cline, asks the WebView for an input connection. Leaving
  * that connection's type as text is what pops the IME on a tap. [InputType.TYPE_NULL]
  * keeps hardware keys and the extra key row working, and tells the input
  * method there is nothing to show. The keyboard button arms the view and
