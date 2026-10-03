@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-10-03
+
+### Fixed
+
+- The portrait pager's chevrons opened the extension marketplace instead of the agent. The activity bar item was matched on `aria-label` and `title` alone, while the name lives on the inner label's text, so every name this project looks for missed and the fallback won.
+
 ## [1.3.4] - 2026-10-03
 
 ### Fixed
