@@ -34,13 +34,34 @@
         return Math.max(1, Math.round(h));
     }
 
+    // One relayout per settled size, not one per event.
+    //
+    // The window is adjustResize, so the soft keyboard shrinking it fires a
+    // burst of visualViewport resizes as it animates. Each one ran a full
+    // layout pass, and a layout pass writes the chat webview's size through
+    // fillImportant -- which Chromium resizes the iframe for even when the
+    // value is unchanged, and which a chat webview answers by scrolling itself
+    // back to the latest message. So the animation produced a run of forced
+    // reflows, and with the keyboard up that read as the composer jumping.
+    //
+    // The trailing pass is what keeps the composer above the keyboard once it
+    // has settled; the intermediate ones were never a state worth painting.
+    // IME_SETTLE_MS is short enough that the gap is not visible as a delay.
+    var IME_SETTLE_MS = 120;
+    var vvTimer = null;
+
     if (window.visualViewport && !window.__vscodroidPagerVvHook) {
         window.__vscodroidPagerVvHook = true;
         window.visualViewport.addEventListener('resize', function () {
-            if (!pagerOn || !pages.length || layoutBusy) return;
-            var page = pages[pageIndex];
-            nudgeLayout(page);
-            syncOverlays(page);
+            if (!pagerOn || !pages.length) return;
+            if (vvTimer) clearTimeout(vvTimer);
+            vvTimer = setTimeout(function () {
+                vvTimer = null;
+                if (!pagerOn || !pages.length || layoutBusy) return;
+                var page = pages[pageIndex];
+                nudgeLayout(page);
+                syncOverlays(page);
+            }, IME_SETTLE_MS);
         });
     }
 

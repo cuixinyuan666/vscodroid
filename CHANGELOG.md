@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.6] - 2026-10-03
+
+### Fixed
+
+- Tapping Cline's composer with the keyboard closed flashed the keyboard open and shut again. The gate answered only after the WebView had asked for a keyboard; it now also answers the question asked before that request, so the tap stays suppressed instead of being undone a frame later.
+- The soft keyboard jumping once during a task: each resize the animation fired ran a full layout pass, and a layout pass forces the chat webview to resize. A burst of them now settles into one.
+
 ## [1.3.5] - 2026-10-03
 
 ### Fixed
