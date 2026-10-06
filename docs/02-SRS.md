@@ -250,7 +250,7 @@ VSCodroid is NOT a cloud IDE, a Termux wrapper, or a custom editor. It is the ac
 
 | ID | Requirement | Target | Priority |
 |----|------------|--------|----------|
-| NFR-COMPAT-01 | Minimum Android version | 13 (API 33) | P0 |
+| NFR-COMPAT-01 | Minimum Android version | 9 (API 28) | P0 |
 | NFR-COMPAT-02 | Target Android version | 16 (API 36) | P0 |
 | NFR-COMPAT-03 | Architecture | arm64-v8a only | P0 |
 | NFR-COMPAT-04 | Minimum WebView version | Chrome 105+ | P0 |

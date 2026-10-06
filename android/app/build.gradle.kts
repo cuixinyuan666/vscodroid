@@ -124,7 +124,11 @@ android {
 
     defaultConfig {
         applicationId = "com.vscodroid"
-        minSdk = 33
+        // android9 branch: lowered 33 -> 28 (Android 9) to reach old devices.
+        // Every API 29+ surface used here is guarded at the call site; see
+        // MainActivity (POST_NOTIFICATIONS), themes.xml (cutout/contrast split
+        // into values-v29), and NodeService (specialUse type is compat-routed).
+        minSdk = 28
         // Held at 36 on purpose, and lint's OldTargetApi is answered rather than
         // ignored. Targeting 37 blocks local network access by default, so a dev
         // server running here stops being reachable from another device on the

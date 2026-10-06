@@ -175,7 +175,7 @@ flowchart TD
 
 | Requirement  | Minimum                            |
 | ------------ | ---------------------------------- |
-| Android      | 13 (API 33)                        |
+| Android      | 9 (API 28)                         |
 | Architecture | arm64-v8a                          |
 | WebView      | Chrome 105+                        |
 | RAM          | 4 GB recommended                   |

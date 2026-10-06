@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- android9 branch: API 29 overlay. Both enforce*Contrast attributes were
+         first added in API 29, so API 28 (the base values/themes.xml) cannot
+         carry them. Cutout stays `shortEdges` here because the `always` value
+         only exists from API 30; values-v30/themes.xml upgrades it.
+
+         A style in a more specific configuration replaces the base wholesale
+         rather than merging item by item, so every base item is restated. -->
+    <style name="Theme.VSCodroid" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+        <item name="android:windowBackground">@color/colorBackground</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+    </style>
+
+</resources>

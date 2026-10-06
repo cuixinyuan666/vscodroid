@@ -9,7 +9,8 @@ import java.io.File
  * The window attributes that replaced `androidx.activity.enableEdgeToEdge()`.
  *
  * [drawBehindSystemBars] sets two things from code and leaves the rest to
- * `values/themes.xml`, because Play's scan reads bytecode and an attribute is not a
+ * `values/themes.xml` plus the values-v29/values-v30 overlays (android9 branch:
+ * the base is the API 28 floor, the overlays add what 29 and 30 can parse), because Play's scan reads bytecode and an attribute is not a
  * call. That trade is what cleared the three deprecated APIs Play reported, and it
  * moves the cost here: a theme item has no compiler. Deleting one is a silent,
  * device-only regression, and one of them was in fact missing when the migration
@@ -31,13 +32,18 @@ import java.io.File
  */
 class ThemeEdgeToEdgeTest {
 
-    private val themes = File("src/main/res/values/themes.xml")
-
-    /** `name` to literal value, for every `<item>` in the app's theme. */
-    private fun themeItems(): Map<String, String> {
+    /**
+     * `name` to literal value, for every `<item>` in the theme declared at [path].
+     *
+     * android9 branch: takes the path rather than a fixed file, because the theme
+     * is now split by API level (base = 28 floor, values-v29, values-v30) and each
+     * tier has to be asserted on its own.
+     */
+    private fun themeItems(path: String): Map<String, String> {
+        val themes = File(path)
         assertTrue(
             themes.isFile,
-            "themes.xml is not at ${themes.absolutePath}; this test would otherwise " +
+            "$path is not at ${themes.absolutePath}; this test would otherwise " +
                 "pass by reading nothing",
         )
         val text = themes.readText()
@@ -52,8 +58,8 @@ class ThemeEdgeToEdgeTest {
     }
 
     @Test
-    fun `the theme carries every window attribute drawBehindSystemBars does not set`() {
-        val items = themeItems()
+    fun `the base theme carries every window attribute the API 28 floor can parse`() {
+        val items = themeItems("src/main/res/values/themes.xml")
 
         // The control: if the parse silently matched nothing, every assertion below
         // would fail with "expected X but was null", which reads like a deleted
@@ -71,12 +77,12 @@ class ThemeEdgeToEdgeTest {
             "android:navigationBarColor" to "@android:color/transparent",
             // `always`, which is what Api30 wrote and what API 35+ forces. Not
             // `shortEdges`: Api28 wrote that and minSdk 33 never reached it.
-            "android:windowLayoutInDisplayCutoutMode" to "always",
+            "android:windowLayoutInDisplayCutoutMode" to "shortEdges", // base: API 28 floor
             // Only the navigation default is `true`; the status one is already
             // `false`. Both are pinned so the pair stays visible as one decision, and
             // so a later edit to `true` is refused rather than merely unnoticed.
-            "android:enforceStatusBarContrast" to "false",
-            "android:enforceNavigationBarContrast" to "false",
+            // Both contrast flags are API 29+ and must be ABSENT from the base;
+            // the absence assertions follow the loop below.
         ).forEach { (name, expected) ->
             assertEquals(
                 expected, items[name],

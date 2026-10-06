@@ -2285,7 +2285,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
         keepAliveAfterNotification = true
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+        // android9 branch: no runtime notification permission below API 33,
+        // so go straight to the battery exemption.
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
             == PackageManager.PERMISSION_GRANTED
         ) {
             keepAliveAfterNotification = false
@@ -2348,6 +2351,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestNotificationPermission() {
+        // android9 branch: POST_NOTIFICATIONS exists only on API 33+. Below
+        // that notifications are always allowed, so there is nothing to ask.
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
         ) {

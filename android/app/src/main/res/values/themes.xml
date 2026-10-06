@@ -31,10 +31,14 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
 
         <!-- Declarative, and it replaces what androidx's enableEdgeToEdge() set
-             from code. API 35+ forces `always` whatever is asked for, so this
-             only decides API 33 and 34; naming the value the platform settles
-             on keeps the two the same. See util/ViewInsets.drawBehindSystemBars. -->
-        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+             from code. API 35+ forces `always` whatever is asked for, so on
+             current devices naming the value the platform settles on keeps the
+             two the same. See util/ViewInsets.drawBehindSystemBars.
+             android9 branch: `always` (value 3) needs API 30+, so the base value
+             is `shortEdges`, the ceiling API 28 supports; values-v30/themes.xml
+             upgrades to `always` for 30+, values-v29/themes.xml keeps
+             `shortEdges` and adds the API 29+ contrast attributes. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
 
         <!-- The bars stay transparent rather than having the platform paint a scrim
              behind them. This is the fifth thing enableEdgeToEdge() did and the one
@@ -54,10 +58,11 @@
 
              Attributes rather than the setters for the same reason as the colours:
              Play scans bytecode and an attribute is not a call. Both exist in the
-             android-33 SDK's attrs.xml, verified, and minSdk is 33, so no
-             version-qualified copy is needed. -->
-        <item name="android:enforceStatusBarContrast">false</item>
-        <item name="android:enforceNavigationBarContrast">false</item>
+             android-33 SDK's attrs.xml, verified.
+             android9 branch: both attributes were added in API 29, and a style
+             entry for an attribute the platform does not know would be rejected,
+             so they appear only in values-v29/themes.xml and above; the base
+             values/themes.xml (API 28 floor) omits them. -->
     </style>
 
 </resources>
