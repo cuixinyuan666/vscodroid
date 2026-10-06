@@ -8,7 +8,8 @@ import android.view.inputmethod.InputConnection
 import android.webkit.WebView
 
 /**
- * The soft keyboard stays down until [imeArmed] is set.
+ * The soft keyboard stays down until [imeArmed] is set, and only the bottom
+ * keyboard button ([com.vscodroid.MainActivity.showImeFromButton]) may set it.
  *
  * Every editable surface in this app, the editor, the terminal, an extension
  * webview such as Cline, asks the WebView for an input connection. Leaving
@@ -16,6 +17,11 @@ import android.webkit.WebView
  * keeps hardware keys and the extra key row working, and tells the input
  * method there is nothing to show. The keyboard button arms the view and
  * restarts input, which is the only path that gets a real text type.
+ *
+ * User request: tapping any input (Cline composer included) must NEVER raise
+ * the IME by itself -- no flash-then-hide, just stays down. So the gate is
+ * closed by default and re-locked on every dismiss; there is deliberately no
+ * focus/tap path that arms it.
  *
  * ## Why onCheckIsTextEditor as well as TYPE_NULL
  *

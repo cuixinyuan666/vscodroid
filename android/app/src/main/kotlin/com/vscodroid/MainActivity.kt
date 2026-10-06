@@ -27,7 +27,6 @@ import android.text.util.Linkify
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.LinearLayout
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
@@ -747,7 +746,6 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         setupExtraKeyRow()
         setupPagerNav()
-        setupQuickActions()
         setupBackNavigation()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         startKeepAliveGuide()
@@ -2112,11 +2110,16 @@ class MainActivity : AppCompatActivity() {
             val wv = webView as? ImeGatedWebView ?: return@imeVisibility
             val imm = getSystemService(InputMethodManager::class.java) ?: return@imeVisibility
             if (!visible) {
+                // User dismissed the IME: re-lock immediately so a later tap
+                // on any input (Cline composer included) cannot flash it.
+                // Only showImeFromButton() may arm again.
                 if (wv.imeArmed) {
                     wv.imeArmed = false
                     imm.restartInput(wv)
                 }
             } else if (!wv.imeArmed) {
+                // System IME visible without the button path (e.g. tap raced
+                // the gate): force it back down at once.
                 imm.hideSoftInputFromWindow(wv.windowToken, 0)
             }
         }
@@ -2124,45 +2127,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * The actions a phone editor puts on screen because a chord is hard to type:
-     * command palette, quick open, find, undo, redo, save, format, paste.
-     * Autosave still runs; Save is the explicit copy of it.
+     * Removed per user request: the top quick-action row (commands/open/find/
+     * undo/redo/save/format/paste) is gone from activity_main.xml. Kept as a
+     * no-op so any lingering call site fails safe instead of NPE.
      */
     private fun setupQuickActions() {
-        val row = findViewById<LinearLayout>(R.id.quickActionRow)
-        val actions = listOf(
-            R.string.quick_commands to { chord("p", ctrl = true, shift = true) },
-            R.string.quick_open to { chord("p", ctrl = true) },
-            R.string.quick_find to { chord("f", ctrl = true) },
-            R.string.quick_undo to { chord("z", ctrl = true) },
-            R.string.quick_redo to { chord("y", ctrl = true) },
-            R.string.quick_save to { chord("s", ctrl = true) },
-            R.string.quick_format to { chord("f", shift = true, alt = true) },
-            R.string.quick_paste to { chord("v", ctrl = true) },
-        )
-        val pad = (8 * resources.displayMetrics.density).toInt()
-        for ((label, action) in actions) {
-            val button = android.widget.Button(this).apply {
-                text = getString(label)
-                isAllCaps = false
-                textSize = 12f
-                setTextColor(0xF0FFFFFF.toInt())
-                setBackgroundColor(0x00000000)
-                setPadding(pad, 0, pad, 0)
-                minimumWidth = 0
-                minWidth = 0
-                minimumHeight = 0
-                minHeight = 0
-                setOnClickListener { action() }
-            }
-            row.addView(
-                button,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                ),
-            )
-        }
+        // No-op: quickActions/quickActionRow views no longer exist.
     }
 
     private fun chord(

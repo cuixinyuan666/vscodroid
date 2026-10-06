@@ -45,6 +45,10 @@ let pollTimer;
 let lastSnapshot = null;
 let warningShownAtThreshold = false;
 let criticalShownAtThreshold = false;
+// One-shot Cline guidance: Cline opens one terminal per command run and never
+// closes them, which is the fastest route to the 32-process limit. Nudge once
+// per session toward the new terminal-autoclose setting instead of repeating.
+let clineHintShown = false;
 
 function activate(context) {
     const tmpDir = process.env.TMPDIR || '/tmp';
@@ -229,6 +233,30 @@ function updateStatusBar(snapshot) {
         ).then(choice => {
             if (choice === 'Show Details') showProcessTree();
         });
+        // One-shot per session: many idle terminals means Cline (or a Cline-
+        // style agent) is piling them up. Point at the auto-close setting
+        // once instead of repeating on every threshold crossing.
+        if (!clineHintShown) {
+            const terms = tree.filter(
+                p => p.type === 'terminal' || p.type === 'tmux'
+            ).length;
+            if (terms > 2) {
+                clineHintShown = true;
+                vscode.window.showInformationMessage(
+                    `Cline keeps ${terms} terminals open. Turn on ` +
+                        '"VSCodroid Terminal Auto Close" in Settings to close ' +
+                        'idle ones automatically.',
+                    'Open Settings'
+                ).then(choice => {
+                    if (choice === 'Open Settings') {
+                        vscode.commands.executeCommand(
+                            'workbench.action.openSettings',
+                            'vscodroid.terminalAutoClose.enabled'
+                        );
+                    }
+                });
+            }
+        }
     } else if (total < soft) {
         // Re-arming, and each latch comes back at the tier below the one that
         // set it. This asked for `total < idle`, one BELOW the idle baseline,

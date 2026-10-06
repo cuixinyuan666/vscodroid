@@ -1,0 +1,6 @@
+{
+  "displayName": "VSCodroid Terminal Auto Close",
+  "description": "Closes idle terminals some time after their command finishes. Off by default.",
+  "config.enabled": "Close a terminal automatically once its shell command has ended. Off by default; turn on to stop Cline piling up terminals.",
+  "config.delaySeconds": "Seconds to wait after a command ends before closing its terminal (0 closes at once, max 600)."
+}

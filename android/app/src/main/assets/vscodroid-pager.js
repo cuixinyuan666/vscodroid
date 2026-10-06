@@ -28,6 +28,60 @@
         return window.matchMedia && window.matchMedia('(orientation: portrait)').matches;
     }
 
+    // Cline/task auto-scroll lock: while the user has scrolled up to read,
+    // nudgeLayout must resize only and never pull the view back to bottom.
+    // Cline scrolls its own webview to bottom on every new token; without
+    // this lock that plus our forced reflow yanks the user down.
+    var SCROLL_LOCK_PX = 80;
+    var userScrollLock = false;
+    var userScrollLockEl = null;
+
+    function isNearBottom(el) {
+        if (!el) return true;
+        try {
+            var dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+            return dist <= SCROLL_LOCK_PX;
+        } catch (e) { return true; }
+    }
+
+    function findClineScroller() {
+        // Cline/Roo/Kai chat webviews all mount a scrollable task container;
+        // pick the tallest scrollable ancestor of the focused node first,
+        // falling back to document scroll.
+        var node = document.activeElement;
+        while (node && node !== document.body) {
+            try {
+                var st = window.getComputedStyle(node);
+                var oy = st && st.overflowY;
+                if ((oy === 'auto' || oy === 'scroll') &&
+                    node.scrollHeight > node.clientHeight + SCROLL_LOCK_PX) {
+                    return node;
+                }
+            } catch (e) { /* keep climbing */ }
+            node = node.parentElement;
+        }
+        return document.scrollingElement || document.documentElement;
+    }
+
+    // Any upward intent arms the lock; returning near bottom releases it.
+    // Capture phase: Cline's own scrollToBottom listener must not pre-empt.
+    ['wheel', 'touchmove'].forEach(function (evt) {
+        document.addEventListener(evt, function (e) {
+            var el = findClineScroller();
+            userScrollLockEl = el;
+            if (!isNearBottom(el)) {
+                userScrollLock = true;
+            } else if (userScrollLock && isNearBottom(el)) {
+                userScrollLock = false;
+            }
+        }, { capture: true, passive: true });
+    });
+    document.addEventListener('scroll', function () {
+        var el = userScrollLockEl || findClineScroller();
+        if (isNearBottom(el)) userScrollLock = false;
+        else userScrollLock = true;
+    }, true);
+
     function pagerHeight() {
         var vv = window.visualViewport;
         var h = vv && vv.height ? vv.height : window.innerHeight;
@@ -649,6 +703,20 @@
     }
 
     function nudgeLayout(page) {
+        // Scroll-locked (user reading a Cline task): resize only via the
+        // cheap grid-fit path, never a full applyLayout. A full pass writes
+        // the chat webview size through fillImportant, which Chromium
+        // resizes the iframe for even when unchanged, and Cline answers
+        // that with scrollToBottom.
+        if (userScrollLock) {
+            try {
+                if (page && page.id === 'panel') {
+                    var w = viewportWidth();
+                    fitPanelGrid(w);
+                }
+            } catch (e) { /* size-only best effort */ }
+            return;
+        }
         var now = Date.now();
         if (now - nudgeWindow > 1000) {
             nudgeWindow = now;
@@ -830,7 +898,31 @@
                     fillImportant(splits[si], w, bodyH);
                 }
             }
+            // Terminal/xterm completeness: xterm fits cols from the pixel
+            // width it measures, and a 1px shortfall drops the last column
+            // plus the bottom row under the pager. Re-run the grid fit AFTER
+            // the fills above so VS Code re-fits xterm to the final width,
+            // and nudge the active xterm-screen to the full body height so
+            // no row is clipped when the IME is up.
+            try {
+                fitPanelGrid(w);
+                var xscreen = el.querySelector('.terminal-wrapper.active .xterm-screen');
+                if (xscreen) fillImportant(xscreen, w, bodyH);
+                var xrows = el.querySelector('.terminal-wrapper.active .xterm-rows');
+                if (xrows) fillImportant(xrows, w, bodyH);
+            } catch (e) { /* completeness best effort */ }
             hidePanelTabStrip(el, w);
+        }
+        // Editor completeness: Monaco measures its container on layout; if the
+        // fill above left it 1px short the last line/hscroll sits under the
+        // pager. Re-assert the editor content box to the full body height.
+        if (page && page.id === 'editor') {
+            try {
+                var edContent = el.querySelector('.content');
+                if (edContent) fillImportant(edContent, w, bodyH);
+                var monaco = el.querySelector('.monaco-editor');
+                if (monaco) fillImportant(monaco, w, bodyH);
+            } catch (e) { /* completeness best effort */ }
         }
         laidOutKey = key;
     }

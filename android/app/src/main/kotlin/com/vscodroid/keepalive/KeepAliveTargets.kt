@@ -49,5 +49,11 @@ internal object KeepAliveTargets {
         "com.iqoo.secure" to "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity",
         "com.vivo.permissionmanager" to "com.vivo.permissionmanager.activity.BgStartUpManagerActivity",
         "com.samsung.android.lool" to "com.samsung.android.sm.battery.ui.BatteryActivity",
+        // Meizu / Flyme: background management + autostart live under the
+        // built-in security center on Flyme 9/10. No single documented
+        // activity; try the known aliases in order, first resolvable wins.
+        "com.meizu.safe" to "com.meizu.safe.powerui.PowerAppPermissionActivity",
+        "com.meizu.safe" to "com.meizu.safe.security.AppSecActivity",
+        "com.meizu.flyme.service" to "com.meizu.flyme.service.security.AppSecActivity",
     )
 }

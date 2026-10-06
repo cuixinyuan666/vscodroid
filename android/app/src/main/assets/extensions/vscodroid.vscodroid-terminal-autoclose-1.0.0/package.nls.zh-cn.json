@@ -1,0 +1,6 @@
+{
+  "displayName": "VSCodroid 终端自动关闭",
+  "description": "命令结束后过一段时间自动关闭闲置终端。默认关闭。",
+  "config.enabled": "命令结束后自动关闭终端。默认关闭，打开可阻止 Cline 堆积终端。",
+  "config.delaySeconds": "命令结束后等待多少秒再关闭终端（0 为立即关闭，最大 600）。"
+}

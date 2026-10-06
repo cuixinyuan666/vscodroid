@@ -82,6 +82,9 @@ const BASE_TMP = os.tmpdir();
  * notification it raised. Fresh because warningShownAtThreshold is module
  * state: a second activation of the same instance is latched and stays silent,
  * which would make the comparison below pass by saying nothing twice.
+ * The one-shot Cline terminal hint (clineHintShown) resets the same way, so
+ * every fresh activation raises it again when the snapshot holds >2
+ * terminals.
  */
 function notificationFor(snapshot) {
     const tmp = fs.mkdtempSync(path.join(BASE_TMP, 'vscodroid-ext-'));
@@ -129,32 +132,39 @@ function snapshot(total, terminals, langservers, budget = { idle: 5, soft: 8, er
     const busy = notificationFor(snapshot(11, 6, 4));
 
     // Positive control: "identical" is worthless if neither raised anything.
-    assert.strictEqual(quiet.length, 1, `the warning tier raised nothing at 8: ${JSON.stringify(quiet)}`);
-    assert.strictEqual(busy.length, 1, `the warning tier raised nothing at 11: ${JSON.stringify(busy)}`);
-    assert.strictEqual(quiet[0].level, 'warning', `expected a warning, got ${quiet[0].level}`);
+    // Each fresh activation also raises the one-shot Cline terminal hint
+    // (level info) when the snapshot holds >2 terminals, so compare only the
+    // tier's own warning (level warning).
+    const quietWarn = quiet.filter(n => n.level === 'warning');
+    const busyWarn = busy.filter(n => n.level === 'warning');
+    assert.strictEqual(quietWarn.length, 1, `the warning tier raised nothing at 8: ${JSON.stringify(quiet)}`);
+    assert.strictEqual(busyWarn.length, 1, `the warning tier raised nothing at 11: ${JSON.stringify(busy)}`);
+    assert.strictEqual(quietWarn[0].level, 'warning', `expected a warning, got ${quietWarn[0].level}`);
 
     assert.strictEqual(
-        quiet[0].message,
-        busy[0].message,
+        quietWarn[0].message,
+        busyWarn[0].message,
         'the warning text changes with the counts, so it freezes at whatever they were when it opened:\n' +
-            `  at 8 processes : ${quiet[0].message}\n` +
-            `  at 11 processes: ${busy[0].message}`,
+            `  at 8 processes : ${quietWarn[0].message}\n` +
+            `  at 11 processes: ${busyWarn[0].message}`,
     );
 
     // One button, and it opens the details view. The other one signalled the
     // idle rows, and measured on device the servers were back under new pids
     // within a second, so the button promised a slot it never freed.
     assert.deepStrictEqual(
-        quiet[0].items, ['Show Details'],
-        `the warning offers ${JSON.stringify(quiet[0].items)}; a button that signals a ` +
+        quietWarn[0].items, ['Show Details'],
+        `the warning offers ${JSON.stringify(quietWarn[0].items)}; a button that signals a ` +
             'language server frees nothing, because its extension restarts it',
     );
 }
 
-// The critical tier, same property.
+// The critical tier, same property. Each fresh activation also raises the
+// one-shot Cline terminal hint when the snapshot holds >2 terminals, so
+// compare only the tier's own error (level error), not the hint (level info).
 {
-    const fourteen = notificationFor(snapshot(14, 3, 2));
-    const twenty = notificationFor(snapshot(20, 9, 6));
+    const fourteen = notificationFor(snapshot(14, 3, 2)).filter(n => n.level === 'error');
+    const twenty = notificationFor(snapshot(20, 9, 6)).filter(n => n.level === 'error');
 
     assert.strictEqual(fourteen.length, 1, `the critical tier raised nothing at 14: ${JSON.stringify(fourteen)}`);
     assert.strictEqual(twenty.length, 1, `the critical tier raised nothing at 20: ${JSON.stringify(twenty)}`);
@@ -178,6 +188,24 @@ function snapshot(total, terminals, langservers, budget = { idle: 5, soft: 8, er
 {
     const calm = notificationFor(snapshot(4, 1, 0));
     assert.deepStrictEqual(calm, [], `a quiet device was interrupted: ${JSON.stringify(calm)}`);
+}
+
+// The one-shot Cline terminal hint: >2 terminals raises an info nudge toward
+// the terminal-autoclose setting exactly once per session copy.
+{
+    const hinted = notificationFor(snapshot(8, 3, 2));
+    const hint = hinted.filter(n => n.level === 'info');
+    assert.strictEqual(hint.length, 1, `expected one Cline terminal hint at 3 terminals: ${JSON.stringify(hinted)}`);
+    assert.ok(
+        hint[0].message.includes('Terminal Auto Close'),
+        `the Cline hint does not name the setting: ${hint[0].message}`,
+    );
+
+    const noHint = notificationFor(snapshot(8, 2, 2));
+    assert.deepStrictEqual(
+        noHint.filter(n => n.level === 'info'), [],
+        `two terminals should not raise the hint: ${JSON.stringify(noHint)}`,
+    );
 }
 
 // The tiers are the snapshot's, not this file's. Both toasts carried literals
