@@ -36,6 +36,13 @@ import java.util.concurrent.TimeUnit
  * The payload is `libmake.so`, copied out of `nativeLibraryDir`: it is small,
  * self-contained, already bundled, and `make --version` exits 0 with output that
  * cannot be mistaken for anything else.
+ *
+ * android9 branch: the methods below are named in camelCase rather than in the
+ * backticked sentences the JVM suite uses, because these are DEXed. A space in a
+ * method name is legal from DEX version 040 (Android 11) and refused below it,
+ * so with minSdk 28 `dexBuilderDebugAndroidTest` fails to build at all. Every
+ * other file in this source set already names its tests that way, so this is the
+ * suite returning to its own convention rather than a new one.
  */
 @RunWith(AndroidJUnit4::class)
 class ExecTrampolineOnDeviceTest {
@@ -94,7 +101,7 @@ class ExecTrampolineOnDeviceTest {
      * absolute path. It must not start.
      */
     @Test
-    fun `a payload under filesDir cannot be executed directly`() {
+    fun aPayloadUnderFilesDirCannotBeExecutedDirectly() {
         val result = run(listOf(payload.absolutePath, "--version"), emptyMap())
 
         assertNotEquals(
@@ -110,7 +117,7 @@ class ExecTrampolineOnDeviceTest {
      * through a PATH holding only the trampoline directory.
      */
     @Test
-    fun `the trampoline runs the same payload by bare name`() {
+    fun theTrampolineRunsTheSamePayloadByBareName() {
         val result = runByName(
             "make --version",
             mapOf(
@@ -141,7 +148,7 @@ class ExecTrampolineOnDeviceTest {
      * what it was handed.
      */
     @Test
-    fun `a variable in the table reaches the program the trampoline starts`() {
+    fun aVariableInTheTableReachesTheProgramTheTrampolineStarts() {
         val probe = File(probeRoot, "probe.mk").apply {
             writeText("\$(info probe=\$(VSCODROID_PROBE))\nall: ;\n")
         }
@@ -169,7 +176,7 @@ class ExecTrampolineOnDeviceTest {
      * caller was never given rather than overriding what it chose.
      */
     @Test
-    fun `a variable the caller already has is not overwritten`() {
+    fun aVariableTheCallerAlreadyHasIsNotOverwritten() {
         val probe = File(probeRoot, "probe.mk").apply {
             writeText("\$(info probe=\$(VSCODROID_PROBE))\nall: ;\n")
         }
@@ -196,7 +203,7 @@ class ExecTrampolineOnDeviceTest {
      * else happens to be reachable. The trampoline must never search PATH.
      */
     @Test
-    fun `a name with no row fails with a reason`() {
+    fun aNameWithNoRowFailsWithAReason() {
         Runtime.getRuntime().exec(
             arrayOf("/system/bin/ln", "-sf", trampoline.absolutePath, File(tcBin, "nosuch").absolutePath)
         ).waitFor()
