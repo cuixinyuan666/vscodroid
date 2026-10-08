@@ -10,9 +10,35 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.thread
+
+/**
+ * Reads up to [len] bytes of this stream into [b] starting at [off], and returns how
+ * many it read.
+ *
+ * The stand-in for `InputStream.readNBytes(byte[], int, int)` on the android9 branch,
+ * where that overload is API 33 and minSdk is 28. It follows the JDK contract of the
+ * method it replaces: keep reading after a short read and stop at the first end of
+ * stream, so the count is below [len] only because the input ran out.
+ *
+ * A single `read` call is NOT that contract, and using one here would be a silent
+ * wrong answer rather than a crash: every one of the three callers compares two
+ * streams and treats a short chunk as a length difference, so a provider stream over
+ * binder (which returns short reads routinely) would end the comparison early and let
+ * two files differing past the short read compare equal.
+ */
+private fun InputStream.readUpTo(b: ByteArray, off: Int, len: Int): Int {
+    var total = 0
+    while (total < len) {
+        val n = read(b, off + total, len - total)
+        if (n < 0) break
+        total += n
+    }
+    return total
+}
 
 /**
  * Bidirectional sync engine between SAF content:// URIs and local mirror directories.
@@ -1995,7 +2021,7 @@ class SafSyncEngine(private val context: Context) {
                     val a = ByteArray(COPY_BUFFER_SIZE)
                     val b = ByteArray(COPY_BUFFER_SIZE)
                     while (true) {
-                        val read = device.readNBytes(a, 0, a.size)
+                        val read = device.readUpTo(a, 0, a.size)
                         // The document ended while the two still agreed, so it is
                         // a prefix. Strict needs one more byte in the mirror, and
                         // it is asked of the stream rather than of
@@ -2005,7 +2031,7 @@ class SafSyncEngine(private val context: Context) {
                         if (read == 0) return@use mirror.read() != -1
                         // The mirror ran out first, so the document holds more
                         // than any prefix of it: something else put it there.
-                        if (mirror.readNBytes(b, 0, read) != read) return@use false
+                        if (mirror.readUpTo(b, 0, read) != read) return@use false
                         if (!java.util.Arrays.equals(a, 0, read, b, 0, read)) return@use false
                     }
                     @Suppress("UNREACHABLE_CODE") false
@@ -2056,8 +2082,8 @@ class SafSyncEngine(private val context: Context) {
                     val a = ByteArray(COPY_BUFFER_SIZE)
                     val b = ByteArray(COPY_BUFFER_SIZE)
                     while (true) {
-                        val read = device.readNBytes(a, 0, a.size)
-                        val same = mirror.readNBytes(b, 0, b.size)
+                        val read = device.readUpTo(a, 0, a.size)
+                        val same = mirror.readUpTo(b, 0, b.size)
                         if (read != same) return@use false
                         if (read == 0) return@use true
                         // Only the bytes this chunk filled. Comparing the whole buffer
@@ -3304,11 +3330,20 @@ class SafSyncEngine(private val context: Context) {
      * has to be resolved against. Covering the tree is [watchTree]'s job: one observer
      * per directory, because a watch descriptor covers a directory and not a tree.
      */
-    private inner class DirectoryObserver(
+    @Suppress("DEPRECATION") // android9 branch: the File overload of FileObserver is API 29.
+private inner class DirectoryObserver(
         private val dir: File,
         private val rootDir: File,
         private val safTreeUri: Uri
-    ) : FileObserver(dir, MODIFY or CREATE or DELETE or MOVED_FROM or MOVED_TO) {
+    ) : FileObserver(
+        // android9 branch: FileObserver(File, int) is API 29; the String overload has
+        // existed since API 1 and spells the same watch. `dir` comes from watchTree and
+        // is absolute, so the two are the same path, and the File overload would
+        // otherwise be a NoSuchMethodError the first time a folder is opened on Android
+        // 9.
+        dir.absolutePath,
+        MODIFY or CREATE or DELETE or MOVED_FROM or MOVED_TO,
+    ) {
 
         override fun onEvent(event: Int, path: String?) {
             if (path == null || !isWatching) return
@@ -4504,8 +4539,8 @@ class SafSyncEngine(private val context: Context) {
                         val one = ByteArray(COPY_BUFFER_SIZE)
                         val two = ByteArray(COPY_BUFFER_SIZE)
                         while (true) {
-                            val read = left.readNBytes(one, 0, one.size)
-                            if (read != right.readNBytes(two, 0, two.size)) return false
+                            val read = left.readUpTo(one, 0, one.size)
+                            if (read != right.readUpTo(two, 0, two.size)) return false
                             if (read == 0) return true
                             // Only the bytes this chunk filled, for the reason
                             // [deviceMatchesMirror] gives: the previous, longer chunk's

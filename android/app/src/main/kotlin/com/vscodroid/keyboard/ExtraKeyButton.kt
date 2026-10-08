@@ -197,7 +197,7 @@ class ExtraKeyButton @JvmOverloads constructor(
         // AppCompatTextView, which carries @RestrictTo and is meant only for
         // calls from inside AppCompat itself. Same work underneath: the wrapper
         // passes its four arguments straight through to the platform method on
-        // API 27 and above, and minSdk here is 33, so the compatibility branch
+        // API 27 and above, and minSdk here is 28, so the compatibility branch
         // below that is never taken.
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
             this, 8, 13, 1, TypedValue.COMPLEX_UNIT_SP
@@ -238,7 +238,18 @@ class ExtraKeyButton @JvmOverloads constructor(
         // stateDescription rather than isSelected: the platform announces a
         // change to it on its own, and it says "on" instead of "selected",
         // which is what a latched modifier is.
-        stateDescription = toggleStateDescription(isToggle, isToggleActive)?.let(context::getString)
+        //
+        // android9 branch: View.setStateDescription is API 30, so it is reached
+        // only from there up. Below it the description is set on the content
+        // description instead, which every accessibility service has read since
+        // API 4, so a screen reader still hears the latch on an Android 9
+        // device -- losing the automatic announcement, not the state.
+        val state = toggleStateDescription(isToggle, isToggleActive)?.let(context::getString)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            stateDescription = state
+        } else {
+            contentDescription = state
+        }
     }
 
     fun applyRoundedBackground(color: Int) {

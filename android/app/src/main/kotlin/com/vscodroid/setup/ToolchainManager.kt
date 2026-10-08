@@ -1701,8 +1701,21 @@ class ToolchainManager(private val context: Context) {
     private fun shouldUseHttpFallback(): Boolean {
         installSourceIsPlay?.let { return !it }
         val isPlay = try {
-            val source = context.packageManager.getInstallSourceInfo(context.packageName)
-            val installer = source.installingPackageName
+            // android9 branch: getInstallSourceInfo(String) is API 30. Below it the
+            // only way to ask is getInstallerPackageName(String), which reads the same
+            // field and is the method the API 30 one replaced. The answer is
+            // deliberately the same on both, including the null case below, so the
+            // verdict for an install does not depend on the API level of the device it
+            // was made on. It is a NoSuchMethodError otherwise, and this runs on the
+            // first tap of the toolchain screen.
+            val installer = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                context.packageManager
+                    .getInstallSourceInfo(context.packageName).installingPackageName
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager
+                    .getInstallerPackageName(context.packageName)
+            }
             Logger.d(tag, "Install source: $installer")
             // `com.google.android.feedback` is the Play Store's own legacy
             // package name and is still the installer of record on installs made

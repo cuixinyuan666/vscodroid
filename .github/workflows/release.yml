@@ -376,6 +376,7 @@ jobs:
           node scripts/test-welcome.js
           node scripts/test-kai.js
           node scripts/test-pager-agent.js
+          node scripts/test-terminal-autoclose.js
 
       - name: Install system dependencies
         # See build.yml: the runner's baked apt index goes stale as Ubuntu drops

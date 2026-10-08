@@ -340,6 +340,9 @@ class ToolchainDigestInstallTest {
         val source = mockk<InstallSourceInfo>()
         every { source.installingPackageName } returns "com.example.sideloader"
         every { packageManager.getInstallSourceInfo(any()) } returns source
+        // android9 branch: the pre-API-30 spelling, and the one a JVM test actually
+        // reaches (Build.VERSION.SDK_INT is 0 off-device). Same installer either way.
+        every { packageManager.getInstallerPackageName(any()) } returns "com.example.sideloader"
 
         File(filesDir, "home/.vscodroid").mkdirs()
 

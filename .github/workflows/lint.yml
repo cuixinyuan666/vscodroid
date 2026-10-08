@@ -303,6 +303,7 @@ jobs:
           node scripts/test-welcome.js
           node scripts/test-kai.js
           node scripts/test-pager-agent.js
+          node scripts/test-terminal-autoclose.js
 
       - name: Run lint
         working-directory: android

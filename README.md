@@ -192,6 +192,23 @@ flowchart TD
 
 > You can also download APKs directly from [GitHub Releases](https://github.com/rmyndharis/VSCodroid/releases).
 
+### The Android 9 line
+
+Releases tagged from the `android9` branch ship as their own package,
+`com.vscodroid.android9`, under the launcher name **VSCodroid A9**, rather than as an
+in-place upgrade of `com.vscodroid`. That is deliberate: the A9 build lowers `minSdk`
+to 28 so it installs on Android 9, and installing it over the main-line package
+would either strand an existing install on a floor it no longer meets, or take the
+main-line app off devices that are perfectly happy with it. Side by side, both
+remain, each upgrading on its own line.
+
+Two consequences worth knowing before you install it:
+
+- The A9 line is **not** on Google Play. The Play listing serves the main-line
+  package only.
+- A sideloaded A9 install fetches its toolchain ZIPs from the same GitHub Releases,
+  because that is how every non-Play install resolves them.
+
 ### What's Included
 
 | Tier                         | What                                                        | How                                                      |

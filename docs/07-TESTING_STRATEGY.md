@@ -14,7 +14,10 @@ VSCodroid has unique testing challenges: it's a hybrid app (Kotlin + WebView + N
 - Test the integration boundaries (Kotlin ↔ WebView ↔ Node.js); that's where bugs hide
 - Automate what can run on CI; manual test what requires real devices
 - Prioritize real device testing over emulator (ARM64 binaries don't run on x86 emulators)
-- Test on the lowest-spec supported device (4GB RAM, Android 13)
+- Test on the lowest-spec supported device (4GB RAM, Android 9). The android9 line
+  additionally needs an API 28 image specifically: `minSdk 28` makes that tier reachable
+  and nothing on CI can stand in for it, since lint only proves the API 29+ calls are
+  guarded, not that the guarded-off branches leave the app working
 
 ---
 
@@ -95,8 +98,10 @@ temporary directory, and is executed directly by `node`.
 | Serve on Network | The port scan and its reachable/local split | `scripts/test-serve-network.js` |
 | Welcome | That the walkthrough and side bar markers are written only after the command they record actually ran | `scripts/test-welcome.js` |
 | Kai | Free-model catalog, OpenCode config merge, war-mode vote parsing | `scripts/test-kai.js` |
+| Portrait pager agent | The chevron finds the agent by the name it is actually shown under | `scripts/test-pager-agent.js` |
+| Terminal auto-close | Off by default, closes after the delay, backs off on new output | `scripts/test-terminal-autoclose.js` |
 
-**Run**: all ten, one `node` invocation each, in the `Check the bundled
+**Run**: all twelve, one `node` invocation each, in the `Check the bundled
 JavaScript runtime` step of `lint.yml`, and again in `release.yml`, on Node 24,
 the major the APK ships (`check-build-steps.py` holds the pins there). `lint.yml`
 also runs the `--self-test` entry points of `check-workflow-steps.py`,
@@ -218,7 +223,7 @@ Manual test scenarios that verify the full user experience:
 
 | Dimension | Test Targets |
 |-----------|-------------|
-| **Android versions** | 13 (API 33), 14 (API 34), 15 (API 35), 16 (API 36) |
+| **Android versions** | 9 (API 28, the android9 line's floor), 10 (API 29), 13 (API 33), 14 (API 34), 15 (API 35), 16 (API 36) |
 | **Devices** | Pixel 7/8 (reference), Samsung Galaxy S23/S24, Xiaomi (budget), Samsung Tab S9 (tablet) |
 | **RAM** | 4 GB (minimum), 8 GB (typical), 12+ GB (high-end) |
 | **Screen sizes** | Phone 6" (1080p), Phone 6.7" (1440p), Tablet 11" (2560p) |
@@ -316,7 +321,7 @@ flowchart TD
 |--------|---------|
 | Pixel 8 (8GB RAM, Android 16) | Primary development/testing device |
 | Samsung Galaxy S23 (8GB RAM, Android 15) | Second manufacturer compatibility |
-| Budget phone (4GB RAM, Android 13) | Minimum spec testing |
+| Budget phone (4GB RAM, Android 9) | Minimum spec testing, and the only way to exercise the API 28 tier |
 | Samsung Galaxy Tab S9 (8GB RAM) | Tablet/large screen testing |
 
 ---

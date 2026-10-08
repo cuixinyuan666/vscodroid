@@ -222,7 +222,7 @@ to: patch 0005 disables the service worker upstream uses to scope each webview t
 | `INTERNET`                       | Open VSX, GitHub, toolchain downloads           | Install time   |
 | `FOREGROUND_SERVICE`             | Keep Node.js alive in background                | Install time   |
 | `FOREGROUND_SERVICE_SPECIAL_USE` | Dev server foreground service type              | Install time   |
-| `POST_NOTIFICATIONS`             | Foreground Service notification (API 33+)       | Runtime        |
+| `POST_NOTIFICATIONS`             | Foreground Service notification (API 33+)       | Runtime, and only from API 33: below that level the permission does not exist and notifications are always allowed, so `MainActivity.requestNotificationPermission` returns immediately rather than asking for nothing |
 | `WAKE_LOCK`                      | Partial wake lock while the local server runs   | Install time   |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Opens the system battery-exemption dialog | First launch, user confirms |
 

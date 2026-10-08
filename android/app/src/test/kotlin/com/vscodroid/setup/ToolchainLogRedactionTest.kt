@@ -106,6 +106,9 @@ class ToolchainLogRedactionTest {
         val info = mockk<InstallSourceInfo>()
         every { info.installingPackageName } returns installer
         every { packageManager.getInstallSourceInfo(any()) } returns info
+        // android9 branch: the pre-API-30 spelling, and the one a JVM test actually
+        // reaches (Build.VERSION.SDK_INT is 0 off-device). Same installer either way.
+        every { packageManager.getInstallerPackageName(any()) } returns installer
     }
 
     private fun snapshot() = synchronized(messages) { messages.toList() }

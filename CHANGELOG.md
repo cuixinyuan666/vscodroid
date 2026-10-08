@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-08
+
+### Added
+
+- Android 9 support: the app now installs on API 28+, with the API 29+ surfaces guarded at the call site.
+- Android 9 line ships as its own package `com.vscodroid.android9` (launcher name "VSCodroid A9"), so it installs side by side with the main-line package instead of overwriting it.
+- Terminal auto-close extension: idle terminals close some time after their command ends. Off by default.
+
+### Fixed
+
+- Four call sites that would have crashed on an Android 9 device rather than degrading, all reached on ordinary paths: the key row's latch state, the SAF write-back watcher, the byte comparison behind mirror reconciliation, and the Play install-source query behind toolchain delivery.
+  - The key row published its latch through `View.setStateDescription` (API 30). Below that it goes to the content description instead, which every screen reader has read since API 4, so the state is still announced and only the automatic announcement is lost.
+  - The SAF watcher was constructed with `FileObserver(File, int)` (API 29) and now uses the `String` overload, which has existed since API 1 and names the same watch.
+  - The stream comparisons used `InputStream.readNBytes(byte[], int, int)` (API 33). A local `readUpTo` does what the JDK contract of that method says, looping past short reads; a single `read` would have been the wrong answer silently, ending a comparison early and letting two files that differ past the short read compare equal.
+  - Toolchain delivery asked `getInstallSourceInfo` (API 30) for who installed the app, which decides Play asset packs versus the GitHub Releases ZIPs. Below 30 it asks `getInstallerPackageName` for the same field, and the verdict is identical on both, null included.
+
 ## [1.3.6] - 2026-10-03
 
 ### Fixed
@@ -989,7 +1005,8 @@ This release represents the cumulative work across milestones M0 through M5, bri
 - Health check polling for server readiness
 - Android intent handling for "Open with VSCodroid"
 
-[Unreleased]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/cuixinyuan666/vscodroid/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.1...v1.3.2
 [1.2.2]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.1...v1.2.2

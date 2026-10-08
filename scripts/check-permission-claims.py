@@ -43,7 +43,8 @@ about the pairing written in the same name. This one asks the artefact instead.
 Names are compared on their last dot-separated segment. That is not laziness
 about `android.permission.` prefixes: the app-defined receiver permission is
 named after the applicationId, so it is `com.vscodroid.DYNAMIC_RECEIVER_...` in
-a release build and `com.vscodroid.debug.DYNAMIC_RECEIVER_...` in a debug one,
+a release build, `com.vscodroid.debug.DYNAMIC_RECEIVER_...` in a debug one, and
+`com.vscodroid.android9.DYNAMIC_RECEIVER_...` in the Android 9 line's release,
 and a comparison on the full name would answer differently for the same
 document depending on which variant last built. The cost is that two permissions
 sharing a final segment would be conflated; nothing in this app or its

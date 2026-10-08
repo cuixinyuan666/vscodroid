@@ -74,6 +74,17 @@ forces the cutout mode, so those three decide API 33 and 34 and nothing else. It
 does **not** ignore `enforceNavigationBarContrast`, which still decides whether a
 scrim is drawn behind a 3-button navigation bar on a current image.
 
+The android9 line makes the attributes themselves tiered, because a style in a more
+specific configuration replaces the base wholesale rather than merging item by item,
+and an item naming an attribute the platform does not know is rejected at build
+time. `values/themes.xml` is therefore the API 28 floor and carries only what API 28
+can parse, `values-v29/themes.xml` adds the two `enforce*Contrast` attributes (API
+29), and `values-v30/themes.xml` upgrades the cutout from `shortEdges` to `always`,
+which is a value that only exists from API 30. Every base item is restated in each
+overlay for the same reason. `ThemeEdgeToEdgeTest` asserts each tier separately,
+including that the two contrast attributes are ABSENT from the base rather than
+present in it.
+
 `setDecorFitsSystemWindows` stays in the bundle and that is fine. It is not one
 of the three Play named, and Play Core's asset pack code puts it there
 regardless of what this app calls.

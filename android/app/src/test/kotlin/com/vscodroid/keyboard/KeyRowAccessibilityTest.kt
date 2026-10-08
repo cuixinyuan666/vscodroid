@@ -569,10 +569,27 @@ class KeyRowAccessibilityTest {
             assertTrue(start >= 0, "updateToggleAppearance is no longer where this test looks")
 
             val body = lines.drop(start).takeWhile { !it.contains("fun applyRoundedBackground") }
+            // android9 branch: View.setStateDescription is API 30, so the latch is
+            // published to one channel above it and to another below. Both are
+            // asserted, because a device on either side of that line has to hear
+            // the state; a scan naming only the newer one would pass on a tree
+            // where every Android 9 key had gone silent.
             assertTrue(
-                body.any { it.contains("stateDescription = toggleStateDescription(") },
-                "the latch no longer reaches an accessibility service, so a screen reader " +
-                    "user can switch a modifier and cannot tell whether it is on. It reads: " +
+                body.any { it.contains("val state = toggleStateDescription(") },
+                "the latch is no longer resolved at all, so neither channel below can " +
+                    "publish it. It reads: " + body.joinToString("\n"),
+            )
+            assertTrue(
+                body.any { it.contains("stateDescription = state") },
+                "the latch no longer reaches an accessibility service on API 30+, so a " +
+                    "screen reader user can switch a modifier and cannot tell whether it " +
+                    "is on. It reads: " + body.joinToString("\n"),
+            )
+            assertTrue(
+                body.any { it.contains("contentDescription = state") },
+                "View.setStateDescription is API 30 and this branch is the Android 9 one, " +
+                    "so a latch published only to stateDescription is silent on every " +
+                    "device the android9 line exists to reach. It reads: " +
                     body.joinToString("\n"),
             )
             assertTrue(

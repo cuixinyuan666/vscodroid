@@ -39,7 +39,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 | Git               | Any recent version             | -                                            |
 | GnuPG (`gpg`)     | Any recent version             | `brew install gnupg` / `apt-get install gnupg`. The bundled-tool download scripts verify the Termux package index against its signature and refuse to run without it |
 | adb               | Via Android SDK platform-tools | For deploying to device                      |
-| ARM64 device or emulator | Android 13+ (API 33+)   | The bundled binaries are arm64-only, so an x86_64 emulator will not work; an arm64 emulator (the default on Apple Silicon) works fine |
+| ARM64 device or emulator | Android 9+ (API 28+)   | The bundled binaries are arm64-only, so an x86_64 emulator will not work; an arm64 emulator (the default on Apple Silicon) works fine |
 
 ### Clone and Initial Setup
 
@@ -333,6 +333,7 @@ checkouts differed.
 | `test-download-capture.js` | Exercises the download-capture script, which is JavaScript inside a Kotlin raw string handed to `evaluateJavascript`, so nothing compiles or lints it and no Kotlin test reaches past the bridge methods it calls. What it pins is the deferred `revokeObjectURL`: the workbench revokes a `blob:` URL on the next task, and choosing a destination takes seconds, so without the deferral every save finds nothing to write while the Kotlin suite, lint and the build all stay green | exit status |
 | `test-serve-network.js` | Exercises the Serve on Network port scan and its reachable versus local-only split, both halves of which cost the user something when wrong: a loopback-only server called reachable hands out an address that refuses, and a reachable one called local-only sends them to restart a working server. The classification is inferred from two probes because an app process cannot read `/proc/net/tcp` at all, and inference is what needs a test. `scanPorts` takes its connector, so nothing here opens a socket | exit status |
 | `test-kai.js` | Exercises the bundled Kai extension's free-model catalog, OpenCode config merge, and war-mode JSON parsing. A catalog that named a paid Zen id would call the gateway with the anonymous `public` token; a merge that overwrote an existing API key would drop one the user had saved; a parser that could not skip proposers would stall the vote round. The modules under test do not load `vscode`, so nothing here opens a terminal | exit status |
+| `test-terminal-autoclose.js` | Exercises the terminal auto-close extension: stays off by default, closes after the delay, and backs off on new output. Off by default; enabling it must never touch a live terminal | exit status |
 
 **Important notes:**
 - Scripts are designed for macOS and Linux (macOS uses `bsdtar` for `.deb` extraction).

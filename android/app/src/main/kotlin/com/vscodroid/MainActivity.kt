@@ -4412,7 +4412,15 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Shows a dialog if the app crashed in a previous session.
+     *
+     * `ClipDescription.EXTRA_IS_SENSITIVE` is named API 33 and lint flags it, which
+     * is right about the field and wrong about the cost: it is a `static final
+     * String`, so the compiler writes its value into the dex as a literal and there
+     * is no field read to fail. On an Android 9 device the platform does not know
+     * the extra and ignores it, which is the correct outcome there anyway -- there
+     * is no clipboard preview to suppress before Android 13.
      */
+    @android.annotation.SuppressLint("InlinedApi")
     private fun checkPreviousCrash() {
         if (!CrashReporter.hasPendingCrash()) return
         val lastCrash = CrashReporter.getLastCrash() ?: return

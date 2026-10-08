@@ -114,10 +114,21 @@ class ToolchainInstallTest {
         }
     }
 
+    /**
+     * Records this app as installed by [installer], on either API level.
+     *
+     * android9 branch: the app asks `getInstallSourceInfo` from API 30 and
+     * `getInstallerPackageName` below it, and a JVM unit test sees
+     * `Build.VERSION.SDK_INT` as 0, so it always takes the older branch. Both are
+     * stubbed with the same answer on purpose: the installer's name is what these
+     * tests are about, and which of the two calls the app happens to make on the
+     * build machine is not. `InstallerNameIsAsked` covers that half.
+     */
     private fun installedBy(installer: String?) {
         val info = mockk<InstallSourceInfo>()
         every { info.installingPackageName } returns installer
         every { packageManager.getInstallSourceInfo(any()) } returns info
+        every { packageManager.getInstallerPackageName(any()) } returns installer
     }
 
     /** Private, and the only entry point both delivery routes share. */
@@ -196,6 +207,48 @@ class ToolchainInstallTest {
     }
 
     @Test
+    fun `the installer is asked for by the API the device has`() {
+        // android9 branch. The two calls read the same field, so every other test in
+        // this file stubs both and passes whichever one is taken -- which means
+        // nothing here would notice the branch being written the wrong way round, and
+        // an Android 9 device would meet a method it does not have the first time the
+        // toolchain screen asked.
+        //
+        // Mocking `Build.VERSION.SDK_INT` cannot settle it either: it is a `static final
+        // int`, so the compiler wrote its value into the bytecode and there is no read
+        // left to intercept. Every JVM test of this code therefore runs the API 28
+        // branch and only the API 28 branch, on a machine that is not API 28. Reading
+        // the source is the only thing left that can see both.
+        val file = File("src/main/kotlin/com/vscodroid/setup/ToolchainManager.kt")
+        assertTrue(file.isFile, "ToolchainManager.kt is not where this test looks")
+
+        val body = file.readLines()
+            .dropWhile { !it.contains("private fun shouldUseHttpFallback()") }
+            .takeWhile { !it.contains("fun downloadViaHttp") }
+            // Comments dropped, and not as a nicety: the comment above the branch
+            // names both calls in prose, so a scan that kept them would find the
+            // API 30 spelling first and conclude the branch was written backwards.
+            .filterNot { it.trimStart().startsWith("//") }
+        // The control, for the reason the other source scans in this repository give:
+        // if the `dropWhile` ever found nothing, the two assertions below would both
+        // fail with "expected true" and read like a deleted branch rather than a scan
+        // that read nothing.
+        assertTrue(
+            body.any { it.contains("PLAY_INSTALLERS") },
+            "the scan is not reading shouldUseHttpFallback, so its verdict below is " +
+                "worth nothing",
+        )
+        val gate = body.indexOfFirst { it.contains("VERSION_CODES.R") }
+        val new = body.indexOfFirst { it.contains("getInstallSourceInfo(") }
+        val old = body.indexOfFirst { it.contains("getInstallerPackageName(") }
+        assertTrue(
+            gate in 0 until minOf(new, old),
+            "the API level is no longer what chooses between the two installer calls",
+        )
+        assertTrue(new < old, "API 30+ must be the branch that reaches getInstallSourceInfo")
+    }
+
+    @Test
     fun `a sideloaded install downloads over HTTP and never asks Play`() {
         installedBy("com.example.sideloader")
 
@@ -223,6 +276,9 @@ class ToolchainInstallTest {
         // Play install, and guessing Play there leaves the user with a toolchain
         // that never arrives and no error.
         every { packageManager.getInstallSourceInfo(any()) } throws SecurityException("denied")
+        // android9 branch: the older API this test's own JVM SDK_INT takes, refused
+        // the same way. One of the two has to throw for the refusal to be exercised.
+        every { packageManager.getInstallerPackageName(any()) } throws SecurityException("denied")
 
         manager().install("toolchain_java")
 

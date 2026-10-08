@@ -29,10 +29,12 @@
 
 | ID | Scenario | Steps | Expected Result | Pass/Fail | Notes |
 |----|----------|-------|-----------------|-----------|-------|
-| AV-1 | Android 13 (API 33) | Full install + test | All features work (minimum supported) | | |
-| AV-2 | Android 14 (API 34) | Full install + test | All features work, .so extraction OK | | |
-| AV-3 | Android 15 (API 35) | Full install + test | All features work | | |
-| AV-4 | Android 16 (API 36) | Full install + test | All features work, 16KB pages OK | | |
+| AV-1 | Android 9 (API 28) | Full install + test | All features work (minimum supported). This is the floor the android9 line exists for, and it is the one row that can only be answered on a real API 28 image: the theme tiers (`values/`, `values-v29/`, `values-v30/`) resolve differently there, `FileObserver(String, int)` is the only constructor available, and there is no runtime notification permission to request | | |
+| AV-2 | Android 10 (API 29) | Full install + test | All features work. The second theme tier, and the first release where `enforceStatusBarContrast` exists; the cutout mode is still `shortEdges` because `always` needs API 30 | | |
+| AV-3 | Android 13 (API 33) | Full install + test | All features work, and this is where the runtime notification permission first exists, so it is the tier the battery-exemption path is really exercised on | | |
+| AV-4 | Android 14 (API 34) | Full install + test | All features work, .so extraction OK | | |
+| AV-5 | Android 15 (API 35) | Full install + test | All features work | | |
+| AV-6 | Android 16 (API 36) | Full install + test | All features work, 16KB pages OK | | |
 
 ## 3. Keyboard Input
 
@@ -256,7 +258,7 @@ first launch of a build that has this line, so the row to run instead is TC-8.
 | Category | Total | Pass | Fail | Skip |
 |----------|-------|------|------|------|
 | Device Matrix | 4 | | | |
-| Android Versions | 4 | | | |
+| Android Versions | 6 | | | |
 | Keyboard Input | 23 | | | |
 | Screen & Orientation | 10 | | | |
 | Editor Operations | 14 | | | |
@@ -268,7 +270,7 @@ first launch of a build that has this line, so the row to run instead is TC-8.
 | Terminal & Tools | 11 | | | |
 | SAF & Files | 16 | | | |
 | Display Language | 6 | | | |
-| **Total** | **123** | | | |
+| **Total** | **125** | | | |
 
 **Overall Result**: [ ] PASS / [ ] FAIL
 

@@ -82,6 +82,9 @@ class ToolchainQueuedCancelTest {
         // A sideload, so install() takes the HTTP path this is about.
         every { source.installingPackageName } returns "com.example.sideloader"
         every { packageManager.getInstallSourceInfo(any()) } returns source
+        // android9 branch: the pre-API-30 spelling, and the one a JVM test actually
+        // reaches (Build.VERSION.SDK_INT is 0 off-device). Same installer either way.
+        every { packageManager.getInstallerPackageName(any()) } returns "com.example.sideloader"
 
         context = mockk(relaxed = true)
         every { context.filesDir } returns filesDir

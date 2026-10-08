@@ -22,7 +22,7 @@
 flowchart TD
   S1["Stage 1: Assemble binaries<br/>Node, Python, git, bash, tmux, make, ssh from Termux packages<br/>node-pty and @parcel/watcher cross-compiled with the NDK"] --> S2["Stage 2: Build Code - OSS<br/>MIT microsoft/vscode source + patches/ + branding/<br/>output: vscode-reh-web-linux-arm64 (server and web client in one tree)"]
   S2 --> S3["Stage 3: Android APK/AAB<br/>Gradle assembleRelease<br/>Kotlin + WebView + assets + jniLibs<br/>output: app-release.aab"]
-  ENV["Environment: arm64 Linux runner for stage 2 (the gulp build needs the target arch)<br/>Android NDK r27 for the native addons: aarch64-linux-android28<br/>App minSdk: API 33"] -. applies to .-> S1
+  ENV["Environment: arm64 Linux runner for stage 2 (the gulp build needs the target arch)<br/>Android NDK r27 for the native addons: aarch64-linux-android28<br/>App minSdk: API 28"] -. applies to .-> S1
   ENV -. applies to .-> S2
   ENV -. applies to .-> S3
 ```

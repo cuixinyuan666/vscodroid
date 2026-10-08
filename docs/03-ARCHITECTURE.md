@@ -284,7 +284,7 @@ owning extension is what frees a slot.
 - System WebView updates automatically via Play Store
 - No additional binary size (Chromium adds 100MB+)
 - WebView on Android is Chromium-based, supports all VS Code needs
-- Minimum WebView 105+ covers all required APIs on Android 13+ baseline
+- Minimum WebView 105+ covers all required APIs on the API 28 baseline. An Android 9 device's WebView is updatable through Play Store, so the floor is a device that has been kept current rather than one that shipped that way
 
 **Trade-off**: Dependent on user's WebView version. Mitigation: runtime version check, graceful error if too old.
 
@@ -579,7 +579,7 @@ there, Extension Host output included. Nothing writes `exthost.log` under any na
 |-------|-----------|---------|
 | Android app | Kotlin, compiled to JVM target 17 | The version AGP 9.3.1 brings (`agp` in `android/gradle/libs.versions.toml`) |
 | Build system | Gradle (Kotlin DSL), pinned by the wrapper and its `distributionSha256Sum` | 9.7.1 (`android/gradle/wrapper/gradle-wrapper.properties`) |
-| UI framework | Android View + WebView | API 33-36 |
+| UI framework | Android View + WebView | API 28-36 |
 | Node.js | Node.js from Termux's `nodejs-lts` package, installed as `libnode.so` by `scripts/download-node.sh` | 24.18.0, the version `remote/.npmrc` `target` names at the pinned VS Code tag |
 | VS Code | Code - OSS, built from MIT source with the diffs in `patches/` | 1.133.0 (pinned in the `VSCODE_VERSION` file at the repo root) |
 | Extension Host | VS Code Extension Host as a worker_thread (patch `0004`); the Pty Host likewise (patch `0003`) | Same as VS Code |

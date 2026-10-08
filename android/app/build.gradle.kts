@@ -125,6 +125,8 @@ android {
     defaultConfig {
         applicationId = "com.vscodroid"
         // android9 branch: lowered 33 -> 28 (Android 9) to reach old devices.
+        // The android9 line ships as its own release under .android9, so it can
+        // sit beside the main-line package instead of overwriting it.
         // Every API 29+ surface used here is guarded at the call site; see
         // MainActivity (POST_NOTIFICATIONS), themes.xml (cutout/contrast split
         // into values-v29), and NodeService (specialUse type is compat-routed).
@@ -140,8 +142,8 @@ android {
         // browser simply times out.
         @Suppress("OldTargetApi")
         targetSdk = 36
-        versionCode = 22
-        versionName = "1.3.6"
+        versionCode = 23
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -257,6 +259,14 @@ android {
 
     buildTypes {
         release {
+            // Android 9 line: same code, its own package. Without this the A9 APK
+            // overwrites the main-line install (and vice versa); with it the two
+            // are com.vscodroid and com.vscodroid.android9, side by side.
+            applicationIdSuffix = ".android9"
+            // The launcher and the task switcher read this, so the two icons can
+            // be told apart. "${appLabel}" below is the only reader; nothing else
+            // in the tree may hard-code either name.
+            manifestPlaceholders["appLabel"] = "VSCodroid A9"
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
@@ -279,6 +289,10 @@ android {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // The manifest reads ${appLabel}; Gradle requires every placeholder to
+            // have a value in every build type, so debug names its own here. The
+            // release value above ("VSCodroid A9") is what ships.
+            manifestPlaceholders["appLabel"] = "@string/app_name"
             // Which of the 2000-odd unit tests actually reach a line, answered by
             // the tooling already in the Android plugin rather than by adding a
             // coverage plugin: this switch makes the debug unit-test task emit

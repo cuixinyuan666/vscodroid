@@ -223,7 +223,7 @@ flowchart TD
 | Constraint | Impact |
 |------------|--------|
 | ARM64 only | No x86 Android devices (< 1% market) |
-| Android 13+ (API 33) | No support for Android 12 and below |
+| Android 9+ (API 28) | No support for Android 8 and below. The android9 line also ships as its own package, so it installs beside the main-line one rather than overwriting it |
 | .so bundling requirement | All binaries must be packaged as .so in APK |
 | Open VSX only | Some Microsoft-exclusive extensions unavailable |
 | Phantom process limit (32) | Must keep processes under control |

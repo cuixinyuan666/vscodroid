@@ -51,7 +51,7 @@ VSCodroid is NOT a cloud IDE, a Termux wrapper, or a custom editor. It is the ac
 
 ### 2.4 Constraints
 
-- ARM64 Android only (API 33+)
+- ARM64 Android only (API 28+)
 - All binaries must be bundled as .so in APK (Android W^X enforcement)
 - Open VSX only: Microsoft Marketplace ToS prohibits third-party access
 - Android phantom process limit (32 system-wide) constrains child process count
