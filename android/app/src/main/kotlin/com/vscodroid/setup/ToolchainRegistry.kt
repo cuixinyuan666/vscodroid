@@ -91,10 +91,14 @@ object ToolchainRegistry {
             displayName = "Ruby",
             shortLabel = "Ruby",
             descriptionRes = R.string.toolchain_ruby_description,
-            // 34,888 KiB measured with `du -sk` over the pack's `usr/` tree,
-            // which is 35.7 MB. 2,279 files, so the block rounding is most of
-            // the gap between that and the 30.0 MB the file contents sum to.
-            estimatedSize = 36_000_000,
+            // 39,004 KiB measured with `du -sk` over the pack's `usr/` tree,
+            // which is 39.9 MB. This read 36,000,000 for a 34,888 KiB tree until
+            // Termux moved Ruby to 4.0.7 and the pack grew by 4.2 MB. Both packs
+            // resolve from the live index rather than a lockfile, so the constant
+            // has to be remeasured whenever a component moves a version, and the
+            // only thing that noticed was ToolchainRegistryTest, which measures
+            // the real tree on the job that built the packs.
+            estimatedSize = 40_000_000,
             downloadSize = 9_900_000,
             downloadUrl = "https://github.com/rmyndharis/VSCodroid/releases/latest/download/toolchain_ruby.zip",
         ),
@@ -103,13 +107,14 @@ object ToolchainRegistry {
             displayName = "Java 17",
             shortLabel = "Java 17",
             descriptionRes = R.string.toolchain_java_description,
-            // 151,840 KiB measured with `du -sk` over the pack's `usr/` tree,
-            // which is 155.5 MB; the file contents sum to 154.8 MB. This read
-            // 146,000,000 until the JDK grew past it: `download-java.sh` stopped
-            // deleting OpenJDK's `legal/` and began copying with `-RL`, which
-            // dereferences 208 symlinks, and the constant every gate reads did
-            // not move with it. Two comments in ToolchainManager were updated to
-            // say "about 155 MB" while this stayed at 146.
+            // 152,168 KiB measured with `du -sk` over the pack's `usr/`
+            // tree, which is 155.8 MB; the file contents sum to a little
+            // less. This read 146,000,000 until the JDK grew past it:
+            // `download-java.sh` stopped deleting OpenJDK's `legal/` and began
+            // copying with `-RL`, which dereferences 208 symlinks, and the
+            // constant every gate reads did not move with it. Two comments in
+            // ToolchainManager were updated to say "about 155 MB" while this
+            // stayed at 146.
             estimatedSize = 156_000_000,
             downloadSize = 55_400_000,
             downloadUrl = "https://github.com/rmyndharis/VSCodroid/releases/latest/download/toolchain_java.zip",
