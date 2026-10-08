@@ -38,6 +38,13 @@ REQUIRED_PACKAGES=(
     tmux
     libevent
     libandroid-glob
+    # tmux 3.7c added utf8proc to its Depends and libtmux.so now carries
+    # libutf8proc.so.3 in DT_NEEDED, which Bionic does not provide. It arrived
+    # after this list was last written and the release that noticed was the
+    # first to resolve a fresh index: the ELF verification below refused the
+    # build rather than shipping a terminal that cannot start. The dependency is
+    # listed rather than stubbed, because it is a real library that has to load.
+    utf8proc
     make
     openssh
     libedit
@@ -90,6 +97,9 @@ get_sonames() {
         libevent)          echo "libevent-2.1.so libevent_core-2.1.so" ;;
         libandroid-glob)   echo "libandroid-glob.so" ;;
         libedit)           echo "libedit.so" ;;
+        # The package ships libutf8proc.so.3.3.0 with libutf8proc.so.3 as the
+        # SONAME link, which is the name tmux records in DT_NEEDED.
+        utf8proc)          echo "libutf8proc.so.3" ;;
         ldns)              echo "libldns.so" ;;
         krb5)              echo "libgssapi_krb5.so.2 libkrb5.so.3 libk5crypto.so.3 libkrb5support.so.0 libcom_err.so.3" ;;
         libresolv-wrapper) echo "libresolv_wrapper.so" ;;
@@ -108,6 +118,7 @@ LIB_PACKAGES=(
     libcurl openssl pcre2 libexpat
     libnghttp2 libnghttp3 libngtcp2 libssh2 zlib
     libevent libandroid-glob libedit ldns
+    utf8proc
     krb5 libresolv-wrapper
     c-ares libicu libc++ libsqlite
 )

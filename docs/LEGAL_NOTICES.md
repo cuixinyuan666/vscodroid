@@ -526,6 +526,7 @@ attribute but this project's own source.
 | [ripgrep](https://github.com/BurntSushi/ripgrep) | MIT | no | `libripgrep.so` |
 | [SQLite](https://sqlite.org) | Public Domain | no | `libsqlite3.so` |
 | [tmux](https://github.com/tmux/tmux) | ISC | no | `libtmux.so` |
+| [utf8proc](https://github.com/JuliaStrings/utf8proc) | MIT | no | `libutf8proc.so.3` |
 | [xz / liblzma](https://tukaani.org/xz/) | LGPL-2.1, GPL-2.0, GPL-3.0 | **yes** | `liblzma.so.5` |
 | [zlib](https://zlib.net) | Zlib | no | `libz.so.1` |
 | [Zstandard](https://facebook.github.io/zstd/) | GPL-2.0 | **yes** | `libzstd.so.1` |

@@ -210,6 +210,11 @@ LIBRARIES = {
     "libevent-2.1.so": ("libevent", "BSD-3-Clause"),
     "libevent_core-2.1.so": ("libevent", "BSD-3-Clause"),
     "libedit.so": ("libedit", "BSD-3-Clause"),
+    # tmux 3.7c's new dependency. The soname is the third of the family because
+    # the package ships 3.3.0 behind it; `utf8proc` is the name Termux's index
+    # gives the package, which is why the component and the map key read
+    # differently.
+    "libutf8proc.so.3": ("utf8proc", "MIT"),
     # Termux's `libcrypt`, a standalone crypt(3), BSD-2-Clause. Not glibc's
     # libcrypt and not libxcrypt -- the LGPL one is a different project with a
     # confusingly similar soname. `libcrypt.so.1` beside it is our own stub.
@@ -288,6 +293,7 @@ NOTICE_DIRS = {
     "Python": "usr/share/doc/python",
     "ripgrep": "vscode-reh/node_modules/@vscode/ripgrep-universal",
     "tmux": "usr/share/doc/tmux",
+    "utf8proc": "usr/share/doc/utf8proc",
     "OpenSSH": "usr/share/doc/openssh",
     "musl libc": "usr/share/doc/musl",
     "OpenCode": "usr/share/doc/opencode",
