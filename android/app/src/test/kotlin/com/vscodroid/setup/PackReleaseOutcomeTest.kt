@@ -344,9 +344,11 @@ class PackReleaseOutcomeTest {
             "the orphan is not the size this case's arithmetic assumes",
         )
 
-        // Strictly between the credited demand (206,000,000 - 8,000,007) and the
-        // uncredited one (206,000,000).
-        room(200_000_000L)
+        // Strictly between the credited demand (276,000,000 - 8,000,007) and the
+        // uncredited one (276,000,000). The demand is the registry's
+        // estimatedSize for this pack plus SPACE_BUFFER; it read 206,000,000
+        // until the JDK pack was remeasured at 226,000,000 on 2026-10-13.
+        room(270_000_000L)
         val secondOut = Collections.synchronizedList(mutableListOf<Int>())
         val second = CountDownLatch(1)
         managerReporting(second, secondOut).reconcileDeliveredPacks()
@@ -365,7 +367,7 @@ class PackReleaseOutcomeTest {
         deliver("toolchain_java", "java")
         fattenDelivery("toolchain_java", "java")
 
-        room(200_000_000L)
+        room(270_000_000L)
         val out = Collections.synchronizedList(mutableListOf<Int>())
         val settledHere = CountDownLatch(1)
         managerReporting(settledHere, out).reconcileDeliveredPacks()
