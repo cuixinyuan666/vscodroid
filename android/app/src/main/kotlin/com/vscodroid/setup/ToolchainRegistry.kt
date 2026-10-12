@@ -91,10 +91,13 @@ object ToolchainRegistry {
             displayName = "Ruby",
             shortLabel = "Ruby",
             descriptionRes = R.string.toolchain_ruby_description,
-            // 34,888 KiB measured with `du -sk` over the pack's `usr/` tree,
-            // which is 35.7 MB. 2,279 files, so the block rounding is most of
-            // the gap between that and the 30.0 MB the file contents sum to.
-            estimatedSize = 36_000_000,
+            // 37,666,816 bytes measured the way the size gate measures it:
+            // 4 KiB blocks over the pack's `usr/` tree, which `du -sk` reports
+            // as 35,645 KiB / 36.5 MB over 2,403 files, the block rounding
+            // being most of the gap. Re-measured 2026-10-13: the constant read
+            // 36,000,000, which the same live Termux index had quietly grown
+            // past, and the gate refuses exactly that direction.
+            estimatedSize = 38_000_000,
             downloadSize = 9_900_000,
             downloadUrl = "https://github.com/rmyndharis/VSCodroid/releases/latest/download/toolchain_ruby.zip",
         ),
@@ -103,14 +106,14 @@ object ToolchainRegistry {
             displayName = "Java 17",
             shortLabel = "Java 17",
             descriptionRes = R.string.toolchain_java_description,
-            // 151,840 KiB measured with `du -sk` over the pack's `usr/` tree,
-            // which is 155.5 MB; the file contents sum to 154.8 MB. This read
-            // 146,000,000 until the JDK grew past it: `download-java.sh` stopped
-            // deleting OpenJDK's `legal/` and began copying with `-RL`, which
-            // dereferences 208 symlinks, and the constant every gate reads did
-            // not move with it. Two comments in ToolchainManager were updated to
-            // say "about 155 MB" while this stayed at 146.
-            estimatedSize = 156_000_000,
+            // 219,443 KiB measured with `du -sk` over the pack's `usr/` tree,
+            // which is 224.7 MB; the file contents sum to about the same. This
+            // read 156,000,000 until Termux's openjdk-17 package grew past it
+            // on 2026-10-13: the index resolves fresh every fetch, so the tree
+            // moved under a constant nothing re-measures. The 16 KB page
+            // rebuild in download-java.sh adds a few dozen KiB on top of this
+            // on a host that can run it, hence the round-up.
+            estimatedSize = 226_000_000,
             downloadSize = 55_400_000,
             downloadUrl = "https://github.com/rmyndharis/VSCodroid/releases/latest/download/toolchain_java.zip",
         ),
