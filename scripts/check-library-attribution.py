@@ -174,6 +174,7 @@ LIBRARIES = {
     "libpython3.14.so": ("Python", "PSF-2.0"),
     "libripgrep.so": ("ripgrep", "MIT"),
     "libtmux.so": ("tmux", "ISC"),
+    "libutf8proc.so.3": ("utf8proc", "MIT"),
     "libssh.so": ("OpenSSH", "BSD"),
     "libssh-keygen.so": ("OpenSSH", "BSD"),
     "libldmusl.so": ("musl libc", "MIT"),

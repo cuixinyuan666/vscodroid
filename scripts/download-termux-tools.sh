@@ -36,6 +36,11 @@ REQUIRED_PACKAGES=(
     libssh2
     libexpat
     tmux
+    # tmux 3.8 added UTF-8 width handling against utf8proc, and the tmux
+    # executable that lands in jniLibs as libtmux.so carries libutf8proc.so.3
+    # in DT_NEEDED. Without the package here the verify step below refuses
+    # the whole tree: libtmux.so would fail to load on a device.
+    utf8proc
     libevent
     libandroid-glob
     make
@@ -88,6 +93,7 @@ get_sonames() {
         libssh2)           echo "libssh2.so" ;;
         zlib)              echo "libz.so.1" ;;
         libevent)          echo "libevent-2.1.so libevent_core-2.1.so" ;;
+        utf8proc)          echo "libutf8proc.so.3" ;;
         libandroid-glob)   echo "libandroid-glob.so" ;;
         libedit)           echo "libedit.so" ;;
         ldns)              echo "libldns.so" ;;
@@ -110,6 +116,7 @@ LIB_PACKAGES=(
     libevent libandroid-glob libedit ldns
     krb5 libresolv-wrapper
     c-ares libicu libc++ libsqlite
+    utf8proc
 )
 
 echo "=== Downloading Termux Tools (bash + git + tmux + make + ssh) ==="

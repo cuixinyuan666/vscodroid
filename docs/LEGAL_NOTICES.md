@@ -136,6 +136,15 @@ Node.js includes V8 (BSD-3-Clause), libuv (MIT), OpenSSL (Apache-2.0), ICU (Unic
 - **Copyright**: Copyright (c) Nicholas Marriott and contributors
 - **Full license**: https://github.com/tmux/tmux/blob/master/COPYING
 
+### utf8proc
+
+- **Project**: https://github.com/JuliaStrings/utf8proc
+- **Version**: not pinned here, from the Termux package index at build time (`scripts/download-termux-tools.sh`)
+- **License**: MIT License
+- **Copyright**: Copyright (c) 2015-2018 JuliaStrings contributors
+- **Full license**: https://github.com/JuliaStrings/utf8proc/blob/master/LICENSE.md
+- **Bundled via**: Termux's `libutf8proc` package, pulled in by tmux 3.8's UTF-8 width handling (`libutf8proc.so.3` is in `libtmux.so`'s `DT_NEEDED`)
+
 ### GNU Make
 
 - **Project**: https://www.gnu.org/software/make/
@@ -526,6 +535,7 @@ attribute but this project's own source.
 | [ripgrep](https://github.com/BurntSushi/ripgrep) | MIT | no | `libripgrep.so` |
 | [SQLite](https://sqlite.org) | Public Domain | no | `libsqlite3.so` |
 | [tmux](https://github.com/tmux/tmux) | ISC | no | `libtmux.so` |
+| [utf8proc](https://github.com/JuliaStrings/utf8proc) | MIT | no | `libutf8proc.so.3` |
 | [xz / liblzma](https://tukaani.org/xz/) | LGPL-2.1, GPL-2.0, GPL-3.0 | **yes** | `liblzma.so.5` |
 | [zlib](https://zlib.net) | Zlib | no | `libz.so.1` |
 | [Zstandard](https://facebook.github.io/zstd/) | GPL-2.0 | **yes** | `libzstd.so.1` |

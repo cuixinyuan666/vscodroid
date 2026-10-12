@@ -186,7 +186,7 @@ shell integration by switching on the executable's basename, and `libbash.so` ma
 
 ### 1.8 tmux
 
-**Source**: Termux's `tmux` package, with `libevent` and the `ncurses` terminfo data.
+**Source**: Termux's `tmux` package, with `libevent`, `libutf8proc` (since tmux 3.8, for UTF-8 width handling) and the `ncurses` terminfo data.
 
 **Output artifacts**:
 

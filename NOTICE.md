@@ -21,6 +21,7 @@ Versions are deliberately not listed unless pinned in this repository: most comp
 | Bash | GPL v3 | Termux build, https://www.gnu.org/software/bash |
 | ripgrep | MIT / Unlicense (dual) | Bundled by the Code - OSS build (`@vscode/ripgrep-universal`), https://github.com/BurntSushi/ripgrep |
 | tmux | ISC | Termux build, https://github.com/tmux/tmux |
+| utf8proc | MIT | Termux build, https://github.com/JuliaStrings/utf8proc |
 | GNU Make | GPL v3 | Termux build, https://www.gnu.org/software/make |
 | OpenSSH | BSD | Termux build, https://www.openssh.com |
 | node-pty | MIT | https://github.com/microsoft/node-pty, native addon rebuilt for Android/Bionic |
