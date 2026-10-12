@@ -314,6 +314,7 @@ NOTICE_DIRS = {
     "c-ares": "usr/share/doc/c-ares",
     "SQLite": "usr/share/doc/libsqlite",
     "libc++": "usr/share/doc/libc++",
+    "utf8proc": "usr/share/doc/utf8proc",
     "ICU": "usr/share/doc/libicu",
     "libresolv-wrapper": "usr/share/doc/libresolv-wrapper",
     "Kerberos 5": "usr/share/doc/krb5",

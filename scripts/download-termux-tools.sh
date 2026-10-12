@@ -359,6 +359,20 @@ for pkg in "${LIB_PACKAGES[@]}"; do
             base_soname="$(echo "$soname" | sed 's/\.so\..*/\.so/')"
             if [ "$base_soname" != "$soname" ] && ( [ -f "$pkg_lib_dir/$base_soname" ] || [ -L "$pkg_lib_dir/$base_soname" ] ); then
                 src="$pkg_lib_dir/$base_soname"
+            else
+                # Two-level versioning, which neither of the above reaches:
+                # utf8proc ships libutf8proc.so.3.3.0 against soname
+                # libutf8proc.so.3, so the stripped name is libutf8proc.so
+                # and no such file exists either. Prefix match over the
+                # package's own directory; read_soname below is what proves
+                # the candidate is the library the soname names, so a wrong
+                # match fails there under its own message rather than
+                # shipping under a name it does not answer to.
+                for cand in "$pkg_lib_dir/$soname".* ; do
+                    [ -e "$cand" ] || continue
+                    src="$cand"
+                    break
+                done
             fi
         fi
 
