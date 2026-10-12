@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.8] - 2026-10-13
+
+### Added
+
+- The server is resurrected after the process is taken. `NodeService` already survived an in-app stop and a crash loop, but nothing brought the server back once the process was actually reclaimed: the low memory killer, a swipe of the task card, or a reboot left it down with the loading page offering no way out short of force-stopping the app. A new `keepalive` package persists the intent to serve, arms a fifteen-minute periodic alarm for reclamation and a one-shot restart one second after the task is removed (via `setExactAndAllowWhileIdle`, which needs no exact-alarm permission), and answers `BOOT_COMPLETED` to re-arm after a reboot. A start refused by Android 12+ leaves the next cycle as the way back.
+- The running notification gains an action that opens the battery-exemption dialog when it is missing. It was previously grantable only from the first-run guide, so a server killed quietly for want of it left no hint why; the action disappears once the exemption is granted.
+
 ## [1.3.6] - 2026-10-03
 
 ### Fixed
@@ -989,7 +996,8 @@ This release represents the cumulative work across milestones M0 through M5, bri
 - Health check polling for server readiness
 - Android intent handling for "Open with VSCodroid"
 
-[Unreleased]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.8...HEAD
+[1.3.8]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.7...v1.3.8
 [1.3.3]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/cuixinyuan666/vscodroid/compare/v1.3.1...v1.3.2
 [1.2.2]: https://github.com/cuixinyuan666/vscodroid/compare/v1.2.1...v1.2.2
