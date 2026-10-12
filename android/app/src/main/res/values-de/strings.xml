@@ -16,6 +16,7 @@
     <string name="keep_alive_autostart_title">Start im Hintergrund erlauben</string>
     <string name="keep_alive_autostart_message">Dieses Telefon hat einen eigenen Schalter, der Apps am Laufen hindert, sobald Sie sie verlassen. Schalten Sie ihn für VSCodroid ein, sonst wird der Server beim Verlassen der App beendet.</string>
     <string name="keep_alive_open_settings">Einstellungen öffnen</string>
+    <string name="keep_alive_notification_action">Hintergrund erlauben</string>
     <string name="pager_nav_previous">Vorige Vollbildansicht</string>
     <string name="pager_nav_next">Nächste Vollbildansicht</string>
     <string name="pager_ime_show">Tastatur anzeigen</string>

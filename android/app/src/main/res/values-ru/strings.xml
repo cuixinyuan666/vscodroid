@@ -16,6 +16,7 @@
     <string name="keep_alive_autostart_title">Разрешить запуск в фоновом режиме</string>
     <string name="keep_alive_autostart_message">На этом телефоне есть собственный переключатель, который не даёт приложениям работать после того, как вы из них вышли. Включите его для VSCodroid, иначе сервер будет закрыт при выходе из приложения.</string>
     <string name="keep_alive_open_settings">Открыть настройки</string>
+    <string name="keep_alive_notification_action">Разрешить в фоне</string>
     <string name="pager_nav_previous">Предыдущий полноэкранный вид</string>
     <string name="pager_nav_next">Следующий полноэкранный вид</string>
     <string name="pager_ime_show">Показать клавиатуру</string>

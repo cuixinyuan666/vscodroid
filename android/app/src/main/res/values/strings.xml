@@ -19,6 +19,7 @@
     <string name="keep_alive_autostart_title">Allow starting in the background</string>
     <string name="keep_alive_autostart_message">This phone has its own switch that stops apps from running after you leave them. Turn it on for VSCodroid, or the server is closed when you leave the app.</string>
     <string name="keep_alive_open_settings">Open settings</string>
+    <string name="keep_alive_notification_action">Allow background</string>
     <string name="notification_channel_name">VSCodroid Server</string>
     <string name="notification_channel_description">Keeps the local development server running</string>
     <string name="notification_title">VSCodroid is running</string>

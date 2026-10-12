@@ -16,6 +16,7 @@
     <string name="keep_alive_autostart_title">Autoriser le démarrage en arrière-plan</string>
     <string name="keep_alive_autostart_message">Ce téléphone possède son propre interrupteur qui empêche les applications de continuer de tourner après que vous les avez quittées. Activez-le pour VSCodroid, sinon le serveur sera arrêté lorsque vous quittez l\'application.</string>
     <string name="keep_alive_open_settings">Ouvrir les paramètres</string>
+    <string name="keep_alive_notification_action">Autoriser l\'arrière-plan</string>
     <string name="pager_nav_previous">Vue plein écran précédente</string>
     <string name="pager_nav_next">Vue plein écran suivante</string>
     <string name="pager_ime_show">Afficher le clavier</string>

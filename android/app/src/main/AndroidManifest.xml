@@ -22,6 +22,12 @@
          from battery restrictions. The user still has to confirm it. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Delivered once, after the device restarts. Alarms do not survive one,
+         so this is the only moment the app is told to arm the watchdog again;
+         it also starts back a server that was running when the device powered
+         off, and nothing else. See keepalive/KeepAliveReceiver. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- largeHeap raises the ART heap CAP for this process and nothing else:
          it does not reserve memory and no Kotlin here reads it. On an API 33
          arm64 device with 4 GB of RAM the cap moves from
@@ -188,14 +194,34 @@
             android:theme="@style/Theme.VSCodroid" />
 
         <!-- Node.js server service: runs code-server locally -->
+        <!-- stopWithTask=false is the platform default, said out loud because
+             the task-removal path now depends on it: swiping the app away
+             from recents must not end a started service. NodeService
+             .onTaskRemoved answers the gesture that does survive. -->
         <service
             android:name=".service.NodeService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Local development server for code editor" />
         </service>
+
+        <!-- Brings the server back after the process is taken away: a task
+             swiped from recents, a low-memory kill, a restart of the device.
+             Exported because BOOT_COMPLETED is a system broadcast and a
+             manifest receiver of one has to be reachable by the system. It is
+             a protected broadcast, so nothing but the system can deliver it,
+             and onReceive answers nothing else; the alarms target the
+             receiver explicitly and need no filter. -->
+        <receiver
+            android:name=".keepalive.KeepAliveReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

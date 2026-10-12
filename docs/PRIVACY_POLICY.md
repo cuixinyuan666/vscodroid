@@ -1,7 +1,7 @@
 # VSCodroid Privacy Policy
 
 **Effective Date: February 13, 2026**
-**Last Updated: October 3, 2026**
+**Last Updated: October 12, 2026**
 
 ## Summary
 
@@ -23,7 +23,7 @@ VSCodroid runs a local code editor server entirely on your Android device. The e
 
 All code execution -- whether Node.js, Python, Bash, or any other bundled runtime -- happens 100% on your device.
 
-The app asks for six Android permissions of its own. `INTERNET` covers the
+The app asks for seven Android permissions of its own. `INTERNET` covers the
 user-initiated cases listed under **Network Access** below, and the loopback
 traffic between the editor page and the local server. `FOREGROUND_SERVICE` and
 `FOREGROUND_SERVICE_SPECIAL_USE` keep that local server alive while you are
@@ -32,6 +32,10 @@ status. `WAKE_LOCK` keeps the CPU from sleeping while that server is running,
 and is released when the server stops. `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
 only lets the app open the system dialog that asks you to leave the server
 unrestricted; nothing is exempted unless you confirm it.
+`RECEIVE_BOOT_COMPLETED` is delivered once, after the device restarts, and is
+what lets the app bring back a server you had running when the device powered
+off; nothing starts on boot unless you had left the server running, and you
+can end that at any time with the Stop action on the server's notification.
 
 Two more are added by libraries the app is built with, and the Play listing
 shows that merged set rather than ours, so they are named here as well.

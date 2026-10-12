@@ -16,6 +16,7 @@
     <string name="keep_alive_autostart_title">Consenti l\'avvio in background</string>
     <string name="keep_alive_autostart_message">Questo telefono ha un proprio interruttore che impedisce alle app di continuare a funzionare dopo che le hai lasciate. Attivalo per VSCodroid, altrimenti il server verrà chiuso quando esci dall\'app.</string>
     <string name="keep_alive_open_settings">Apri le impostazioni</string>
+    <string name="keep_alive_notification_action">Consenti in background</string>
     <string name="pager_nav_previous">Precedente vista a schermo intero</string>
     <string name="pager_nav_next">Vista a schermo intero successiva</string>
     <string name="pager_ime_show">Mostra tastiera</string>

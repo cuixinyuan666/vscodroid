@@ -19,6 +19,7 @@
     <string name="keep_alive_autostart_title">允許在背景啟動</string>
     <string name="keep_alive_autostart_message">此手機有自己的開關，會在你離開某個應用程式後阻止它繼續執行。請為 VSCodroid 開啟，否則離開應用程式時伺服器會被關閉。</string>
     <string name="keep_alive_open_settings">開啟設定</string>
+    <string name="keep_alive_notification_action">允許背景執行</string>
     <string name="notification_channel_name">VSCodroid 伺服器</string>
     <string name="notification_channel_description">讓本機開發伺服器持續執行</string>
     <string name="notification_title">VSCodroid 執行中</string>

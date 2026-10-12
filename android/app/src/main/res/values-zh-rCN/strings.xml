@@ -16,6 +16,7 @@
     <string name="keep_alive_autostart_title">允许在后台启动</string>
     <string name="keep_alive_autostart_message">此手机有一个自己的开关，会在你离开某个应用后阻止它继续运行。请为 VSCodroid 打开它，否则离开应用时服务器会被关闭。</string>
     <string name="keep_alive_open_settings">打开设置</string>
+    <string name="keep_alive_notification_action">允许后台运行</string>
     <string name="pager_nav_previous">上一个全屏视图</string>
     <string name="pager_nav_next">下一个全屏视图</string>
     <string name="pager_ime_show">显示键盘</string>

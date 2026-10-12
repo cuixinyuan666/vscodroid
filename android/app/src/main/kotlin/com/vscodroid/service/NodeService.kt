@@ -15,6 +15,9 @@ import androidx.core.app.ServiceCompat
 import com.vscodroid.R
 import com.vscodroid.VSCodroidApp
 import com.vscodroid.MainActivity
+import com.vscodroid.keepalive.KeepAliveScheduler
+import com.vscodroid.keepalive.KeepAliveState
+import com.vscodroid.keepalive.KeepAliveTargets
 import com.vscodroid.util.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -203,6 +206,15 @@ class NodeService : Service() {
             StartCommand.SERVE -> {
                 isServiceRunning = true
                 holdCpuForServer()
+                // The user is owed a server now, and that is worth writing
+                // down where a process death can read it. Everything above
+                // defends a process that exists; these two lines are what
+                // bring it back after the low-memory killer, a swiped task or
+                // a reboot takes one. Cleared by [shutdown] and by
+                // [stopServingRecoverably], which are the user saying
+                // otherwise, so an unwanted server is never resurrected.
+                KeepAliveState.markServerWanted(this)
+                KeepAliveScheduler.arm(this)
                 launchServer()
                 START_STICKY
             }
@@ -268,6 +280,34 @@ class NodeService : Service() {
         // which is measured to work; taking the card down here would remove the
         // trace and the lever together.
         super.onDestroy()
+    }
+
+    /**
+     * Answers the one gesture that ends the app without saying anything about
+     * the server.
+     *
+     * Swiping the task away from recents is not a Stop: the user never touched
+     * the notification, and on the phones this app is built for the gesture
+     * routinely takes the whole process with it, service included. Stock
+     * Android documents a started service as surviving the task
+     * (`android:stopWithTask` defaults to false, and the manifest now says so
+     * out loud); the process around it has no such promise, and neither
+     * reading is worth betting a running server on.
+     *
+     * The restart is scheduled as an alarm rather than made here, because a
+     * service started from the background is what Android 12+ refuses, and
+     * this callback runs with nothing on screen. An alarm firing is its own
+     * exemption, and the receiver that takes it acts only if
+     * [KeepAliveState] says a server is owed. If the service did survive the
+     * swipe, the restart it triggers lands in `ALREADY_SERVING` and costs one
+     * log line; the alarm is the honest answer to both outcomes.
+     *
+     * Not [shutdown]'s job either. Stop is the user saying the server should
+     * end, and this is the system saying nothing of the kind.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        KeepAliveScheduler.scheduleTaskRemovalRestart(this)
+        super.onTaskRemoved(rootIntent)
     }
 
     // -- Public API for bound clients --
@@ -498,6 +538,11 @@ class NodeService : Service() {
         endFailureEpisode()
         processManager.stopServer()
         releaseServerWakeLock()
+        // The user asked for this, so nothing may bring the server back: the
+        // record goes, and the watchdog with it. Arming again is the SERVE
+        // branch's job, and it is the only other place that writes the flag.
+        KeepAliveState.clearServerWanted(this)
+        KeepAliveScheduler.disarm(this)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         removeNotification()
         stopSelf()
@@ -1167,6 +1212,14 @@ class NodeService : Service() {
     private fun stopServingRecoverably() {
         isServiceRunning = false
         releaseServerWakeLock()
+        // The same two statements [shutdown] makes, for a quieter reason. The
+        // give-up page has told the user the server is not coming back, and a
+        // watchdog that resurrected it would take that sentence back without
+        // anything on screen saying so. The next start the user asks for
+        // writes the record again, from the SERVE branch of [onStartCommand],
+        // which is the only other place that touches either of them.
+        KeepAliveState.clearServerWanted(this)
+        KeepAliveScheduler.disarm(this)
         // This run is over too, for the same reason [shutdown] says so.
         runId++
         // A fresh budget and a fresh first message for whoever starts it next.
@@ -1310,6 +1363,34 @@ class NodeService : Service() {
             // a sound, this governs whether it waits.
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
 
+        // On the running card, and only while the fix is still needed. An app
+        // the user has not exempted from battery restrictions is one Android
+        // 12+ will refuse to bring back from the background, which is the
+        // whole subject of the keep-alive guide and is invisible from here
+        // until the server stops coming back. The card is the one surface
+        // that outlives the activity, so it is where the fix belongs.
+        //
+        // Read on every rebuild rather than remembered, so the action
+        // disappears the moment the user grants the exemption instead of
+        // lingering as an invitation already taken. One binder call.
+        //
+        // Not on the stopped card: that card says the server crashed
+        // repeatedly, which is a different failure with a different answer,
+        // and a second action there would dilute the only route back.
+        if (serverRunning && !KeepAliveTargets.batteryUnrestricted(this)) {
+            val pendingBattery = PendingIntent.getActivity(
+                this,
+                REQUEST_BATTERY_SETTINGS,
+                KeepAliveTargets.batteryExemptionIntent(this),
+                PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(
+                0,
+                getString(R.string.keep_alive_notification_action),
+                pendingBattery,
+            )
+        }
+
         // On both cards. On the stopped one it is the only route back: see the
         // KDoc above for what was measured about sending it at a reclaimed
         // process, and why withholding it left no way out at all.
@@ -1327,6 +1408,15 @@ class NodeService : Service() {
     companion object {
         /** Intent action to gracefully stop the server and this service. */
         const val ACTION_STOP = "com.vscodroid.action.STOP_SERVER"
+
+        /**
+         * Request code for the card's battery-exemption action. Not 0, which
+         * is the content intent's and the Stop action's: two PendingIntents
+         * of the same operation sharing a request code are distinguished only
+         * by their intents, and this one is an activity intent targeting a
+         * settings page rather than anything in this app.
+         */
+        private const val REQUEST_BATTERY_SETTINGS = 1
 
         /**
          * Hold the process while first-run setup writes, without starting a server.

@@ -16,6 +16,7 @@
     <string name="keep_alive_autostart_title">バックグラウンドでの起動を許可</string>
     <string name="keep_alive_autostart_message">この端末には、アプリを切り替えた後にそのアプリが動作下去的ようにするスイッチがあります。VSCodroid にはオンにしてください。オフのままだとアプリを離れたときにサーバーが終了します。</string>
     <string name="keep_alive_open_settings">設定を開く</string>
+    <string name="keep_alive_notification_action">バックグラウンドを許可</string>
     <string name="pager_nav_previous">前の全画面表示</string>
     <string name="pager_nav_next">次の全画面表示</string>
     <string name="pager_ime_show">キーボードを表示</string>

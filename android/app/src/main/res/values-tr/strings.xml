@@ -16,6 +16,7 @@
     <string name="keep_alive_autostart_title">Arka planda başlatmaya izin ver</string>
     <string name="keep_alive_autostart_message">Bu telefonun, uygulamadan çıktığınızda arka planda çalışmalarını engelleyen kendi anahtarı var. VSCodroid için açın, aksi hâlde uygulamadan çıkınca sunucu kapanır.</string>
     <string name="keep_alive_open_settings">Ayarları aç</string>
+    <string name="keep_alive_notification_action">Arka planda çalışmaya izin ver</string>
     <string name="pager_nav_previous">Önceki tam ekran görünümü</string>
     <string name="pager_nav_next">Sonraki tam ekran görünümü</string>
     <string name="pager_ime_show">Klavyeyi göster</string>

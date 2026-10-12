@@ -16,6 +16,7 @@
     <string name="keep_alive_autostart_title">Permitir el inicio en segundo plano</string>
     <string name="keep_alive_autostart_message">Este teléfono tiene su propio interruptor que impide que las aplicaciones sigan funcionando cuando sales de ellas. Actívalo para VSCodroid o el servidor se cerrará al salir de la app.</string>
     <string name="keep_alive_open_settings">Abrir ajustes</string>
+    <string name="keep_alive_notification_action">Permitir en segundo plano</string>
     <string name="pager_nav_previous">Anterior vista a pantalla completa</string>
     <string name="pager_nav_next">Vista a pantalla completa siguiente</string>
     <string name="pager_ime_show">Mostrar teclado</string>

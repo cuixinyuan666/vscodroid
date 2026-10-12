@@ -16,6 +16,7 @@
     <string name="keep_alive_autostart_title">Povolit spuštění na pozadí</string>
     <string name="keep_alive_autostart_message">Tento telefon má vlastní přepínač, který aplikacím brání běžet poté, co je opustíte. Zapněte jej pro VSCodroid, jinak bude server při opuštění aplikace vypnut.</string>
     <string name="keep_alive_open_settings">Otevřít nastavení</string>
+    <string name="keep_alive_notification_action">Povolit běh na pozadí</string>
     <string name="pager_nav_previous">Předchozí zobrazení na celou obrazovku</string>
     <string name="pager_nav_next">Další zobrazení na celou obrazovku</string>
     <string name="pager_ime_show">Zobrazit klávesnici</string>

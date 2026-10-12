@@ -16,6 +16,7 @@
     <string name="keep_alive_autostart_title">Zezwól na uruchamianie w tle</string>
     <string name="keep_alive_autostart_message">Ten telefon ma własny przełącznik, który nie pozwala aplikacjom działać po ich opuszczeniu. Włącz go dla VSCodroid, inaczej serwer zostanie zamknięty po wyjściu z aplikacji.</string>
     <string name="keep_alive_open_settings">Otwórz ustawienia</string>
+    <string name="keep_alive_notification_action">Zezwól na działanie w tle</string>
     <string name="pager_nav_previous">Poprzedni pełnoekranowy widok</string>
     <string name="pager_nav_next">Następny pełnoekranowy widok</string>
     <string name="pager_ime_show">Pokaż klawiaturę</string>
